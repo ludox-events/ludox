@@ -2362,6 +2362,21 @@ class PrestitiApp(ttk.Window):
             sticky=EW
         )
 
+        ttk.Button(
+            area,
+            text="🧑  REPORT PERSONE / DOCUMENTI",
+            command=self.show_report_documenti,
+            bootstyle="info-outline"
+        ).grid(
+            row=4,
+            column=0,
+            columnspan=2,
+            padx=15,
+            pady=15,
+            ipady=22,
+            sticky=EW
+        )
+
     # ========================================================
     # BACKOFFICE - TUTTI I PRESTITI
     # ========================================================
@@ -2647,6 +2662,874 @@ class PrestitiApp(ttk.Window):
                     "DEPOSITATO" if row["uscita"] is None else "RESTITUITO"
                 )
             )
+
+    # ========================================================
+    # BACKOFFICE - REPORT PERSONE / DOCUMENTI
+    # ========================================================
+
+    def show_report_documenti(
+        self,
+        data_inizio=None,
+        data_fine=None,
+        ordina_per="ingresso",
+        ordine_desc=True
+    ):
+        """
+        Report storico per documento/persona anonima.
+
+        Il periodo seleziona i documenti in base al momento di ingresso:
+        un documento è incluso se il suo deposito è iniziato nell'intervallo.
+
+        Tempo in ludoteca:
+        - documento chiuso: uscita - ingresso;
+        - documento ancora aperto: adesso - ingresso.
+
+        Tempo medio per partita:
+        media delle durate dei prestiti conclusi associati al documento.
+        Un eventuale prestito ancora aperto non entra nella media.
+        """
+        frame = self.clear()
+
+        self.pulsante_indietro(
+            frame,
+            self.show_backoffice
+        )
+
+        self.titolo_pagina(
+            frame,
+            "REPORT PERSONE / DOCUMENTI",
+            "Numero di prestiti, permanenza del documento e durata media delle partite"
+        )
+
+        oggi = datetime.now().replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0
+        )
+
+        if data_inizio is None:
+            data_inizio = oggi
+
+        if data_fine is None:
+            data_fine = oggi
+
+        # ----------------------------------------------------
+        # FILTRI
+        # ----------------------------------------------------
+
+        filtri = ttk.Labelframe(
+            frame,
+            text="Filtri",
+            padding=12,
+            bootstyle="secondary"
+        )
+        filtri.pack(
+            fill=X,
+            padx=35,
+            pady=(0, 10)
+        )
+
+        riga_filtri = ttk.Frame(
+            filtri
+        )
+        riga_filtri.pack(
+            fill=X
+        )
+
+        ttk.Label(
+            riga_filtri,
+            text="Dal:",
+            font=("Arial", 11, "bold")
+        ).pack(
+            side=LEFT,
+            padx=(0, 6)
+        )
+
+        try:
+            data_da_picker = DateEntry(
+                riga_filtri,
+                date_format="%d/%m/%Y",
+                first_weekday=0,
+                start_date=data_inizio,
+                bootstyle="primary",
+                width=12
+            )
+        except TypeError:
+            data_da_picker = DateEntry(
+                riga_filtri,
+                dateformat="%d/%m/%Y",
+                firstweekday=0,
+                startdate=data_inizio,
+                bootstyle="primary",
+                width=12
+            )
+
+        data_da_picker.pack(
+            side=LEFT,
+            padx=(0, 12)
+        )
+
+        ttk.Label(
+            riga_filtri,
+            text="Al:",
+            font=("Arial", 11, "bold")
+        ).pack(
+            side=LEFT,
+            padx=(0, 6)
+        )
+
+        try:
+            data_a_picker = DateEntry(
+                riga_filtri,
+                date_format="%d/%m/%Y",
+                first_weekday=0,
+                start_date=data_fine,
+                bootstyle="primary",
+                width=12
+            )
+        except TypeError:
+            data_a_picker = DateEntry(
+                riga_filtri,
+                dateformat="%d/%m/%Y",
+                firstweekday=0,
+                startdate=data_fine,
+                bootstyle="primary",
+                width=12
+            )
+
+        data_a_picker.pack(
+            side=LEFT,
+            padx=(0, 18)
+        )
+
+        ttk.Label(
+            riga_filtri,
+            text="Ordina per:",
+            font=("Arial", 11, "bold")
+        ).pack(
+            side=LEFT,
+            padx=(0, 6)
+        )
+
+        mapping_ordinamento = {
+            "Ingresso": "ingresso",
+            "Numero prestiti": "prestiti",
+            "Tempo in ludoteca": "tempo_documento_secondi",
+            "Tempo medio per partita": "media_partita_secondi"
+        }
+
+        mapping_ordinamento_inverso = {
+            valore: chiave
+            for chiave, valore in mapping_ordinamento.items()
+        }
+
+        ordina_var = tk.StringVar(
+            value=mapping_ordinamento_inverso.get(
+                ordina_per,
+                "Ingresso"
+            )
+        )
+
+        combo_ordina = ttk.Combobox(
+            riga_filtri,
+            textvariable=ordina_var,
+            values=list(mapping_ordinamento.keys()),
+            state="readonly",
+            width=22
+        )
+        combo_ordina.pack(
+            side=LEFT,
+            padx=(0, 12),
+            ipady=2
+        )
+
+        ttk.Label(
+            riga_filtri,
+            text="Ordine:",
+            font=("Arial", 11, "bold")
+        ).pack(
+            side=LEFT,
+            padx=(0, 6)
+        )
+
+        ordine_var = tk.StringVar(
+            value=(
+                "Decrescente"
+                if ordine_desc
+                else "Crescente"
+            )
+        )
+
+        combo_ordine = ttk.Combobox(
+            riga_filtri,
+            textvariable=ordine_var,
+            values=[
+                "Crescente",
+                "Decrescente"
+            ],
+            state="readonly",
+            width=13
+        )
+        combo_ordine.pack(
+            side=LEFT,
+            padx=(0, 10),
+            ipady=2
+        )
+
+        def leggi_filtri():
+            try:
+                da = datetime.strptime(
+                    data_da_picker.entry.get().strip(),
+                    "%d/%m/%Y"
+                ).replace(
+                    hour=0,
+                    minute=0,
+                    second=0,
+                    microsecond=0
+                )
+
+                a = datetime.strptime(
+                    data_a_picker.entry.get().strip(),
+                    "%d/%m/%Y"
+                ).replace(
+                    hour=0,
+                    minute=0,
+                    second=0,
+                    microsecond=0
+                )
+
+            except (ValueError, AttributeError):
+                messagebox.showwarning(
+                    "Date non valide",
+                    "Seleziona due date valide nel formato GG/MM/AAAA."
+                )
+                return None
+
+            if a < da:
+                messagebox.showwarning(
+                    "Intervallo non valido",
+                    "La data finale non può precedere la data iniziale."
+                )
+                return None
+
+            criterio = mapping_ordinamento.get(
+                ordina_var.get(),
+                "ingresso"
+            )
+
+            desc = (
+                ordine_var.get()
+                == "Decrescente"
+            )
+
+            return da, a, criterio, desc
+
+        def applica():
+            parametri = leggi_filtri()
+
+            if parametri is None:
+                return
+
+            da, a, criterio, desc = parametri
+
+            self.show_report_documenti(
+                data_inizio=da,
+                data_fine=a,
+                ordina_per=criterio,
+                ordine_desc=desc
+            )
+
+        ttk.Button(
+            riga_filtri,
+            text="APPLICA",
+            command=applica,
+            bootstyle="primary"
+        ).pack(
+            side=LEFT,
+            padx=3
+        )
+
+        combo_ordina.bind(
+            "<<ComboboxSelected>>",
+            lambda event: applica()
+        )
+
+        combo_ordine.bind(
+            "<<ComboboxSelected>>",
+            lambda event: applica()
+        )
+
+        # ----------------------------------------------------
+        # DATI DEL REPORT
+        # ----------------------------------------------------
+
+        inizio = data_inizio.replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0
+        )
+
+        fine_esclusiva = (
+            data_fine.replace(
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0
+            )
+            + timedelta(days=1)
+        )
+
+        inizio_iso = inizio.isoformat(
+            timespec="seconds"
+        )
+        fine_iso = fine_esclusiva.isoformat(
+            timespec="seconds"
+        )
+
+        with get_db() as db:
+            documenti = db.execute("""
+                SELECT
+                    id,
+                    token,
+                    ingresso,
+                    uscita
+                FROM documenti
+                WHERE ingresso >= ?
+                  AND ingresso < ?
+                ORDER BY ingresso
+            """, (
+                inizio_iso,
+                fine_iso
+            )).fetchall()
+
+            documenti_ids = [
+                row["id"]
+                for row in documenti
+            ]
+
+            prestiti_per_documento = {}
+
+            if documenti_ids:
+                placeholders = ",".join(
+                    "?"
+                    for _ in documenti_ids
+                )
+
+                prestiti = db.execute(
+                    f"""
+                    SELECT
+                        documento_id,
+                        uscita,
+                        rientro
+                    FROM prestiti
+                    WHERE documento_id IN ({placeholders})
+                    ORDER BY documento_id, uscita
+                    """,
+                    documenti_ids
+                ).fetchall()
+
+                for row in prestiti:
+                    prestiti_per_documento.setdefault(
+                        row["documento_id"],
+                        []
+                    ).append(row)
+
+        def formatta_durata(secondi):
+            if secondi is None:
+                return "—"
+
+            secondi = max(
+                0,
+                int(round(secondi))
+            )
+
+            ore_totali, resto = divmod(
+                secondi,
+                3600
+            )
+            minuti, _ = divmod(
+                resto,
+                60
+            )
+
+            if ore_totali > 0:
+                return f"{ore_totali}h {minuti:02d}m"
+
+            return f"{minuti}m"
+
+        adesso = datetime.now()
+
+        righe_report = []
+
+        for documento in documenti:
+            try:
+                ingresso_dt = datetime.fromisoformat(
+                    documento["ingresso"]
+                )
+            except (ValueError, TypeError):
+                continue
+
+            if documento["uscita"]:
+                try:
+                    uscita_dt = datetime.fromisoformat(
+                        documento["uscita"]
+                    )
+                except (ValueError, TypeError):
+                    uscita_dt = None
+            else:
+                uscita_dt = None
+
+            fine_documento = (
+                uscita_dt
+                if uscita_dt is not None
+                else adesso
+            )
+
+            tempo_documento_secondi = max(
+                0,
+                (
+                    fine_documento
+                    - ingresso_dt
+                ).total_seconds()
+            )
+
+            prestiti_documento = prestiti_per_documento.get(
+                documento["id"],
+                []
+            )
+
+            durate_partite = []
+
+            for prestito in prestiti_documento:
+                if not prestito["rientro"]:
+                    continue
+
+                try:
+                    uscita_prestito = datetime.fromisoformat(
+                        prestito["uscita"]
+                    )
+                    rientro_prestito = datetime.fromisoformat(
+                        prestito["rientro"]
+                    )
+
+                    durata = (
+                        rientro_prestito
+                        - uscita_prestito
+                    ).total_seconds()
+
+                    if durata >= 0:
+                        durate_partite.append(
+                            durata
+                        )
+
+                except (ValueError, TypeError):
+                    continue
+
+            numero_prestiti = len(
+                prestiti_documento
+            )
+
+            media_partita_secondi = (
+                sum(durate_partite)
+                / len(durate_partite)
+                if durate_partite
+                else None
+            )
+
+            righe_report.append({
+                "documento_id": documento["id"],
+                "token": documento["token"],
+                "ingresso_dt": ingresso_dt,
+                "ingresso": formatta_data_ora(
+                    documento["ingresso"]
+                ),
+                "uscita": formatta_data_ora(
+                    documento["uscita"]
+                ),
+                "prestiti": numero_prestiti,
+                "tempo_documento_secondi": tempo_documento_secondi,
+                "tempo_documento": formatta_durata(
+                    tempo_documento_secondi
+                ),
+                "media_partita_secondi": media_partita_secondi,
+                "media_partita": formatta_durata(
+                    media_partita_secondi
+                ),
+                "stato": (
+                    "IN CORSO"
+                    if documento["uscita"] is None
+                    else "CHIUSO"
+                )
+            })
+
+        def chiave_ordinamento(row):
+            if ordina_per == "prestiti":
+                return row["prestiti"]
+
+            if ordina_per == "tempo_documento_secondi":
+                return row["tempo_documento_secondi"]
+
+            if ordina_per == "media_partita_secondi":
+                valore = row["media_partita_secondi"]
+                return -1 if valore is None else valore
+
+            return row["ingresso_dt"]
+
+        righe_report.sort(
+            key=chiave_ordinamento,
+            reverse=ordine_desc
+        )
+
+        criterio_testo = {
+            "ingresso": "Ingresso",
+            "prestiti": "Numero prestiti",
+            "tempo_documento_secondi": "Tempo in ludoteca",
+            "media_partita_secondi": "Tempo medio per partita"
+        }.get(
+            ordina_per,
+            "Ingresso"
+        )
+
+        # ----------------------------------------------------
+        # RIEPILOGO
+        # ----------------------------------------------------
+
+        totale_documenti = len(
+            righe_report
+        )
+
+        totale_prestiti = sum(
+            row["prestiti"]
+            for row in righe_report
+        )
+
+        media_prestiti_persona = (
+            totale_prestiti / totale_documenti
+            if totale_documenti
+            else 0
+        )
+
+        ttk.Label(
+            frame,
+            text=(
+                f"Periodo di ingresso: {inizio.strftime('%d/%m/%Y')} → "
+                f"{data_fine.strftime('%d/%m/%Y')}  •  "
+                f"Persone/documenti: {totale_documenti}  •  "
+                f"Prestiti: {totale_prestiti}  •  "
+                f"Media prestiti/persona: {media_prestiti_persona:.2f}  •  "
+                f"Ordine: {criterio_testo} "
+                f"({'↓' if ordine_desc else '↑'})"
+            ),
+            font=("Arial", 11, "bold"),
+            bootstyle="secondary"
+        ).pack(
+            pady=(0, 8)
+        )
+
+        ttk.Label(
+            frame,
+            text=(
+                "Il periodo filtra le persone in base all'ora di deposito del documento. "
+                "Per un documento ancora depositato, il tempo in ludoteca è calcolato fino ad adesso. "
+                "Il tempo medio per partita considera soltanto i prestiti già conclusi."
+            ),
+            font=("Arial", 9),
+            bootstyle="secondary",
+            wraplength=1050,
+            justify=CENTER
+        ).pack(
+            pady=(0, 8)
+        )
+
+        # ----------------------------------------------------
+        # TABELLA
+        # ----------------------------------------------------
+
+        tabella_frame = ttk.Frame(
+            frame
+        )
+        tabella_frame.pack(
+            fill=BOTH,
+            expand=YES,
+            padx=10
+        )
+
+        tree = ttk.Treeview(
+            tabella_frame,
+            columns=(
+                "documento",
+                "token",
+                "ingresso",
+                "uscita",
+                "prestiti",
+                "tempo_documento",
+                "media_partita",
+                "stato"
+            ),
+            show="headings",
+            height=16,
+            bootstyle="info"
+        )
+
+        tree.heading(
+            "documento",
+            text="DOC."
+        )
+        tree.heading(
+            "token",
+            text="TOKEN"
+        )
+        tree.heading(
+            "ingresso",
+            text="INGRESSO"
+        )
+        tree.heading(
+            "uscita",
+            text="USCITA"
+        )
+        tree.heading(
+            "prestiti",
+            text="N. PRESTITI"
+        )
+        tree.heading(
+            "tempo_documento",
+            text="TEMPO IN LUDOTECA"
+        )
+        tree.heading(
+            "media_partita",
+            text="TEMPO MEDIO / PARTITA"
+        )
+        tree.heading(
+            "stato",
+            text="STATO"
+        )
+
+        tree.column(
+            "documento",
+            width=70,
+            anchor=CENTER
+        )
+        tree.column(
+            "token",
+            width=75,
+            anchor=CENTER
+        )
+        tree.column(
+            "ingresso",
+            width=165,
+            anchor=CENTER
+        )
+        tree.column(
+            "uscita",
+            width=165,
+            anchor=CENTER
+        )
+        tree.column(
+            "prestiti",
+            width=100,
+            anchor=CENTER
+        )
+        tree.column(
+            "tempo_documento",
+            width=150,
+            anchor=CENTER
+        )
+        tree.column(
+            "media_partita",
+            width=165,
+            anchor=CENTER
+        )
+        tree.column(
+            "stato",
+            width=100,
+            anchor=CENTER
+        )
+
+        scrollbar_y = ttk.Scrollbar(
+            tabella_frame,
+            orient=VERTICAL,
+            command=tree.yview
+        )
+
+        scrollbar_x = ttk.Scrollbar(
+            tabella_frame,
+            orient=HORIZONTAL,
+            command=tree.xview
+        )
+
+        tree.configure(
+            yscrollcommand=scrollbar_y.set,
+            xscrollcommand=scrollbar_x.set
+        )
+
+        tree.grid(
+            row=0,
+            column=0,
+            sticky=NSEW
+        )
+        scrollbar_y.grid(
+            row=0,
+            column=1,
+            sticky=NS
+        )
+        scrollbar_x.grid(
+            row=1,
+            column=0,
+            sticky=EW
+        )
+
+        tabella_frame.rowconfigure(
+            0,
+            weight=1
+        )
+        tabella_frame.columnconfigure(
+            0,
+            weight=1
+        )
+
+        for row in righe_report:
+            tree.insert(
+                "",
+                END,
+                values=(
+                    row["documento_id"],
+                    row["token"],
+                    row["ingresso"],
+                    row["uscita"],
+                    row["prestiti"],
+                    row["tempo_documento"],
+                    row["media_partita"],
+                    row["stato"]
+                )
+            )
+
+        # ----------------------------------------------------
+        # ESPORTAZIONE CSV
+        # ----------------------------------------------------
+
+        def minuti_csv(secondi):
+            if secondi is None:
+                return ""
+
+            return (
+                f"{secondi / 60:.2f}"
+                .replace(".", ",")
+            )
+
+        def esporta_csv():
+            if not righe_report:
+                messagebox.showinfo(
+                    "Nessun dato",
+                    "Non ci sono righe da esportare con i filtri attuali."
+                )
+                return
+
+            nome_file = (
+                "ludox_report_documenti_"
+                f"{inizio.strftime('%Y-%m-%d')}_"
+                f"{data_fine.strftime('%Y-%m-%d')}.csv"
+            )
+
+            percorso = filedialog.asksaveasfilename(
+                title="Esporta report persone / documenti",
+                defaultextension=".csv",
+                initialfile=nome_file,
+                filetypes=[
+                    ("CSV", "*.csv"),
+                    ("Tutti i file", "*.*")
+                ]
+            )
+
+            if not percorso:
+                return
+
+            try:
+                with open(
+                    percorso,
+                    "w",
+                    newline="",
+                    encoding="utf-8-sig"
+                ) as csvfile:
+                    writer = csv.writer(
+                        csvfile,
+                        delimiter=";"
+                    )
+
+                    writer.writerow([
+                        "Documento",
+                        "Token",
+                        "Ingresso",
+                        "Uscita",
+                        "Numero prestiti",
+                        "Tempo in ludoteca",
+                        "Tempo in ludoteca (minuti)",
+                        "Tempo medio per partita",
+                        "Tempo medio per partita (minuti)",
+                        "Stato"
+                    ])
+
+                    for row in righe_report:
+                        writer.writerow([
+                            row["documento_id"],
+                            row["token"],
+                            row["ingresso"],
+                            row["uscita"],
+                            row["prestiti"],
+                            row["tempo_documento"],
+                            minuti_csv(
+                                row["tempo_documento_secondi"]
+                            ),
+                            row["media_partita"],
+                            minuti_csv(
+                                row["media_partita_secondi"]
+                            ),
+                            row["stato"]
+                        ])
+
+            except OSError as e:
+                messagebox.showerror(
+                    "Errore esportazione",
+                    f"Impossibile salvare il file:\n\n{e}"
+                )
+                return
+
+            messagebox.showinfo(
+                "Esportazione completata",
+                "Il report CSV è stato salvato correttamente."
+            )
+
+        azioni = ttk.Frame(
+            frame
+        )
+        azioni.pack(
+            pady=(10, 0)
+        )
+
+        ttk.Button(
+            azioni,
+            text="ESPORTA CSV",
+            command=esporta_csv,
+            bootstyle="success"
+        ).pack(
+            side=LEFT,
+            padx=5,
+            ipadx=18,
+            ipady=7
+        )
+
+        ttk.Button(
+            azioni,
+            text="TORNA AL BACKOFFICE",
+            command=self.show_backoffice,
+            bootstyle="secondary-outline"
+        ).pack(
+            side=LEFT,
+            padx=5,
+            ipadx=12,
+            ipady=7
+        )
 
     # ========================================================
     # BACKOFFICE - REPORT UTILIZZO LUDOTECA
