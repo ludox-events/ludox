@@ -2656,7 +2656,10 @@ class PrestitiApp(ttk.Window):
         self,
         data_inizio=None,
         data_fine=None,
-        proprietario_id=None
+        proprietario_id=None,
+        ordina_per="gioco",
+        ordine_desc=False,
+        escludi_tempo_zero=False
     ):
         """
         Report storico per titolo.
@@ -2901,6 +2904,155 @@ class PrestitiApp(ttk.Window):
         )
 
         # ----------------------------------------------------
+        # ORDINAMENTO E FILTRI AGGIUNTIVI
+        # ----------------------------------------------------
+
+        riga_opzioni = ttk.Frame(
+            filtri
+        )
+        riga_opzioni.pack(
+            fill=X,
+            pady=(10, 0)
+        )
+
+        ttk.Label(
+            riga_opzioni,
+            text="Ordina per:",
+            font=("Arial", 11, "bold")
+        ).pack(
+            side=LEFT,
+            padx=(0, 6)
+        )
+
+        mapping_ordinamento = {
+            "Gioco": "gioco",
+            "Numero prestiti": "prestiti",
+            "Tempo totale fuori": "tempo_totale_secondi",
+            "Durata media": "media_secondi"
+        }
+
+        mapping_ordinamento_inverso = {
+            valore: chiave
+            for chiave, valore in mapping_ordinamento.items()
+        }
+
+        ordina_var = tk.StringVar(
+            value=mapping_ordinamento_inverso.get(
+                ordina_per,
+                "Gioco"
+            )
+        )
+
+        combo_ordina = ttk.Combobox(
+            riga_opzioni,
+            textvariable=ordina_var,
+            values=list(mapping_ordinamento.keys()),
+            state="readonly",
+            width=22
+        )
+        combo_ordina.pack(
+            side=LEFT,
+            padx=(0, 12),
+            ipady=2
+        )
+
+        ttk.Label(
+            riga_opzioni,
+            text="Ordine:",
+            font=("Arial", 11, "bold")
+        ).pack(
+            side=LEFT,
+            padx=(0, 6)
+        )
+
+        ordine_var = tk.StringVar(
+            value=(
+                "Decrescente"
+                if ordine_desc
+                else "Crescente"
+            )
+        )
+
+        combo_ordine = ttk.Combobox(
+            riga_opzioni,
+            textvariable=ordine_var,
+            values=[
+                "Crescente",
+                "Decrescente"
+            ],
+            state="readonly",
+            width=13
+        )
+        combo_ordine.pack(
+            side=LEFT,
+            padx=(0, 18),
+            ipady=2
+        )
+
+        escludi_zero_var = tk.BooleanVar(
+            value=escludi_tempo_zero
+        )
+
+        ttk.Checkbutton(
+            riga_opzioni,
+            text="Escludi giochi con tempo totale fuori = 0",
+            variable=escludi_zero_var,
+            bootstyle="success-round-toggle"
+        ).pack(
+            side=LEFT,
+            padx=(0, 12)
+        )
+
+        # Ridefiniamo applica dopo aver creato anche i controlli
+        # di ordinamento, mantenendo gli stessi filtri data/proprietario.
+        def applica():
+            parametri = leggi_filtri()
+
+            if parametri is None:
+                return
+
+            da, a, pid = parametri
+
+            criterio = mapping_ordinamento.get(
+                ordina_var.get(),
+                "gioco"
+            )
+
+            self.show_report_utilizzo_ludoteca(
+                data_inizio=da,
+                data_fine=a,
+                proprietario_id=pid,
+                ordina_per=criterio,
+                ordine_desc=(
+                    ordine_var.get()
+                    == "Decrescente"
+                ),
+                escludi_tempo_zero=escludi_zero_var.get()
+            )
+
+        # Ricolleghiamo il pulsante APPLICA alla nuova funzione.
+        # Cerchiamo il bottone appena creato nella riga dei filtri.
+        for widget in riga_filtri.winfo_children():
+            try:
+                if widget.cget("text") == "APPLICA":
+                    widget.configure(
+                        command=applica
+                    )
+                    break
+            except tk.TclError:
+                pass
+
+        combo_ordina.bind(
+            "<<ComboboxSelected>>",
+            lambda event: applica()
+        )
+
+        combo_ordine.bind(
+            "<<ComboboxSelected>>",
+            lambda event: applica()
+        )
+
+        # ----------------------------------------------------
         # COSTRUZIONE DATI REPORT
         # ----------------------------------------------------
 
@@ -3114,6 +3266,37 @@ class PrestitiApp(ttk.Window):
                 )
             })
 
+        # Filtro opzionale: nasconde i giochi che, nell'intervallo,
+        # non hanno accumulato alcun tempo di prestito concluso.
+        if escludi_tempo_zero:
+            righe_report = [
+                row
+                for row in righe_report
+                if row["tempo_totale_secondi"] > 0
+            ]
+
+        # Ordinamento numerico reale per prestiti/durate.
+        # Per valori non disponibili (es. media senza prestiti conclusi)
+        # usiamo -1, così restano in fondo in ordine crescente e
+        # in testa in ordine decrescente solo se esplicitamente richiesto.
+        def chiave_ordinamento(row):
+            if ordina_per == "prestiti":
+                return row["prestiti"]
+
+            if ordina_per == "tempo_totale_secondi":
+                return row["tempo_totale_secondi"]
+
+            if ordina_per == "media_secondi":
+                valore = row["media_secondi"]
+                return -1 if valore is None else valore
+
+            return row["gioco"].casefold()
+
+        righe_report.sort(
+            key=chiave_ordinamento,
+            reverse=ordine_desc
+        )
+
         # ----------------------------------------------------
         # RIEPILOGO
         # ----------------------------------------------------
@@ -3126,13 +3309,30 @@ class PrestitiApp(ttk.Window):
             )["nome"]
         )
 
+        criterio_testo = {
+            "gioco": "Gioco",
+            "prestiti": "Numero prestiti",
+            "tempo_totale_secondi": "Tempo totale fuori",
+            "media_secondi": "Durata media"
+        }.get(
+            ordina_per,
+            "Gioco"
+        )
+
         ttk.Label(
             frame,
             text=(
                 f"Periodo: {inizio.strftime('%d/%m/%Y')} → "
                 f"{data_fine.strftime('%d/%m/%Y')}  •  "
                 f"Proprietario: {proprietario_testo}  •  "
-                f"Titoli visualizzati: {len(righe_report)}"
+                f"Titoli visualizzati: {len(righe_report)}  •  "
+                f"Ordine: {criterio_testo} "
+                f"({'↓' if ordine_desc else '↑'})"
+                + (
+                    "  •  Tempo zero escluso"
+                    if escludi_tempo_zero
+                    else ""
+                )
             ),
             font=("Arial", 11, "bold"),
             bootstyle="secondary"
@@ -3435,6 +3635,11 @@ class PrestitiApp(ttk.Window):
         combo_proprietario.bind(
             "<<ComboboxSelected>>",
             lambda event: applica()
+        )
+
+        escludi_zero_var.trace_add(
+            "write",
+            lambda *args: applica()
         )
 
     # ========================================================
