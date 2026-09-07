@@ -8,7 +8,7 @@ import sqlite3
 import csv
 from pathlib import Path
 from datetime import datetime, timedelta
-from statistics import pstdev
+from statistics import median, pstdev
 import tkinter as tk
 from tkinter import messagebox, filedialog
 
@@ -2684,7 +2684,7 @@ class PrestitiApp(ttk.Window):
         - documento chiuso: uscita - ingresso;
         - documento ancora aperto: adesso - ingresso.
 
-        Tempo medio per partita:
+        Durata media del prestito:
         media delle durate dei prestiti conclusi associati al documento.
         Un eventuale prestito ancora aperto non entra nella media.
         """
@@ -2698,7 +2698,7 @@ class PrestitiApp(ttk.Window):
         self.titolo_pagina(
             frame,
             "REPORT PERSONE / DOCUMENTI",
-            "Numero di prestiti, permanenza del documento e durata media delle partite"
+            "Numero di prestiti, permanenza del documento e durata media dei prestiti"
         )
 
         oggi = datetime.now().replace(
@@ -2816,7 +2816,7 @@ class PrestitiApp(ttk.Window):
             "Ingresso": "ingresso",
             "Numero prestiti": "prestiti",
             "Tempo in ludoteca": "tempo_documento_secondi",
-            "Tempo medio per partita": "media_partita_secondi"
+            "Durata media del prestito": "media_partita_secondi"
         }
 
         mapping_ordinamento_inverso = {
@@ -3062,6 +3062,7 @@ class PrestitiApp(ttk.Window):
         adesso = datetime.now()
 
         righe_report = []
+        tutte_durate_prestiti = []
 
         for documento in documenti:
             try:
@@ -3131,6 +3132,10 @@ class PrestitiApp(ttk.Window):
                 prestiti_documento
             )
 
+            tutte_durate_prestiti.extend(
+                durate_partite
+            )
+
             media_partita_secondi = (
                 sum(durate_partite)
                 / len(durate_partite)
@@ -3186,14 +3191,14 @@ class PrestitiApp(ttk.Window):
             "ingresso": "Ingresso",
             "prestiti": "Numero prestiti",
             "tempo_documento_secondi": "Tempo in ludoteca",
-            "media_partita_secondi": "Tempo medio per partita"
+            "media_partita_secondi": "Durata media del prestito"
         }.get(
             ordina_per,
             "Ingresso"
         )
 
         # ----------------------------------------------------
-        # RIEPILOGO
+        # RIEPILOGO E STATISTICHE DESCRITTIVE
         # ----------------------------------------------------
 
         totale_documenti = len(
@@ -3205,10 +3210,68 @@ class PrestitiApp(ttk.Window):
             for row in righe_report
         )
 
+        prestiti_per_persona = [
+            row["prestiti"]
+            for row in righe_report
+        ]
+
         media_prestiti_persona = (
             totale_prestiti / totale_documenti
             if totale_documenti
             else 0
+        )
+
+        mediana_prestiti_persona = (
+            median(prestiti_per_persona)
+            if prestiti_per_persona
+            else 0
+        )
+
+        dev_std_prestiti_persona = (
+            pstdev(prestiti_per_persona)
+            if prestiti_per_persona
+            else 0
+        )
+
+        persone_almeno_2 = sum(
+            1
+            for valore in prestiti_per_persona
+            if valore >= 2
+        )
+
+        persone_almeno_3 = sum(
+            1
+            for valore in prestiti_per_persona
+            if valore >= 3
+        )
+
+        percentuale_almeno_2 = (
+            persone_almeno_2 / totale_documenti * 100
+            if totale_documenti
+            else 0
+        )
+
+        percentuale_almeno_3 = (
+            persone_almeno_3 / totale_documenti * 100
+            if totale_documenti
+            else 0
+        )
+
+        permanenze = [
+            row["tempo_documento_secondi"]
+            for row in righe_report
+        ]
+
+        permanenza_mediana_secondi = (
+            median(permanenze)
+            if permanenze
+            else None
+        )
+
+        durata_mediana_prestito_secondi = (
+            median(tutte_durate_prestiti)
+            if tutte_durate_prestiti
+            else None
         )
 
         ttk.Label(
@@ -3218,30 +3281,206 @@ class PrestitiApp(ttk.Window):
                 f"{data_fine.strftime('%d/%m/%Y')}  •  "
                 f"Persone/documenti: {totale_documenti}  •  "
                 f"Prestiti: {totale_prestiti}  •  "
-                f"Media prestiti/persona: {media_prestiti_persona:.2f}  •  "
                 f"Ordine: {criterio_testo} "
                 f"({'↓' if ordine_desc else '↑'})"
             ),
             font=("Arial", 11, "bold"),
             bootstyle="secondary"
         ).pack(
-            pady=(0, 8)
+            pady=(0, 6)
         )
+
+        kpi = ttk.Frame(
+            frame
+        )
+        kpi.pack(
+            fill=X,
+            padx=25,
+            pady=(0, 7)
+        )
+
+        for col in range(6):
+            kpi.columnconfigure(
+                col,
+                weight=1
+            )
+
+        kpi_valori = [
+            (
+                f"{media_prestiti_persona:.2f}",
+                "MEDIA PRESTITI / PERSONA"
+            ),
+            (
+                f"{mediana_prestiti_persona:g}",
+                "MEDIANA PRESTITI / PERSONA"
+            ),
+            (
+                f"{dev_std_prestiti_persona:.2f}",
+                "DEV. STD PRESTITI / PERSONA"
+            ),
+            (
+                f"{percentuale_almeno_2:.1f}%",
+                "PERSONE CON ≥ 2 PRESTITI"
+            ),
+            (
+                formatta_durata(
+                    permanenza_mediana_secondi
+                ),
+                "PERMANENZA MEDIANA"
+            ),
+            (
+                formatta_durata(
+                    durata_mediana_prestito_secondi
+                ),
+                "DURATA MEDIANA PRESTITO"
+            )
+        ]
+
+        for indice, (
+            valore,
+            etichetta
+        ) in enumerate(kpi_valori):
+            box = ttk.Frame(
+                kpi,
+                padding=5
+            )
+            box.grid(
+                row=0,
+                column=indice,
+                padx=4,
+                sticky=NSEW
+            )
+
+            ttk.Label(
+                box,
+                text=valore,
+                font=("Arial", 15, "bold"),
+                bootstyle="primary"
+            ).pack()
+
+            ttk.Label(
+                box,
+                text=etichetta,
+                font=("Arial", 8, "bold"),
+                bootstyle="secondary",
+                justify=CENTER,
+                wraplength=145
+            ).pack()
 
         ttk.Label(
             frame,
             text=(
-                "Il periodo filtra le persone in base all'ora di deposito del documento. "
-                "Per un documento ancora depositato, il tempo in ludoteca è calcolato fino ad adesso. "
-                "Il tempo medio per partita considera soltanto i prestiti già conclusi."
+                f"Persone con almeno 3 prestiti: "
+                f"{persone_almeno_3}/{totale_documenti} "
+                f"({percentuale_almeno_3:.1f}%).  "
+                "Il periodo filtra le persone in base all'ingresso del documento. "
+                "La durata dei prestiti considera solo i prestiti conclusi."
             ),
             font=("Arial", 9),
             bootstyle="secondary",
             wraplength=1050,
             justify=CENTER
         ).pack(
-            pady=(0, 8)
+            pady=(0, 4)
         )
+
+        # ----------------------------------------------------
+        # GRAFICO DELLE OCCORRENZE: PRESTITI PER PERSONA
+        # ----------------------------------------------------
+
+        distribuzione = {}
+
+        for valore in prestiti_per_persona:
+            distribuzione[valore] = (
+                distribuzione.get(
+                    valore,
+                    0
+                )
+                + 1
+            )
+
+        if distribuzione:
+            valori_x = sorted(
+                distribuzione
+            )
+
+            valori_y = [
+                distribuzione[x]
+                for x in valori_x
+            ]
+
+            fig = Figure(
+                figsize=(9, 2.15),
+                dpi=100
+            )
+
+            ax = fig.add_subplot(111)
+
+            ax.bar(
+                valori_x,
+                valori_y
+            )
+
+            ax.set_title(
+                "Distribuzione del numero di prestiti per persona/documento",
+                fontsize=10
+            )
+            ax.set_xlabel(
+                "Numero di prestiti"
+            )
+            ax.set_ylabel(
+                "Persone"
+            )
+            ax.grid(
+                True,
+                axis="y",
+                alpha=0.2
+            )
+
+            ax.set_xticks(
+                valori_x
+            )
+
+            massimo = max(
+                valori_y
+            )
+
+            spazio_testo = max(
+                0.2,
+                massimo * 0.02
+            )
+
+            for x, y in zip(
+                valori_x,
+                valori_y
+            ):
+                ax.text(
+                    x,
+                    y + spazio_testo,
+                    str(y),
+                    ha="center",
+                    va="bottom",
+                    fontsize=8
+                )
+
+            ax.set_ylim(
+                0,
+                massimo * 1.15 + 0.5
+            )
+
+            fig.tight_layout()
+
+            canvas = FigureCanvasTkAgg(
+                fig,
+                master=frame
+            )
+            canvas.draw()
+
+            canvas.get_tk_widget().pack(
+                fill=X,
+                padx=45,
+                pady=(0, 6)
+            )
 
         # ----------------------------------------------------
         # TABELLA
@@ -3269,7 +3508,7 @@ class PrestitiApp(ttk.Window):
                 "stato"
             ),
             show="headings",
-            height=16,
+            height=8,
             bootstyle="info"
         )
 
@@ -3299,7 +3538,7 @@ class PrestitiApp(ttk.Window):
         )
         tree.heading(
             "media_partita",
-            text="TEMPO MEDIO / PARTITA"
+            text="DURATA MEDIA PRESTITO"
         )
         tree.heading(
             "stato",
@@ -3465,8 +3704,8 @@ class PrestitiApp(ttk.Window):
                         "Numero prestiti",
                         "Tempo in ludoteca",
                         "Tempo in ludoteca (minuti)",
-                        "Tempo medio per partita",
-                        "Tempo medio per partita (minuti)",
+                        "Durata media del prestito",
+                        "Durata media del prestito (minuti)",
                         "Stato"
                     ])
 
