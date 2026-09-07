@@ -1448,7 +1448,91 @@ class PrestitiApp(ttk.Window):
     # STATISTICHE
     # ========================================================
 
-    def show_statistiche(self, ore=12):
+    @staticmethod
+    def arrotonda_giu_bucket(dt, minuti_bucket):
+        """Arrotonda un datetime verso il basso al confine del bucket."""
+        mezzanotte = dt.replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0
+        )
+
+        secondi_trascorsi = int(
+            (dt - mezzanotte).total_seconds()
+        )
+        secondi_bucket = minuti_bucket * 60
+        secondi_allineati = (
+            secondi_trascorsi
+            // secondi_bucket
+            * secondi_bucket
+        )
+
+        return mezzanotte + timedelta(
+            seconds=secondi_allineati
+        )
+
+    @classmethod
+    def arrotonda_su_bucket(cls, dt, minuti_bucket):
+        """Arrotonda un datetime verso l'alto al confine del bucket."""
+        arrotondato = cls.arrotonda_giu_bucket(
+            dt,
+            minuti_bucket
+        )
+
+        if dt == arrotondato:
+            return arrotondato
+
+        return arrotondato + timedelta(
+            minutes=minuti_bucket
+        )
+
+    @classmethod
+    def intervallo_statistiche(
+        cls,
+        riferimento,
+        ore,
+        minuti_bucket
+    ):
+        """
+        Restituisce l'intervallo effettivamente visualizzato.
+
+        L'inizio viene arrotondato verso il basso e la fine verso l'alto
+        in modo da utilizzare sempre bucket temporali completi.
+        """
+        inizio_nominale = riferimento - timedelta(
+            hours=ore
+        )
+
+        inizio = cls.arrotonda_giu_bucket(
+            inizio_nominale,
+            minuti_bucket
+        )
+        fine = cls.arrotonda_su_bucket(
+            riferimento,
+            minuti_bucket
+        )
+
+        return inizio, fine
+
+    def show_statistiche(
+        self,
+        ore=12,
+        riferimento=None,
+        minuti_bucket=15
+    ):
+        # Valori ammessi per la risoluzione temporale.
+        risoluzioni = [5, 10, 15, 20, 25, 30]
+
+        if minuti_bucket not in risoluzioni:
+            minuti_bucket = 15
+
+        if riferimento is None:
+            riferimento = datetime.now().replace(
+                second=0,
+                microsecond=0
+            )
+
         frame = self.clear()
 
         self.pulsante_indietro(
@@ -1458,11 +1542,91 @@ class PrestitiApp(ttk.Window):
 
         self.titolo_pagina(
             frame,
-            "STATISTICHE"
+            "STATISTICHE",
+            "Analisi dei prestiti per periodo e risoluzione temporale"
         )
 
-        selettori = ttk.Frame(frame)
-        selettori.pack(pady=10)
+        # ----------------------------------------------------
+        # CONTROLLI: PERIODO
+        # ----------------------------------------------------
+
+        controlli = ttk.Labelframe(
+            frame,
+            text="Intervallo di analisi",
+            padding=12,
+            bootstyle="secondary"
+        )
+        controlli.pack(
+            fill=X,
+            padx=35,
+            pady=(0, 10)
+        )
+
+        riga_periodo = ttk.Frame(controlli)
+        riga_periodo.pack(
+            fill=X,
+            pady=(0, 8)
+        )
+
+        ttk.Label(
+            riga_periodo,
+            text="Periodo:",
+            font=("Arial", 11, "bold")
+        ).pack(
+            side=LEFT,
+            padx=(0, 10)
+        )
+
+        data_var = tk.StringVar(
+            value=riferimento.strftime("%d/%m/%Y")
+        )
+        ora_var = tk.StringVar(
+            value=riferimento.strftime("%H:%M")
+        )
+        risoluzione_var = tk.StringVar(
+            value=f"{minuti_bucket} min"
+        )
+
+        def leggi_parametri():
+            try:
+                nuovo_riferimento = datetime.strptime(
+                    f"{data_var.get().strip()} "
+                    f"{ora_var.get().strip()}",
+                    "%d/%m/%Y %H:%M"
+                )
+            except ValueError:
+                messagebox.showwarning(
+                    "Data o ora non valida",
+                    "Inserisci la data nel formato GG/MM/AAAA "
+                    "e l'ora nel formato HH:MM."
+                )
+                return None
+
+            try:
+                nuova_risoluzione = int(
+                    risoluzione_var.get().split()[0]
+                )
+            except (ValueError, IndexError):
+                nuova_risoluzione = 15
+
+            if nuova_risoluzione not in risoluzioni:
+                nuova_risoluzione = 15
+
+            return nuovo_riferimento, nuova_risoluzione
+
+        def aggiorna(nuove_ore=None):
+            parametri = leggi_parametri()
+
+            if parametri is None:
+                return
+
+            nuovo_riferimento, nuova_risoluzione = parametri
+
+            self.show_statistiche(
+                ore=ore if nuove_ore is None else nuove_ore,
+                riferimento=nuovo_riferimento,
+                minuti_bucket=nuova_risoluzione
+            )
 
         for h in [12, 6, 4, 2, 1]:
             stile = (
@@ -1471,22 +1635,151 @@ class PrestitiApp(ttk.Window):
                 else "secondary-outline"
             )
 
+            testo = "1 ORA" if h == 1 else f"{h} ORE"
+
             ttk.Button(
-                selettori,
-                text=f"{h} ORE",
-                command=lambda h=h:
-                    self.show_statistiche(h),
+                riga_periodo,
+                text=testo,
+                command=lambda h=h: aggiorna(h),
                 bootstyle=stile
             ).pack(
                 side=LEFT,
-                padx=4
+                padx=3
             )
 
-        da = datetime.now() - timedelta(
-            hours=ore
+        # ----------------------------------------------------
+        # CONTROLLI: DATA, ORA E RISOLUZIONE
+        # ----------------------------------------------------
+
+        riga_riferimento = ttk.Frame(controlli)
+        riga_riferimento.pack(
+            fill=X
         )
 
-        da_iso = da.isoformat(
+        ttk.Label(
+            riga_riferimento,
+            text="Data:",
+            font=("Arial", 11, "bold")
+        ).pack(
+            side=LEFT,
+            padx=(0, 6)
+        )
+
+        data_entry = ttk.Entry(
+            riga_riferimento,
+            textvariable=data_var,
+            width=12,
+            justify=CENTER
+        )
+        data_entry.pack(
+            side=LEFT,
+            padx=(0, 14),
+            ipady=3
+        )
+
+        ttk.Label(
+            riga_riferimento,
+            text="Ora:",
+            font=("Arial", 11, "bold")
+        ).pack(
+            side=LEFT,
+            padx=(0, 6)
+        )
+
+        ora_entry = ttk.Entry(
+            riga_riferimento,
+            textvariable=ora_var,
+            width=7,
+            justify=CENTER
+        )
+        ora_entry.pack(
+            side=LEFT,
+            padx=(0, 14),
+            ipady=3
+        )
+
+        ttk.Label(
+            riga_riferimento,
+            text="Risoluzione:",
+            font=("Arial", 11, "bold")
+        ).pack(
+            side=LEFT,
+            padx=(0, 6)
+        )
+
+        combo_risoluzione = ttk.Combobox(
+            riga_riferimento,
+            textvariable=risoluzione_var,
+            values=[f"{m} min" for m in risoluzioni],
+            state="readonly",
+            width=8
+        )
+        combo_risoluzione.pack(
+            side=LEFT,
+            padx=(0, 12),
+            ipady=2
+        )
+
+        ttk.Button(
+            riga_riferimento,
+            text="APPLICA",
+            command=aggiorna,
+            bootstyle="primary"
+        ).pack(
+            side=LEFT,
+            padx=3
+        )
+
+        def usa_adesso():
+            adesso = datetime.now().replace(
+                second=0,
+                microsecond=0
+            )
+            data_var.set(
+                adesso.strftime("%d/%m/%Y")
+            )
+            ora_var.set(
+                adesso.strftime("%H:%M")
+            )
+            aggiorna()
+
+        ttk.Button(
+            riga_riferimento,
+            text="ADESSO",
+            command=usa_adesso,
+            bootstyle="secondary-outline"
+        ).pack(
+            side=LEFT,
+            padx=3
+        )
+
+        data_entry.bind(
+            "<Return>",
+            lambda event: aggiorna()
+        )
+        ora_entry.bind(
+            "<Return>",
+            lambda event: aggiorna()
+        )
+        combo_risoluzione.bind(
+            "<<ComboboxSelected>>",
+            lambda event: aggiorna()
+        )
+
+        # ----------------------------------------------------
+        # INTERVALLO E CONTATORI
+        # ----------------------------------------------------
+
+        inizio, fine = self.intervallo_statistiche(
+            riferimento,
+            ore,
+            minuti_bucket
+        )
+
+        inizio_iso = inizio.isoformat(
+            timespec="seconds"
+        )
+        fine_iso = fine.isoformat(
             timespec="seconds"
         )
 
@@ -1495,23 +1788,43 @@ class PrestitiApp(ttk.Window):
                 SELECT COUNT(*)
                 FROM prestiti
                 WHERE uscita >= ?
+                  AND uscita < ?
             """, (
-                da_iso,
+                inizio_iso,
+                fine_iso
             )).fetchone()[0]
 
             persone_periodo = db.execute("""
                 SELECT COUNT(*)
                 FROM documenti
                 WHERE ingresso >= ?
+                  AND ingresso < ?
             """, (
-                da_iso,
+                inizio_iso,
+                fine_iso
             )).fetchone()[0]
+
+        intervallo_testo = (
+            f"Periodo visualizzato: "
+            f"{inizio.strftime('%d/%m/%Y %H:%M')} → "
+            f"{fine.strftime('%d/%m/%Y %H:%M')}  •  "
+            f"Risoluzione: {minuti_bucket} min"
+        )
+
+        ttk.Label(
+            frame,
+            text=intervallo_testo,
+            font=("Arial", 11, "bold"),
+            bootstyle="secondary"
+        ).pack(
+            pady=(2, 6)
+        )
 
         cards = ttk.Frame(frame)
         cards.pack(
             fill=X,
             padx=160,
-            pady=15
+            pady=(5, 10)
         )
 
         for col in range(2):
@@ -1521,7 +1834,7 @@ class PrestitiApp(ttk.Window):
             cards,
             0,
             prestiti_periodo,
-            f"PRESTITI — ULTIME {ore}H",
+            "PRESTITI — PERIODO",
             "primary"
         )
 
@@ -1529,29 +1842,24 @@ class PrestitiApp(ttk.Window):
             cards,
             1,
             persone_periodo,
-            f"PERSONE — ULTIME {ore}H",
+            "PERSONE — PERIODO",
             "info"
         )
 
         self.crea_grafico(
             frame,
-            ore
+            inizio,
+            fine,
+            minuti_bucket
         )
 
-    def crea_grafico(self, parent, ore):
-        if ore == 12:
-            minuti_bucket = 30
-        elif ore == 6:
-            minuti_bucket = 15
-        elif ore == 4:
-            minuti_bucket = 10
-        else:
-            minuti_bucket = 5
-
-        adesso = datetime.now()
-        inizio = adesso - timedelta(
-            hours=ore
-        )
+    def crea_grafico(
+        self,
+        parent,
+        inizio,
+        fine,
+        minuti_bucket
+    ):
         delta = timedelta(
             minutes=minuti_bucket
         )
@@ -1559,74 +1867,74 @@ class PrestitiApp(ttk.Window):
         punti = []
         t = inizio
 
-        while t < adesso:
-            fine = min(
-                t + delta,
-                adesso
-            )
-
+        while t < fine:
             punti.append({
                 "inizio": t,
-                "fine": fine,
+                "fine": t + delta,
                 "prestiti": 0,
                 "documenti": 0
             })
+            t += delta
 
-            t = fine
+        inizio_iso = inizio.isoformat(
+            timespec="seconds"
+        )
+        fine_iso = fine.isoformat(
+            timespec="seconds"
+        )
 
         with get_db() as db:
             righe_prestiti = db.execute("""
                 SELECT uscita
                 FROM prestiti
                 WHERE uscita >= ?
+                  AND uscita < ?
             """, (
-                inizio.isoformat(
-                    timespec="seconds"
-                ),
+                inizio_iso,
+                fine_iso
             )).fetchall()
 
             righe_documenti = db.execute("""
                 SELECT ingresso
                 FROM documenti
                 WHERE ingresso >= ?
+                  AND ingresso < ?
             """, (
-                inizio.isoformat(
-                    timespec="seconds"
-                ),
+                inizio_iso,
+                fine_iso
             )).fetchall()
 
-        for row in righe_prestiti:
-            dt = datetime.fromisoformat(
-                row["uscita"]
-            )
+        secondi_bucket = delta.total_seconds()
 
-            for bucket in punti:
-                if (
-                    bucket["inizio"]
-                    <= dt
-                    < bucket["fine"]
-                ):
-                    bucket["prestiti"] += 1
-                    break
+        for row in righe_prestiti:
+            try:
+                dt = datetime.fromisoformat(
+                    row["uscita"]
+                )
+                indice = int(
+                    (dt - inizio).total_seconds()
+                    // secondi_bucket
+                )
+
+                if 0 <= indice < len(punti):
+                    punti[indice]["prestiti"] += 1
+            except (ValueError, TypeError):
+                continue
 
         for row in righe_documenti:
-            dt = datetime.fromisoformat(
-                row["ingresso"]
-            )
+            try:
+                dt = datetime.fromisoformat(
+                    row["ingresso"]
+                )
+                indice = int(
+                    (dt - inizio).total_seconds()
+                    // secondi_bucket
+                )
 
-            for bucket in punti:
-                if (
-                    bucket["inizio"]
-                    <= dt
-                    < bucket["fine"]
-                ):
-                    bucket["documenti"] += 1
-                    break
-
-        labels = [
-            p["inizio"].strftime("%H:%M")
-            for p in punti
-        ]
+                if 0 <= indice < len(punti):
+                    punti[indice]["documenti"] += 1
+            except (ValueError, TypeError):
+                continue
 
         prestiti = [
             p["prestiti"]
@@ -1638,22 +1946,26 @@ class PrestitiApp(ttk.Window):
             for p in punti
         ]
 
+        x = list(
+            range(len(punti))
+        )
+
         fig = Figure(
-            figsize=(9, 3.8),
+            figsize=(9, 3.6),
             dpi=100
         )
 
         ax = fig.add_subplot(111)
 
         ax.plot(
-            labels,
+            x,
             prestiti,
             marker="o",
             label="Prestiti"
         )
 
         ax.plot(
-            labels,
+            x,
             documenti,
             marker="o",
             label="Nuovi documenti"
@@ -1667,17 +1979,52 @@ class PrestitiApp(ttk.Window):
             alpha=0.2
         )
 
-        salto = max(
-            1,
-            len(labels) // 12
-        )
-
-        for i, label in enumerate(
-            ax.get_xticklabels()
-        ):
-            label.set_visible(
-                i % salto == 0
+        # Mostriamo al massimo circa 12-13 etichette,
+        # indipendentemente dalla risoluzione scelta.
+        if punti:
+            salto = max(
+                1,
+                (len(punti) + 11) // 12
             )
+
+            ticks = list(
+                range(0, len(punti), salto)
+            )
+
+            if ticks[-1] != len(punti) - 1:
+                ticks.append(
+                    len(punti) - 1
+                )
+
+            piu_giorni = (
+                inizio.date()
+                != (fine - timedelta(seconds=1)).date()
+            )
+
+            if piu_giorni:
+                tick_labels = [
+                    punti[i]["inizio"].strftime(
+                        "%d/%m\n%H:%M"
+                    )
+                    for i in ticks
+                ]
+            else:
+                tick_labels = [
+                    punti[i]["inizio"].strftime(
+                        "%H:%M"
+                    )
+                    for i in ticks
+                ]
+
+            ax.set_xticks(ticks)
+            ax.set_xticklabels(tick_labels)
+
+        ax.set_title(
+            f"{inizio.strftime('%d/%m/%Y %H:%M')} → "
+            f"{fine.strftime('%d/%m/%Y %H:%M')} "
+            f"• bucket {minuti_bucket} min",
+            fontsize=10
+        )
 
         fig.tight_layout()
 
@@ -1691,7 +2038,7 @@ class PrestitiApp(ttk.Window):
             fill=BOTH,
             expand=YES,
             padx=40,
-            pady=10
+            pady=(5, 10)
         )
 
     # ========================================================
