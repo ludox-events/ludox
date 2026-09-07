@@ -1,0 +1,30 @@
+# Database e dati operativi
+*.db
+*.sqlite
+*.sqlite3
+data/
+backup/
+
+# Ambienti Python
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# IDE / editor
+.vscode/
+.idea/
+.thonny/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# File temporanei
+*.tmp
+*.bak
+*~
