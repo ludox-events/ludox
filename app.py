@@ -5,10 +5,12 @@
 # Vedi LICENSE, NOTICE e CONTRIBUTING.md.
 
 import sqlite3
+import csv
 from pathlib import Path
 from datetime import datetime, timedelta
+from statistics import pstdev
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
@@ -2345,6 +2347,21 @@ class PrestitiApp(ttk.Window):
             sticky=EW
         )
 
+        ttk.Button(
+            area,
+            text="📊  REPORT UTILIZZO LUDOTECA",
+            command=self.show_report_utilizzo_ludoteca,
+            bootstyle="primary-outline"
+        ).grid(
+            row=3,
+            column=0,
+            columnspan=2,
+            padx=15,
+            pady=15,
+            ipady=22,
+            sticky=EW
+        )
+
     # ========================================================
     # BACKOFFICE - TUTTI I PRESTITI
     # ========================================================
@@ -2630,6 +2647,795 @@ class PrestitiApp(ttk.Window):
                     "DEPOSITATO" if row["uscita"] is None else "RESTITUITO"
                 )
             )
+
+    # ========================================================
+    # BACKOFFICE - REPORT UTILIZZO LUDOTECA
+    # ========================================================
+
+    def show_report_utilizzo_ludoteca(
+        self,
+        data_inizio=None,
+        data_fine=None,
+        proprietario_id=None
+    ):
+        """
+        Report storico per titolo.
+
+        Il proprietario NON viene attribuito al singolo prestito:
+        serve esclusivamente come filtro sui titoli presenti nella ludoteca.
+
+        Un titolo con più proprietari compare una sola volta e la colonna
+        PROPRIETARI elenca tutti i proprietari che hanno copie del titolo.
+        """
+        frame = self.clear()
+
+        self.pulsante_indietro(
+            frame,
+            self.show_backoffice
+        )
+
+        self.titolo_pagina(
+            frame,
+            "REPORT UTILIZZO LUDOTECA",
+            "Prestiti e durata di utilizzo dei titoli presenti in ludoteca"
+        )
+
+        oggi = datetime.now().replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0
+        )
+
+        if data_inizio is None:
+            data_inizio = oggi
+
+        if data_fine is None:
+            data_fine = oggi
+
+        # ----------------------------------------------------
+        # FILTRI
+        # ----------------------------------------------------
+
+        filtri = ttk.Labelframe(
+            frame,
+            text="Filtri",
+            padding=12,
+            bootstyle="secondary"
+        )
+        filtri.pack(
+            fill=X,
+            padx=35,
+            pady=(0, 10)
+        )
+
+        riga_filtri = ttk.Frame(
+            filtri
+        )
+        riga_filtri.pack(
+            fill=X
+        )
+
+        ttk.Label(
+            riga_filtri,
+            text="Dal:",
+            font=("Arial", 11, "bold")
+        ).pack(
+            side=LEFT,
+            padx=(0, 6)
+        )
+
+        try:
+            data_da_picker = DateEntry(
+                riga_filtri,
+                date_format="%d/%m/%Y",
+                first_weekday=0,
+                start_date=data_inizio,
+                bootstyle="primary",
+                width=12
+            )
+        except TypeError:
+            data_da_picker = DateEntry(
+                riga_filtri,
+                dateformat="%d/%m/%Y",
+                firstweekday=0,
+                startdate=data_inizio,
+                bootstyle="primary",
+                width=12
+            )
+
+        data_da_picker.pack(
+            side=LEFT,
+            padx=(0, 12)
+        )
+
+        ttk.Label(
+            riga_filtri,
+            text="Al:",
+            font=("Arial", 11, "bold")
+        ).pack(
+            side=LEFT,
+            padx=(0, 6)
+        )
+
+        try:
+            data_a_picker = DateEntry(
+                riga_filtri,
+                date_format="%d/%m/%Y",
+                first_weekday=0,
+                start_date=data_fine,
+                bootstyle="primary",
+                width=12
+            )
+        except TypeError:
+            data_a_picker = DateEntry(
+                riga_filtri,
+                dateformat="%d/%m/%Y",
+                firstweekday=0,
+                startdate=data_fine,
+                bootstyle="primary",
+                width=12
+            )
+
+        data_a_picker.pack(
+            side=LEFT,
+            padx=(0, 18)
+        )
+
+        proprietari = elenco_proprietari()
+        proprietari_by_name = {
+            row["nome"]: row["id"]
+            for row in proprietari
+        }
+
+        proprietario_var = tk.StringVar(
+            value="Tutti"
+        )
+
+        if proprietario_id is not None:
+            proprietario = proprietario_per_id(
+                proprietario_id
+            )
+            if proprietario:
+                proprietario_var.set(
+                    proprietario["nome"]
+                )
+
+        ttk.Label(
+            riga_filtri,
+            text="Proprietario:",
+            font=("Arial", 11, "bold")
+        ).pack(
+            side=LEFT,
+            padx=(0, 6)
+        )
+
+        combo_proprietario = ttk.Combobox(
+            riga_filtri,
+            textvariable=proprietario_var,
+            values=[
+                "Tutti",
+                *list(proprietari_by_name.keys())
+            ],
+            state="readonly",
+            width=25
+        )
+        combo_proprietario.pack(
+            side=LEFT,
+            padx=(0, 12),
+            ipady=2
+        )
+
+        def leggi_filtri():
+            try:
+                da = datetime.strptime(
+                    data_da_picker.entry.get().strip(),
+                    "%d/%m/%Y"
+                ).replace(
+                    hour=0,
+                    minute=0,
+                    second=0,
+                    microsecond=0
+                )
+
+                a = datetime.strptime(
+                    data_a_picker.entry.get().strip(),
+                    "%d/%m/%Y"
+                ).replace(
+                    hour=0,
+                    minute=0,
+                    second=0,
+                    microsecond=0
+                )
+
+            except (ValueError, AttributeError):
+                messagebox.showwarning(
+                    "Date non valide",
+                    "Seleziona due date valide nel formato GG/MM/AAAA."
+                )
+                return None
+
+            if a < da:
+                messagebox.showwarning(
+                    "Intervallo non valido",
+                    "La data finale non può precedere la data iniziale."
+                )
+                return None
+
+            nome_proprietario = proprietario_var.get()
+
+            if (
+                nome_proprietario
+                and nome_proprietario != "Tutti"
+            ):
+                pid = proprietari_by_name.get(
+                    nome_proprietario
+                )
+            else:
+                pid = None
+
+            return da, a, pid
+
+        def applica():
+            parametri = leggi_filtri()
+
+            if parametri is None:
+                return
+
+            da, a, pid = parametri
+
+            self.show_report_utilizzo_ludoteca(
+                data_inizio=da,
+                data_fine=a,
+                proprietario_id=pid
+            )
+
+        ttk.Button(
+            riga_filtri,
+            text="APPLICA",
+            command=applica,
+            bootstyle="primary"
+        ).pack(
+            side=LEFT,
+            padx=3
+        )
+
+        # ----------------------------------------------------
+        # COSTRUZIONE DATI REPORT
+        # ----------------------------------------------------
+
+        # La data finale è inclusiva:
+        # "dal 05/09 al 06/09" significa
+        # 05/09 00:00 <= uscita < 07/09 00:00.
+        inizio = data_inizio.replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0
+        )
+        fine_esclusiva = (
+            data_fine.replace(
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0
+            )
+            + timedelta(days=1)
+        )
+
+        inizio_iso = inizio.isoformat(
+            timespec="seconds"
+        )
+        fine_iso = fine_esclusiva.isoformat(
+            timespec="seconds"
+        )
+
+        with get_db() as db:
+            giochi = db.execute("""
+                SELECT
+                    g.id,
+                    g.nome,
+                    g.attivo,
+                    COALESCE(SUM(cg.quantita), 0) AS copie_totali
+                FROM giochi g
+                LEFT JOIN copie_gioco cg
+                  ON cg.gioco_id = g.id
+                GROUP BY
+                    g.id,
+                    g.nome,
+                    g.attivo
+                HAVING COALESCE(SUM(cg.quantita), 0) > 0
+                ORDER BY g.nome
+            """).fetchall()
+
+            proprietari_giochi = db.execute("""
+                SELECT
+                    cg.gioco_id,
+                    p.id AS proprietario_id,
+                    p.nome AS proprietario_nome,
+                    cg.quantita
+                FROM copie_gioco cg
+                JOIN proprietari p
+                  ON p.id = cg.proprietario_id
+                WHERE cg.quantita > 0
+                ORDER BY
+                    cg.gioco_id,
+                    p.nome
+            """).fetchall()
+
+            prestiti_periodo = db.execute("""
+                SELECT
+                    gioco_id,
+                    uscita,
+                    rientro
+                FROM prestiti
+                WHERE uscita >= ?
+                  AND uscita < ?
+                ORDER BY uscita
+            """, (
+                inizio_iso,
+                fine_iso
+            )).fetchall()
+
+        proprietari_per_gioco = {}
+
+        for row in proprietari_giochi:
+            proprietari_per_gioco.setdefault(
+                row["gioco_id"],
+                []
+            ).append({
+                "id": row["proprietario_id"],
+                "nome": row["proprietario_nome"],
+                "quantita": row["quantita"]
+            })
+
+        prestiti_per_gioco = {}
+
+        for row in prestiti_periodo:
+            prestiti_per_gioco.setdefault(
+                row["gioco_id"],
+                []
+            ).append(row)
+
+        def formatta_durata(secondi):
+            if secondi is None:
+                return "—"
+
+            secondi = max(
+                0,
+                int(round(secondi))
+            )
+
+            ore_totali, resto = divmod(
+                secondi,
+                3600
+            )
+            minuti, _ = divmod(
+                resto,
+                60
+            )
+
+            if ore_totali > 0:
+                return f"{ore_totali}h {minuti:02d}m"
+
+            return f"{minuti}m"
+
+        righe_report = []
+
+        for gioco in giochi:
+            proprietari_del_gioco = proprietari_per_gioco.get(
+                gioco["id"],
+                []
+            )
+
+            if proprietario_id is not None:
+                if not any(
+                    p["id"] == proprietario_id
+                    for p in proprietari_del_gioco
+                ):
+                    continue
+
+            proprietari_testo = ", ".join(
+                f'{p["nome"]} ({p["quantita"]})'
+                for p in proprietari_del_gioco
+            )
+
+            prestiti_gioco = prestiti_per_gioco.get(
+                gioco["id"],
+                []
+            )
+
+            durate = []
+
+            for prestito in prestiti_gioco:
+                # Le metriche di durata vengono calcolate sui soli prestiti
+                # conclusi. I prestiti ancora aperti restano comunque inclusi
+                # nel conteggio "Prestiti".
+                if not prestito["rientro"]:
+                    continue
+
+                try:
+                    uscita = datetime.fromisoformat(
+                        prestito["uscita"]
+                    )
+                    rientro = datetime.fromisoformat(
+                        prestito["rientro"]
+                    )
+
+                    durata = (
+                        rientro
+                        - uscita
+                    ).total_seconds()
+
+                    if durata >= 0:
+                        durate.append(
+                            durata
+                        )
+
+                except (ValueError, TypeError):
+                    continue
+
+            numero_prestiti = len(
+                prestiti_gioco
+            )
+
+            totale_secondi = sum(
+                durate
+            )
+
+            media_secondi = (
+                totale_secondi / len(durate)
+                if durate
+                else None
+            )
+
+            deviazione_secondi = (
+                pstdev(durate)
+                if durate
+                else None
+            )
+
+            righe_report.append({
+                "gioco": gioco["nome"],
+                "proprietari": proprietari_testo or "—",
+                "copie_totali": gioco["copie_totali"],
+                "prestiti": numero_prestiti,
+                "tempo_totale_secondi": totale_secondi,
+                "tempo_totale": formatta_durata(
+                    totale_secondi
+                ),
+                "media_secondi": media_secondi,
+                "media": formatta_durata(
+                    media_secondi
+                ),
+                "deviazione_secondi": deviazione_secondi,
+                "deviazione": formatta_durata(
+                    deviazione_secondi
+                )
+            })
+
+        # ----------------------------------------------------
+        # RIEPILOGO
+        # ----------------------------------------------------
+
+        proprietario_testo = (
+            "Tutti"
+            if proprietario_id is None
+            else proprietario_per_id(
+                proprietario_id
+            )["nome"]
+        )
+
+        ttk.Label(
+            frame,
+            text=(
+                f"Periodo: {inizio.strftime('%d/%m/%Y')} → "
+                f"{data_fine.strftime('%d/%m/%Y')}  •  "
+                f"Proprietario: {proprietario_testo}  •  "
+                f"Titoli visualizzati: {len(righe_report)}"
+            ),
+            font=("Arial", 11, "bold"),
+            bootstyle="secondary"
+        ).pack(
+            pady=(0, 8)
+        )
+
+        ttk.Label(
+            frame,
+            text=(
+                "Nota: il filtro Proprietario seleziona i titoli associati a quel proprietario; "
+                "i prestiti restano statistiche del titolo nel suo complesso. "
+                "Tempo totale, media e deviazione standard sono calcolati sui prestiti conclusi."
+            ),
+            font=("Arial", 9),
+            bootstyle="secondary",
+            wraplength=1050,
+            justify=CENTER
+        ).pack(
+            pady=(0, 8)
+        )
+
+        # ----------------------------------------------------
+        # TABELLA
+        # ----------------------------------------------------
+
+        tabella_frame = ttk.Frame(
+            frame
+        )
+        tabella_frame.pack(
+            fill=BOTH,
+            expand=YES,
+            padx=10
+        )
+
+        tree = ttk.Treeview(
+            tabella_frame,
+            columns=(
+                "gioco",
+                "proprietari",
+                "copie",
+                "prestiti",
+                "tempo_totale",
+                "media",
+                "deviazione"
+            ),
+            show="headings",
+            height=16,
+            bootstyle="primary"
+        )
+
+        tree.heading(
+            "gioco",
+            text="GIOCO"
+        )
+        tree.heading(
+            "proprietari",
+            text="PROPRIETARI"
+        )
+        tree.heading(
+            "copie",
+            text="COPIE"
+        )
+        tree.heading(
+            "prestiti",
+            text="PRESTITI"
+        )
+        tree.heading(
+            "tempo_totale",
+            text="TEMPO TOTALE FUORI"
+        )
+        tree.heading(
+            "media",
+            text="DURATA MEDIA"
+        )
+        tree.heading(
+            "deviazione",
+            text="DEV. STANDARD"
+        )
+
+        tree.column(
+            "gioco",
+            width=260
+        )
+        tree.column(
+            "proprietari",
+            width=330
+        )
+        tree.column(
+            "copie",
+            width=75,
+            anchor=CENTER
+        )
+        tree.column(
+            "prestiti",
+            width=85,
+            anchor=CENTER
+        )
+        tree.column(
+            "tempo_totale",
+            width=145,
+            anchor=CENTER
+        )
+        tree.column(
+            "media",
+            width=125,
+            anchor=CENTER
+        )
+        tree.column(
+            "deviazione",
+            width=125,
+            anchor=CENTER
+        )
+
+        scrollbar_y = ttk.Scrollbar(
+            tabella_frame,
+            orient=VERTICAL,
+            command=tree.yview
+        )
+
+        scrollbar_x = ttk.Scrollbar(
+            tabella_frame,
+            orient=HORIZONTAL,
+            command=tree.xview
+        )
+
+        tree.configure(
+            yscrollcommand=scrollbar_y.set,
+            xscrollcommand=scrollbar_x.set
+        )
+
+        tree.grid(
+            row=0,
+            column=0,
+            sticky=NSEW
+        )
+        scrollbar_y.grid(
+            row=0,
+            column=1,
+            sticky=NS
+        )
+        scrollbar_x.grid(
+            row=1,
+            column=0,
+            sticky=EW
+        )
+
+        tabella_frame.rowconfigure(
+            0,
+            weight=1
+        )
+        tabella_frame.columnconfigure(
+            0,
+            weight=1
+        )
+
+        for row in righe_report:
+            tree.insert(
+                "",
+                END,
+                values=(
+                    row["gioco"],
+                    row["proprietari"],
+                    row["copie_totali"],
+                    row["prestiti"],
+                    row["tempo_totale"],
+                    row["media"],
+                    row["deviazione"]
+                )
+            )
+
+        # ----------------------------------------------------
+        # ESPORTAZIONE CSV
+        # ----------------------------------------------------
+
+        def minuti_csv(secondi):
+            if secondi is None:
+                return ""
+
+            return (
+                f"{secondi / 60:.2f}"
+                .replace(".", ",")
+            )
+
+        def esporta_csv():
+            if not righe_report:
+                messagebox.showinfo(
+                    "Nessun dato",
+                    "Non ci sono righe da esportare con i filtri attuali."
+                )
+                return
+
+            nome_file = (
+                "ludox_report_utilizzo_"
+                f"{inizio.strftime('%Y-%m-%d')}_"
+                f"{data_fine.strftime('%Y-%m-%d')}.csv"
+            )
+
+            percorso = filedialog.asksaveasfilename(
+                title="Esporta report utilizzo ludoteca",
+                defaultextension=".csv",
+                initialfile=nome_file,
+                filetypes=[
+                    ("CSV", "*.csv"),
+                    ("Tutti i file", "*.*")
+                ]
+            )
+
+            if not percorso:
+                return
+
+            try:
+                with open(
+                    percorso,
+                    "w",
+                    newline="",
+                    encoding="utf-8-sig"
+                ) as csvfile:
+                    writer = csv.writer(
+                        csvfile,
+                        delimiter=";"
+                    )
+
+                    writer.writerow([
+                        "Gioco",
+                        "Proprietari",
+                        "Copie totali",
+                        "Prestiti",
+                        "Tempo totale fuori",
+                        "Tempo totale fuori (minuti)",
+                        "Durata media",
+                        "Durata media (minuti)",
+                        "Deviazione standard",
+                        "Deviazione standard (minuti)"
+                    ])
+
+                    for row in righe_report:
+                        writer.writerow([
+                            row["gioco"],
+                            row["proprietari"],
+                            row["copie_totali"],
+                            row["prestiti"],
+                            row["tempo_totale"],
+                            minuti_csv(
+                                row["tempo_totale_secondi"]
+                            ),
+                            row["media"],
+                            minuti_csv(
+                                row["media_secondi"]
+                            ),
+                            row["deviazione"],
+                            minuti_csv(
+                                row["deviazione_secondi"]
+                            )
+                        ])
+
+            except OSError as e:
+                messagebox.showerror(
+                    "Errore esportazione",
+                    f"Impossibile salvare il file:\n\n{e}"
+                )
+                return
+
+            messagebox.showinfo(
+                "Esportazione completata",
+                "Il report CSV è stato salvato correttamente."
+            )
+
+        azioni = ttk.Frame(
+            frame
+        )
+        azioni.pack(
+            pady=(10, 0)
+        )
+
+        ttk.Button(
+            azioni,
+            text="ESPORTA CSV",
+            command=esporta_csv,
+            bootstyle="success"
+        ).pack(
+            side=LEFT,
+            padx=5,
+            ipadx=18,
+            ipady=7
+        )
+
+        ttk.Button(
+            azioni,
+            text="TORNA AL BACKOFFICE",
+            command=self.show_backoffice,
+            bootstyle="secondary-outline"
+        ).pack(
+            side=LEFT,
+            padx=5,
+            ipadx=12,
+            ipady=7
+        )
+
+        combo_proprietario.bind(
+            "<<ComboboxSelected>>",
+            lambda event: applica()
+        )
 
     # ========================================================
     # BACKOFFICE - GIOCHI PER PROPRIETARIO
