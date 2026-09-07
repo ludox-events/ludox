@@ -4385,7 +4385,8 @@ class PrestitiApp(ttk.Window):
                 "deviazione_secondi": deviazione_secondi,
                 "deviazione": formatta_durata(
                     deviazione_secondi
-                )
+                ),
+                "durate_prestiti": durate
             })
 
         # Filtro opzionale: nasconde i giochi che, nell'intervallo,
@@ -4420,7 +4421,7 @@ class PrestitiApp(ttk.Window):
         )
 
         # ----------------------------------------------------
-        # RIEPILOGO
+        # RIEPILOGO E STATISTICHE DESCRITTIVE
         # ----------------------------------------------------
 
         proprietario_testo = (
@@ -4441,13 +4442,74 @@ class PrestitiApp(ttk.Window):
             "Gioco"
         )
 
+        totale_titoli = len(
+            righe_report
+        )
+
+        totale_prestiti = sum(
+            row["prestiti"]
+            for row in righe_report
+        )
+
+        prestiti_per_titolo = [
+            row["prestiti"]
+            for row in righe_report
+        ]
+
+        media_prestiti_titolo = (
+            totale_prestiti / totale_titoli
+            if totale_titoli
+            else 0
+        )
+
+        mediana_prestiti_titolo = (
+            median(prestiti_per_titolo)
+            if prestiti_per_titolo
+            else 0
+        )
+
+        dev_std_prestiti_titolo = (
+            pstdev(prestiti_per_titolo)
+            if prestiti_per_titolo
+            else 0
+        )
+
+        titoli_utilizzati = sum(
+            1
+            for valore in prestiti_per_titolo
+            if valore > 0
+        )
+
+        percentuale_titoli_utilizzati = (
+            titoli_utilizzati / totale_titoli * 100
+            if totale_titoli
+            else 0
+        )
+
+        tutte_durate_prestiti = [
+            durata
+            for row in righe_report
+            for durata in row["durate_prestiti"]
+        ]
+
+        durata_mediana_prestito_secondi = (
+            median(tutte_durate_prestiti)
+            if tutte_durate_prestiti
+            else None
+        )
+
+        tempo_totale_fuori_secondi = sum(
+            row["tempo_totale_secondi"]
+            for row in righe_report
+        )
+
         ttk.Label(
             frame,
             text=(
                 f"Periodo: {inizio.strftime('%d/%m/%Y')} → "
                 f"{data_fine.strftime('%d/%m/%Y')}  •  "
                 f"Proprietario: {proprietario_testo}  •  "
-                f"Titoli visualizzati: {len(righe_report)}  •  "
+                f"Titoli visualizzati: {totale_titoli}  •  "
                 f"Ordine: {criterio_testo} "
                 f"({'↓' if ordine_desc else '↑'})"
                 + (
@@ -4459,23 +4521,198 @@ class PrestitiApp(ttk.Window):
             font=("Arial", 11, "bold"),
             bootstyle="secondary"
         ).pack(
-            pady=(0, 8)
+            pady=(0, 6)
         )
+
+        kpi = ttk.Frame(
+            frame
+        )
+        kpi.pack(
+            fill=X,
+            padx=25,
+            pady=(0, 7)
+        )
+
+        for col in range(6):
+            kpi.columnconfigure(
+                col,
+                weight=1
+            )
+
+        kpi_valori = [
+            (
+                str(totale_prestiti),
+                "PRESTITI TOTALI"
+            ),
+            (
+                f"{media_prestiti_titolo:.2f}",
+                "MEDIA PRESTITI / TITOLO"
+            ),
+            (
+                f"{mediana_prestiti_titolo:g}",
+                "MEDIANA PRESTITI / TITOLO"
+            ),
+            (
+                f"{dev_std_prestiti_titolo:.2f}",
+                "DEV. STD PRESTITI / TITOLO"
+            ),
+            (
+                f"{percentuale_titoli_utilizzati:.1f}%",
+                "TITOLI UTILIZZATI"
+            ),
+            (
+                formatta_durata(
+                    durata_mediana_prestito_secondi
+                ),
+                "DURATA MEDIANA PRESTITO"
+            )
+        ]
+
+        for indice, (
+            valore,
+            etichetta
+        ) in enumerate(kpi_valori):
+            box = ttk.Frame(
+                kpi,
+                padding=5
+            )
+            box.grid(
+                row=0,
+                column=indice,
+                padx=4,
+                sticky=NSEW
+            )
+
+            ttk.Label(
+                box,
+                text=valore,
+                font=("Arial", 15, "bold"),
+                bootstyle="primary"
+            ).pack()
+
+            ttk.Label(
+                box,
+                text=etichetta,
+                font=("Arial", 8, "bold"),
+                bootstyle="secondary",
+                justify=CENTER,
+                wraplength=145
+            ).pack()
 
         ttk.Label(
             frame,
             text=(
-                "Nota: il filtro Proprietario seleziona i titoli associati a quel proprietario; "
-                "i prestiti restano statistiche del titolo nel suo complesso. "
-                "Tempo totale, media e deviazione standard sono calcolati sui prestiti conclusi."
+                f"Titoli utilizzati: {titoli_utilizzati}/{totale_titoli}.  "
+                f"Tempo totale fuori: {formatta_durata(tempo_totale_fuori_secondi)}.  "
+                "Il filtro Proprietario seleziona i titoli associati a quel proprietario; "
+                "le statistiche dei prestiti restano riferite al titolo nel suo complesso. "
+                "Le durate considerano soltanto i prestiti conclusi."
             ),
             font=("Arial", 9),
             bootstyle="secondary",
             wraplength=1050,
             justify=CENTER
         ).pack(
-            pady=(0, 8)
+            pady=(0, 4)
         )
+
+        # ----------------------------------------------------
+        # GRAFICO DELLE OCCORRENZE: PRESTITI PER TITOLO
+        # ----------------------------------------------------
+
+        distribuzione = {}
+
+        for valore in prestiti_per_titolo:
+            distribuzione[valore] = (
+                distribuzione.get(
+                    valore,
+                    0
+                )
+                + 1
+            )
+
+        if distribuzione:
+            valori_x = sorted(
+                distribuzione
+            )
+
+            valori_y = [
+                distribuzione[x]
+                for x in valori_x
+            ]
+
+            fig = Figure(
+                figsize=(9, 2.15),
+                dpi=100
+            )
+
+            ax = fig.add_subplot(111)
+
+            ax.bar(
+                valori_x,
+                valori_y
+            )
+
+            ax.set_title(
+                "Distribuzione del numero di prestiti per titolo",
+                fontsize=10
+            )
+            ax.set_xlabel(
+                "Numero di prestiti"
+            )
+            ax.set_ylabel(
+                "Titoli"
+            )
+            ax.grid(
+                True,
+                axis="y",
+                alpha=0.2
+            )
+
+            ax.set_xticks(
+                valori_x
+            )
+
+            massimo = max(
+                valori_y
+            )
+
+            spazio_testo = max(
+                0.2,
+                massimo * 0.02
+            )
+
+            for x, y in zip(
+                valori_x,
+                valori_y
+            ):
+                ax.text(
+                    x,
+                    y + spazio_testo,
+                    str(y),
+                    ha="center",
+                    va="bottom",
+                    fontsize=8
+                )
+
+            ax.set_ylim(
+                0,
+                massimo * 1.15 + 0.5
+            )
+
+            fig.tight_layout()
+
+            canvas = FigureCanvasTkAgg(
+                fig,
+                master=frame
+            )
+            canvas.draw()
+
+            canvas.get_tk_widget().pack(
+                fill=X,
+                padx=45,
+                pady=(0, 6)
+            )
 
         # ----------------------------------------------------
         # TABELLA
@@ -4502,7 +4739,7 @@ class PrestitiApp(ttk.Window):
                 "deviazione"
             ),
             show="headings",
-            height=16,
+            height=8,
             bootstyle="primary"
         )
 
