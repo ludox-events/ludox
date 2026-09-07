@@ -12,6 +12,7 @@ from tkinter import messagebox
 
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
+from ttkbootstrap.widgets import DateEntry
 
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -1528,6 +1529,9 @@ class PrestitiApp(ttk.Window):
             minuti_bucket = 15
 
         if riferimento is None:
+            # Manteniamo il minuto reale corrente.
+            # In questo modo, ad esempio alle 13:44 con bucket da 15 minuti,
+            # l'intervallo delle ultime 12 ore resta 01:30 -> 13:45.
             riferimento = datetime.now().replace(
                 second=0,
                 microsecond=0
@@ -1543,7 +1547,7 @@ class PrestitiApp(ttk.Window):
         self.titolo_pagina(
             frame,
             "STATISTICHE",
-            "Analisi dei prestiti per periodo e risoluzione temporale"
+            "Analisi dei giochi consegnati e delle nuove persone per intervallo temporale"
         )
 
         # ----------------------------------------------------
@@ -1577,28 +1581,189 @@ class PrestitiApp(ttk.Window):
             padx=(0, 10)
         )
 
-        data_var = tk.StringVar(
-            value=riferimento.strftime("%d/%m/%Y")
-        )
         ora_var = tk.StringVar(
-            value=riferimento.strftime("%H:%M")
+            value=riferimento.strftime("%H")
+        )
+        minuto_var = tk.StringVar(
+            value=riferimento.strftime("%M")
         )
         risoluzione_var = tk.StringVar(
             value=f"{minuti_bucket} min"
         )
 
+        def valori_minuti(minuto_corrente):
+            """
+            Mostra normalmente minuti a passi di 5.
+            Se il riferimento corrente è, ad esempio, 13:44,
+            aggiunge anche 44 per non alterare automaticamente il periodo.
+            """
+            valori = list(range(0, 60, 5))
+
+            if minuto_corrente not in valori:
+                valori.append(minuto_corrente)
+                valori.sort()
+
+            return [
+                f"{m:02d}"
+                for m in valori
+            ]
+
+        # ----------------------------------------------------
+        # CONTROLLI: DATA, ORA E RISOLUZIONE
+        # ----------------------------------------------------
+
+        riga_riferimento = ttk.Frame(controlli)
+        riga_riferimento.pack(
+            fill=X
+        )
+
+        ttk.Label(
+            riga_riferimento,
+            text="Data:",
+            font=("Arial", 11, "bold")
+        ).pack(
+            side=LEFT,
+            padx=(0, 6)
+        )
+
+        # Compatibilità con versioni diverse di ttkbootstrap:
+        # le versioni recenti usano date_format / first_weekday / start_date,
+        # quelle precedenti dateformat / firstweekday / startdate.
+        try:
+            data_picker = DateEntry(
+                riga_riferimento,
+                date_format="%d/%m/%Y",
+                first_weekday=0,
+                start_date=riferimento,
+                bootstyle="primary",
+                width=12
+            )
+        except TypeError:
+            data_picker = DateEntry(
+                riga_riferimento,
+                dateformat="%d/%m/%Y",
+                firstweekday=0,
+                startdate=riferimento,
+                bootstyle="primary",
+                width=12
+            )
+
+        data_picker.pack(
+            side=LEFT,
+            padx=(0, 14)
+        )
+
+        ttk.Label(
+            riga_riferimento,
+            text="Ora:",
+            font=("Arial", 11, "bold")
+        ).pack(
+            side=LEFT,
+            padx=(0, 6)
+        )
+
+        combo_ora = ttk.Combobox(
+            riga_riferimento,
+            textvariable=ora_var,
+            values=[
+                f"{h:02d}"
+                for h in range(24)
+            ],
+            state="readonly",
+            width=3,
+            justify=CENTER
+        )
+        combo_ora.pack(
+            side=LEFT,
+            padx=(0, 2),
+            ipady=2
+        )
+
+        ttk.Label(
+            riga_riferimento,
+            text=":",
+            font=("Arial", 12, "bold")
+        ).pack(
+            side=LEFT,
+            padx=1
+        )
+
+        combo_minuto = ttk.Combobox(
+            riga_riferimento,
+            textvariable=minuto_var,
+            values=valori_minuti(
+                riferimento.minute
+            ),
+            state="readonly",
+            width=3,
+            justify=CENTER
+        )
+        combo_minuto.pack(
+            side=LEFT,
+            padx=(2, 14),
+            ipady=2
+        )
+
+        ttk.Label(
+            riga_riferimento,
+            text="Risoluzione:",
+            font=("Arial", 11, "bold")
+        ).pack(
+            side=LEFT,
+            padx=(0, 6)
+        )
+
+        combo_risoluzione = ttk.Combobox(
+            riga_riferimento,
+            textvariable=risoluzione_var,
+            values=[
+                f"{m} min"
+                for m in risoluzioni
+            ],
+            state="readonly",
+            width=8
+        )
+        combo_risoluzione.pack(
+            side=LEFT,
+            padx=(0, 12),
+            ipady=2
+        )
+
         def leggi_parametri():
             try:
-                nuovo_riferimento = datetime.strptime(
-                    f"{data_var.get().strip()} "
-                    f"{ora_var.get().strip()}",
-                    "%d/%m/%Y %H:%M"
+                # Leggiamo direttamente il testo del DateEntry:
+                # funziona sia con una data digitata sia con il calendario popup.
+                data_testo = data_picker.entry.get().strip()
+                data_selezionata = datetime.strptime(
+                    data_testo,
+                    "%d/%m/%Y"
                 )
-            except ValueError:
+
+                ora = int(
+                    ora_var.get()
+                )
+                minuto = int(
+                    minuto_var.get()
+                )
+
+                if not 0 <= ora <= 23:
+                    raise ValueError
+
+                if not 0 <= minuto <= 59:
+                    raise ValueError
+
+                nuovo_riferimento = data_selezionata.replace(
+                    hour=ora,
+                    minute=minuto,
+                    second=0,
+                    microsecond=0
+                )
+
+            except (ValueError, AttributeError):
                 messagebox.showwarning(
                     "Data o ora non valida",
-                    "Inserisci la data nel formato GG/MM/AAAA "
-                    "e l'ora nel formato HH:MM."
+                    "Seleziona una data valida e un orario compreso "
+                    "tra 00:00 e 23:59."
                 )
                 return None
 
@@ -1635,7 +1800,11 @@ class PrestitiApp(ttk.Window):
                 else "secondary-outline"
             )
 
-            testo = "1 ORA" if h == 1 else f"{h} ORE"
+            testo = (
+                "1 ORA"
+                if h == 1
+                else f"{h} ORE"
+            )
 
             ttk.Button(
                 riga_periodo,
@@ -1646,79 +1815,6 @@ class PrestitiApp(ttk.Window):
                 side=LEFT,
                 padx=3
             )
-
-        # ----------------------------------------------------
-        # CONTROLLI: DATA, ORA E RISOLUZIONE
-        # ----------------------------------------------------
-
-        riga_riferimento = ttk.Frame(controlli)
-        riga_riferimento.pack(
-            fill=X
-        )
-
-        ttk.Label(
-            riga_riferimento,
-            text="Data:",
-            font=("Arial", 11, "bold")
-        ).pack(
-            side=LEFT,
-            padx=(0, 6)
-        )
-
-        data_entry = ttk.Entry(
-            riga_riferimento,
-            textvariable=data_var,
-            width=12,
-            justify=CENTER
-        )
-        data_entry.pack(
-            side=LEFT,
-            padx=(0, 14),
-            ipady=3
-        )
-
-        ttk.Label(
-            riga_riferimento,
-            text="Ora:",
-            font=("Arial", 11, "bold")
-        ).pack(
-            side=LEFT,
-            padx=(0, 6)
-        )
-
-        ora_entry = ttk.Entry(
-            riga_riferimento,
-            textvariable=ora_var,
-            width=7,
-            justify=CENTER
-        )
-        ora_entry.pack(
-            side=LEFT,
-            padx=(0, 14),
-            ipady=3
-        )
-
-        ttk.Label(
-            riga_riferimento,
-            text="Risoluzione:",
-            font=("Arial", 11, "bold")
-        ).pack(
-            side=LEFT,
-            padx=(0, 6)
-        )
-
-        combo_risoluzione = ttk.Combobox(
-            riga_riferimento,
-            textvariable=risoluzione_var,
-            values=[f"{m} min" for m in risoluzioni],
-            state="readonly",
-            width=8
-        )
-        combo_risoluzione.pack(
-            side=LEFT,
-            padx=(0, 12),
-            ipady=2
-        )
 
         ttk.Button(
             riga_riferimento,
@@ -1735,12 +1831,34 @@ class PrestitiApp(ttk.Window):
                 second=0,
                 microsecond=0
             )
-            data_var.set(
-                adesso.strftime("%d/%m/%Y")
-            )
+
+            try:
+                data_picker.set_date(
+                    adesso
+                )
+            except (AttributeError, TypeError):
+                data_picker.entry.delete(
+                    0,
+                    END
+                )
+                data_picker.entry.insert(
+                    0,
+                    adesso.strftime("%d/%m/%Y")
+                )
+
             ora_var.set(
-                adesso.strftime("%H:%M")
+                adesso.strftime("%H")
             )
+
+            combo_minuto.configure(
+                values=valori_minuti(
+                    adesso.minute
+                )
+            )
+            minuto_var.set(
+                adesso.strftime("%M")
+            )
+
             aggiorna()
 
         ttk.Button(
@@ -1753,14 +1871,8 @@ class PrestitiApp(ttk.Window):
             padx=3
         )
 
-        data_entry.bind(
-            "<Return>",
-            lambda event: aggiorna()
-        )
-        ora_entry.bind(
-            "<Return>",
-            lambda event: aggiorna()
-        )
+        # La risoluzione si applica subito.
+        # Data e ora vengono invece confermate con APPLICA.
         combo_risoluzione.bind(
             "<<ComboboxSelected>>",
             lambda event: aggiorna()
@@ -1828,13 +1940,16 @@ class PrestitiApp(ttk.Window):
         )
 
         for col in range(2):
-            cards.columnconfigure(col, weight=1)
+            cards.columnconfigure(
+                col,
+                weight=1
+            )
 
         self.crea_card(
             cards,
             0,
             prestiti_periodo,
-            "PRESTITI — PERIODO",
+            "GIOCHI CONSEGNATI — PERIODO",
             "primary"
         )
 
@@ -1842,7 +1957,7 @@ class PrestitiApp(ttk.Window):
             cards,
             1,
             persone_periodo,
-            "PERSONE — PERIODO",
+            "NUOVE PERSONE — PERIODO",
             "info"
         )
 
@@ -1936,12 +2051,12 @@ class PrestitiApp(ttk.Window):
             except (ValueError, TypeError):
                 continue
 
-        prestiti = [
+        giochi_consegnati = [
             p["prestiti"]
             for p in punti
         ]
 
-        documenti = [
+        nuove_persone = [
             p["documenti"]
             for p in punti
         ]
@@ -1959,19 +2074,23 @@ class PrestitiApp(ttk.Window):
 
         ax.plot(
             x,
-            prestiti,
+            giochi_consegnati,
             marker="o",
-            label="Prestiti"
+            label="Giochi consegnati"
         )
 
         ax.plot(
             x,
-            documenti,
+            nuove_persone,
             marker="o",
-            label="Nuovi documenti"
+            label="Nuove persone"
         )
 
-        ax.set_ylabel("Numero")
+        # Le due serie sono conteggi omogenei e condividono volutamente
+        # la stessa scala verticale.
+        ax.set_ylabel(
+            f"Conteggio per {minuti_bucket} min"
+        )
         ax.set_xlabel("Ora")
         ax.legend()
         ax.grid(
@@ -1988,7 +2107,11 @@ class PrestitiApp(ttk.Window):
             )
 
             ticks = list(
-                range(0, len(punti), salto)
+                range(
+                    0,
+                    len(punti),
+                    salto
+                )
             )
 
             if ticks[-1] != len(punti) - 1:
@@ -1998,7 +2121,10 @@ class PrestitiApp(ttk.Window):
 
             piu_giorni = (
                 inizio.date()
-                != (fine - timedelta(seconds=1)).date()
+                != (
+                    fine
+                    - timedelta(seconds=1)
+                ).date()
             )
 
             if piu_giorni:
@@ -2016,8 +2142,12 @@ class PrestitiApp(ttk.Window):
                     for i in ticks
                 ]
 
-            ax.set_xticks(ticks)
-            ax.set_xticklabels(tick_labels)
+            ax.set_xticks(
+                ticks
+            )
+            ax.set_xticklabels(
+                tick_labels
+            )
 
         ax.set_title(
             f"{inizio.strftime('%d/%m/%Y %H:%M')} → "
