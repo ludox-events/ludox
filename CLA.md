@@ -6,6 +6,16 @@
 > LudoX. Prima di utilizzarlo per accettare contributi esterni dovrà essere
 > verificato da un professionista competente in diritto d'autore e software.
 
+## Stato del documento
+
+Questo file **non costituisce ancora un CLA operativo**.
+
+Fino alla pubblicazione di una versione espressamente dichiarata attiva,
+contributi esterni possono essere discussi e revisionati ma non vengono
+incorporati nell'upstream ufficiale.
+
+Vedi anche [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Obiettivo
 
 LudoX vuole mantenere una distribuzione open source con forte copyleft e,
@@ -39,14 +49,14 @@ La concessione non trasferisce la paternità del contributo.
 Salvo quanto concesso dal CLA, il Contributor mantiene i propri diritti sul
 materiale originale che ha scritto.
 
-## Fork
+## Upstream ufficiale e fork
 
 Il CLA riguarda soltanto i contributi che si desidera incorporare
 nell'**upstream ufficiale LudoX**.
 
-Chi non vuole sottoscrivere il CLA conserva comunque tutti i diritti che gli
-sono concessi dalla licenza pubblica AGPL, compreso il diritto di creare e
-sviluppare un fork.
+Chi non vuole sottoscrivere il futuro CLA conserva comunque tutti i diritti
+che gli sono concessi dalla licenza pubblica AGPL, compreso il diritto di
+utilizzare, modificare, redistribuire e sviluppare un fork.
 
 ## Contributi di dipendenti o organizzazioni
 
@@ -58,6 +68,15 @@ ottenere l'autorizzazione necessaria per concedere i diritti previsti.
 
 La versione definitiva dovrà contenere una clausola brevettuale appropriata,
 sul modello dei CLA moderni per progetti software.
+
+## Accettazione
+
+La versione definitiva dovrà definire in modo esplicito:
+
+- come viene manifestata l'accettazione;
+- come viene registrata l'accettazione;
+- quali informazioni vengono conservate;
+- come vengono gestiti contributori individuali e organizzazioni.
 
 ## Da definire prima dell'attivazione
 

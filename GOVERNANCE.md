@@ -32,6 +32,20 @@ tecniche o organizzative.
 La qualifica di maintainer non modifica automaticamente i diritti d'autore
 sui contributi.
 
+## Contribuzioni esterne
+
+Il progetto intende utilizzare un Contributor License Agreement per i
+contributi incorporati nell'upstream ufficiale.
+
+Finché il CLA non sarà formalmente attivato, contributi e Pull Request esterne
+possono essere discusse e revisionate ma non vengono incorporate
+nell'upstream ufficiale.
+
+Vedi:
+
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [CLA.md](CLA.md)
+
 ## Fork
 
 Questa governance non limita il diritto di creare fork di LudoX nei termini
@@ -50,3 +64,23 @@ adottare in futuro licenze aggiuntive o alternative per l'upstream ufficiale.
 
 Eventuali decisioni future non revocano i diritti già concessi sulle versioni
 precedentemente distribuite sotto AGPL.
+
+## Documentazione operativa
+
+Il funzionamento di LudoX comprende sia il software sia una procedura fisica
+per la gestione anonima dei documenti durante i prestiti.
+
+La procedura operativa ufficiale è descritta in:
+
+[OPERATION.md](OPERATION.md)
+
+Modifiche che cambiano in modo significativo il flusso di prestito dovrebbero
+mantenere aggiornata anche questa documentazione.
+
+## Release ufficiali
+
+Le release ufficiali sono pubblicate dall'upstream LudoX secondo le decisioni
+del Project Steward o dei maintainer da lui delegati.
+
+La numerazione delle versioni e lo stato di sviluppo sono indicati dal progetto
+nei relativi file e nelle release pubblicate.
