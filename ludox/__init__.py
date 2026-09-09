@@ -1,0 +1,1 @@
+"""LudoX application package."""

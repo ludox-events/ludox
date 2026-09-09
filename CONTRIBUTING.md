@@ -121,3 +121,46 @@ LudoX è distribuito sotto **AGPL-3.0-only**.
 
 Il CLA non elimina né riduce i diritti concessi agli utenti dalla licenza
 pubblica sulle versioni di LudoX distribuite sotto AGPL.
+
+## Struttura del codice
+
+LudoX mantiene una struttura modulare volutamente semplice:
+
+- `app.py` avvia l'applicazione;
+- `ludox/database.py` contiene schema SQLite e funzioni dati;
+- `ludox/config.py` gestisce `config.ini` e il primo avvio;
+- `ludox/i18n.py` gestisce la localizzazione;
+- `ludox/ui.py` contiene l'interfaccia grafica;
+- `ludox/locales/` contiene i cataloghi delle traduzioni.
+
+In questa fase non è necessario suddividere ulteriormente l'interfaccia salvo
+che una modifica ne tragga un vantaggio concreto e verificabile.
+
+## Testi dell'interfaccia e traduzioni
+
+I nuovi testi visibili all'utente non dovrebbero essere inseriti come stringhe
+non traducibili.
+
+Per il nuovo codice è preferibile utilizzare una chiave semantica:
+
+```python
+tr("settings.save")
+```
+
+e aggiungere la stessa chiave sia a `ludox/locales/it.json` sia a
+`ludox/locales/en.json`.
+
+L'italiano è la lingua di fallback. Una Pull Request che aggiunge o modifica
+stringhe dell'interfaccia dovrebbe mantenere allineati entrambi i cataloghi.
+
+## Configurazione locale
+
+`config.ini` è generato localmente e non deve essere incluso nei commit.
+Anche `ludox.db` contiene dati locali e resta escluso dal repository.
+
+Se viene introdotto un nuovo parametro di configurazione, deve essere:
+
+- dotato di un valore predefinito sensato;
+- validato prima dell'uso;
+- gestito nel primo avvio se necessario;
+- documentato nel README.

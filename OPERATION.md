@@ -298,3 +298,22 @@ Gioco rientra
 → conferma in LudoX
 → token N libero
 ```
+
+## Numero di token configurato
+
+Il numero massimo di token impostato in LudoX deve corrispondere alle posizioni
+fisiche effettivamente disponibili nella postazione.
+
+Esempio:
+
+```text
+max_tokens = 100
+
+Token disponibili:      1–100
+Posizioni nello schedario: 1–100
+```
+
+Se si modifica questo valore dal Backoffice, verificare che siano presenti sia
+i token fisici sia le corrispondenti posizioni nel portalistini A6 o nel
+porta-carte. LudoX impedisce di ridurre il numero massimo sotto il numero di un
+token attualmente occupato.
