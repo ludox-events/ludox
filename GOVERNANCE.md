@@ -8,6 +8,9 @@ La licenza AGPL stabilisce i diritti di chi riceve il software.
 La governance stabilisce invece come una modifica entra a far parte
 dell'upstream ufficiale di LudoX.
 
+L'upstream ufficiale è attualmente ospitato nell'organizzazione GitHub
+`ludox-events`.
+
 ## Project Steward
 
 Il Project Steward iniziale è:
@@ -34,17 +37,35 @@ sui contributi.
 
 ## Contribuzioni esterne
 
-Il progetto intende utilizzare un Contributor License Agreement per i
-contributi incorporati nell'upstream ufficiale.
+I contributi esterni destinati all'upstream ufficiale sono soggetti al
+[LudoX Contributor License Agreement v1.0](CLA.md).
 
-Finché il CLA non sarà formalmente attivato, contributi e Pull Request esterne
-possono essere discusse e revisionate ma non vengono incorporate
-nell'upstream ufficiale.
+Il CLA consente al Contributor di mantenere il copyright sul proprio materiale
+originale e concede al Project Steward i diritti necessari per:
 
-Vedi:
+- incorporare il Contribution;
+- modificarlo;
+- distribuirlo;
+- sublicenziarlo;
+- mantenere la distribuzione AGPL;
+- adottare in futuro licenze differenti o aggiuntive per l'upstream ufficiale.
 
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [CLA.md](CLA.md)
+Nessun Contribution esterno viene incorporato nell'upstream ufficiale senza
+la verifica dell'accettazione del CLA.
+
+Le modalità operative sono descritte in
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Successione del Project Steward
+
+La stewardship dell'upstream ufficiale può essere trasferita in futuro a una
+persona fisica o giuridica.
+
+Nei limiti previsti dal CLA, i diritti concessi dai Contributor possono essere
+trasferiti insieme alla gestione ufficiale del Progetto.
+
+Ogni successione deve essere comunicata pubblicamente attraverso i canali
+ufficiali di LudoX.
 
 ## Fork
 
@@ -59,8 +80,8 @@ La distribuzione open source ufficiale utilizza:
 
 **AGPL-3.0-only**
 
-La struttura dei contributi è pensata per non impedire al Project Steward di
-adottare in futuro licenze aggiuntive o alternative per l'upstream ufficiale.
+Il CLA è strutturato in modo da non impedire al Project Steward di adottare in
+futuro licenze aggiuntive o alternative per l'upstream ufficiale.
 
 Eventuali decisioni future non revocano i diritti già concessi sulle versioni
 precedentemente distribuite sotto AGPL.

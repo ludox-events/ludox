@@ -6,9 +6,10 @@ Copyright © 2026 Matteo Sassi
 LudoX is distributed under the GNU Affero General Public License,
 version 3 only (AGPL-3.0-only). See LICENSE.
 
-External contributors retain copyright in their own contributions.
-Contributions accepted into the official upstream project may additionally
-be subject to the LudoX Contributor License Agreement once that agreement
-has been finalized and activated.
+External contributors retain copyright in their own original contributions.
+
+Contributions incorporated into the official LudoX upstream are additionally
+subject to the LudoX Contributor License Agreement v1.0, effective
+2026-09-09. See CLA.md and CONTRIBUTING.md.
 
 Third-party dependencies remain subject to their respective licenses.

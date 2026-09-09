@@ -2,8 +2,8 @@
 
 Grazie per l'interesse verso LudoX.
 
-Il progetto è ancora in fase alpha e, in questa prima fase, è consigliato
-aprire una Issue prima di sviluppare modifiche importanti.
+Il progetto è in fase alpha. Prima di sviluppare modifiche importanti è
+consigliato aprire una Issue e discuterne l'impostazione.
 
 ## Principi da preservare
 
@@ -19,42 +19,70 @@ esplicite, questi principi:
 - coerenza con il flusso operativo descritto in
   [OPERATION.md](OPERATION.md).
 
-## Workflow previsto
+## Workflow
 
 1. Apri una Issue o discuti la modifica.
 2. Crea un fork.
 3. Crea un branch dedicato.
 4. Implementa e prova la modifica.
 5. Apri una Pull Request.
+6. Se è il tuo primo Contribution, accetta il CLA come descritto sotto.
+7. Attendi review e decisione del maintainer.
 
-## Stato attuale delle contribuzioni esterne
+## Contributor License Agreement
 
-LudoX intende adottare un Contributor License Agreement per i contributi
-incorporati nell'upstream ufficiale.
+I Contribution incorporati nell'upstream ufficiale di LudoX sono soggetti al
+[LudoX Contributor License Agreement v1.0](CLA.md).
 
-**Il CLA presente oggi in `CLA.md` è una bozza e NON è ancora attivo.**
+Il Contributor mantiene il copyright sul proprio materiale originale, ma
+concede al Project Steward i diritti descritti nel CLA, inclusa la possibilità
+di sublicenziare il Contribution e di distribuire in futuro l'upstream
+ufficiale anche sotto licenze differenti o aggiuntive.
 
-Fino all'attivazione di un CLA definitivo:
+### Come accettare il CLA
 
-- Issue, proposte e Pull Request esterne sono benvenute;
-- il codice può essere discusso e revisionato pubblicamente;
-- i contributi esterni non vengono incorporati nell'upstream ufficiale.
+Alla prima Pull Request destinata all'upstream ufficiale, pubblica un commento
+con una delle seguenti dichiarazioni.
 
-Questa limitazione temporanea serve a evitare che l'accettazione di contributi
-avvenga prima che siano definiti in modo corretto i diritti necessari alla
-governance e alla strategia di licensing del progetto.
+**Italiano**
 
-## CLA
+> Ho letto e accetto il LudoX Contributor License Agreement v1.0, in vigore dal
+> 9 settembre 2026, per questo Contribution e per i futuri Contribution che
+> invierò intenzionalmente all'upstream ufficiale di LudoX tramite questo
+> account GitHub, salvo che una versione successiva del CLA richieda una nuova
+> accettazione.
 
-Prima di iniziare ad accettare contributi esterni nell'upstream ufficiale, il
-CLA dovrà essere:
+**English**
 
-- finalizzato;
-- sottoposto a revisione legale;
-- accompagnato da un meccanismo chiaro di accettazione.
+> I have read and agree to the LudoX Contributor License Agreement v1.0,
+> effective 2026-09-09, for this Contribution and for future
+> Contributions that I intentionally submit to the official LudoX upstream
+> through this GitHub account, unless a later CLA version requires renewed
+> acceptance.
 
-La mancata sottoscrizione del futuro CLA non limiterà i diritti di utilizzo,
-fork, modifica e redistribuzione concessi dalla licenza pubblica AGPL.
+La dichiarazione deve essere pubblicata dall'account GitHub che invia il
+Contribution e deve restare visibile nella cronologia della Pull Request.
+
+Una volta accettata la versione 1.0, non è necessario ripetere la dichiarazione
+per ogni PR successiva dallo stesso account, salvo richiesta di nuova
+accettazione per una versione successiva del CLA.
+
+**Una Pull Request esterna non viene incorporata nell'upstream ufficiale finché
+l'accettazione del CLA non è verificata.**
+
+## Provenienza del codice
+
+Non inviare codice o altri materiali che non hai il diritto di contribuire.
+
+Se una modifica include materiale di terzi:
+
+- identifica chiaramente la fonte;
+- indica la licenza applicabile;
+- verifica che il materiale sia compatibile con il Progetto e con i diritti
+  concessi dal CLA.
+
+Se contribuisci nell'ambito di un rapporto di lavoro o per conto di
+un'organizzazione, assicurati di avere le autorizzazioni necessarie.
 
 ## Test delle modifiche
 
@@ -87,12 +115,9 @@ Le modifiche dovrebbero essere:
 - facilmente verificabili;
 - compatibili con il funzionamento offline.
 
-## Licenza
-
-Contribuendo a discussioni, Issue o Pull Request non si modifica la licenza
-pubblica del progetto.
+## Licenza pubblica del progetto
 
 LudoX è distribuito sotto **AGPL-3.0-only**.
 
-Per i contributi destinati all'upstream ufficiale si applicherà inoltre il CLA
-quando sarà formalmente attivato.
+Il CLA non elimina né riduce i diritti concessi agli utenti dalla licenza
+pubblica sulle versioni di LudoX distribuite sotto AGPL.

@@ -8,7 +8,7 @@ biblioteche ed eventi dedicati al gioco.
 La prima versione nasce per gestire in modo semplice e offline il prestito
 di giochi durante eventi e serate ludiche.
 
-> **Stato del progetto:** alpha iniziale. Il software è ancora in sviluppo.
+> **Stato del progetto:** alpha. Il software è ancora in sviluppo.
 
 ## Funzioni attuali
 
@@ -78,7 +78,8 @@ gioco.
 Per organizzare fisicamente i documenti è possibile utilizzare:
 
 - un portalistini formato A6 con posizioni numerate;
-- un raccoglitore porta-carte in stile Magic / trading card, con tasche numerate.
+- un raccoglitore porta-carte in stile Magic / trading card, con tasche
+  numerate.
 
 Vedi [OPERATION.md](OPERATION.md) per la procedura completa.
 
@@ -96,71 +97,30 @@ Le dipendenze Python principali sono elencate in
 
 ### Windows
 
-Clona il repository:
-
 ```bat
 git clone https://github.com/ludox-events/ludox.git
 cd ludox
-```
-
-Crea l'ambiente virtuale:
-
-```bat
 python -m venv venv
-```
-
-Con **Command Prompt**:
-
-```bat
 venv\Scripts\activate.bat
-```
-
-Installa le dipendenze:
-
-```bat
 python -m pip install --upgrade pip
 pip install -r requirements.txt
-```
-
-Avvia LudoX:
-
-```bat
 python app.py
 ```
 
 ### Ubuntu / Debian / Linux Mint
 
-Installa i pacchetti di sistema necessari:
-
 ```bash
 sudo apt update
 sudo apt install python3 python3-tk python3-venv python3-pip
-```
 
-Clona il repository:
-
-```bash
 git clone https://github.com/ludox-events/ludox.git
 cd ludox
-```
 
-Crea e attiva l'ambiente virtuale:
-
-```bash
 python3 -m venv venv
 source venv/bin/activate
-```
 
-Installa le dipendenze:
-
-```bash
 python -m pip install --upgrade pip
 pip install -r requirements.txt
-```
-
-Avvia LudoX:
-
-```bash
 python app.py
 ```
 
@@ -197,9 +157,7 @@ LudoX è pensato per essere utilizzato insieme a:
 - documenti custoditi fisicamente dietro la postazione di accoglienza.
 
 La procedura dettagliata per nuovo prestito, cambio gioco e restituzione finale
-è descritta in:
-
-[OPERATION.md](OPERATION.md)
+è descritta in [OPERATION.md](OPERATION.md).
 
 ## Licenza
 
@@ -218,18 +176,17 @@ nel rispetto dei termini AGPL.
 
 ## Contributi
 
-LudoX vuole accogliere contributi dalla comunità.
+LudoX accoglie contributi dalla comunità.
 
-Il progetto intende adottare un **Contributor License Agreement (CLA)** per i
-contributi destinati all'upstream ufficiale, in modo da mantenere nel tempo la
-possibilità di distribuire l'intero progetto anche con licenze aggiuntive o
-differenti.
+I contributi destinati all'upstream ufficiale sono soggetti al
+[LudoX Contributor License Agreement v1.0](CLA.md).
 
-Il file [CLA.md](CLA.md) è attualmente una **bozza non attiva**.
+Il Contributor mantiene il copyright sul proprio materiale originale e concede
+al Project Steward i diritti descritti nel CLA.
 
-**Fino all'attivazione del CLA, contributi e Pull Request esterne possono
-essere discussi e revisionati, ma non vengono incorporati nell'upstream
-ufficiale.**
+Prima del primo merge, il Contributor deve accettare il CLA attraverso la
+propria Pull Request secondo la procedura descritta in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 Leggi anche:
 
