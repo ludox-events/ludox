@@ -1031,31 +1031,162 @@ class PrestitiApp(ttk.Window):
         ).pack(pady=4)
 
         def cambia(nuovo_gioco_id):
-            disponibili, _ = disponibilita_gioco(
-                nuovo_gioco_id
-            )
+            """
+            Registra il cambio in un'unica transazione atomica.
 
-            if disponibili <= 0:
-                messagebox.showwarning(
-                    "Non disponibile",
-                    "Non ci sono copie disponibili."
-                )
-                return
+            Prima di modificare il database ricontrolla che:
+            - il documento sia ancora aperto;
+            - il prestito visualizzato sia ancora quello aperto;
+            - il nuovo gioco esista, sia attivo e abbia almeno una copia;
+            - il nuovo gioco sia ancora disponibile.
+
+            BEGIN IMMEDIATE serializza le operazioni di scrittura SQLite:
+            evita che due istanze leggano contemporaneamente la stessa
+            disponibilità e registrino entrambe l'ultima copia disponibile.
+            """
+
+            class CambioNonValido(Exception):
+                pass
+
+            class GiocoNonDisponibile(Exception):
+                pass
 
             timestamp = now_iso()
 
             try:
                 with get_db() as db:
-                    db.execute("""
+                    # Acquisisce subito il lock di scrittura.
+                    # Tutti i controlli successivi e le due scritture
+                    # fanno quindi parte della stessa transazione.
+                    db.execute(
+                        "BEGIN IMMEDIATE"
+                    )
+
+                    # 1. Il documento deve essere ancora aperto
+                    #    e associato allo stesso token.
+                    documento_corrente = db.execute("""
+                        SELECT id, token
+                        FROM documenti
+                        WHERE id = ?
+                          AND token = ?
+                          AND uscita IS NULL
+                    """, (
+                        documento["id"],
+                        token
+                    )).fetchone()
+
+                    if not documento_corrente:
+                        raise CambioNonValido(
+                            "Il documento non risulta più aperto. "
+                            "Il cambio non è stato registrato."
+                        )
+
+                    # 2. Il prestito che stiamo chiudendo deve essere
+                    #    ancora esattamente quello aperto per il documento.
+                    prestito_corrente = db.execute("""
+                        SELECT
+                            p.id,
+                            p.gioco_id,
+                            g.nome AS gioco_nome
+                        FROM prestiti p
+                        JOIN giochi g
+                          ON g.id = p.gioco_id
+                        WHERE p.id = ?
+                          AND p.documento_id = ?
+                          AND p.rientro IS NULL
+                    """, (
+                        prestito["id"],
+                        documento["id"]
+                    )).fetchone()
+
+                    if not prestito_corrente:
+                        raise CambioNonValido(
+                            "Il prestito è cambiato o è già stato chiuso. "
+                            "Il cambio non è stato registrato."
+                        )
+
+                    # Ulteriore protezione: il gioco corrente deve essere
+                    # lo stesso che era visualizzato quando è stata aperta
+                    # la schermata di cambio.
+                    if (
+                        prestito_corrente["gioco_id"]
+                        != prestito["gioco_id"]
+                    ):
+                        raise CambioNonValido(
+                            "Il gioco associato al token è cambiato. "
+                            "Riapri la procedura di cambio."
+                        )
+
+                    # 3. Il nuovo titolo deve esistere ed essere ancora attivo.
+                    nuovo = db.execute("""
+                        SELECT id, nome, attivo
+                        FROM giochi
+                        WHERE id = ?
+                    """, (
+                        nuovo_gioco_id,
+                    )).fetchone()
+
+                    if (
+                        not nuovo
+                        or nuovo["attivo"] != 1
+                    ):
+                        raise CambioNonValido(
+                            "Il gioco selezionato non è più disponibile "
+                            "nel catalogo attivo."
+                        )
+
+                    # 4. Ricontrollo della disponibilità DENTRO
+                    #    la stessa transazione.
+                    copie_totali = db.execute("""
+                        SELECT COALESCE(SUM(quantita), 0)
+                        FROM copie_gioco
+                        WHERE gioco_id = ?
+                    """, (
+                        nuovo_gioco_id,
+                    )).fetchone()[0]
+
+                    copie_fuori = db.execute("""
+                        SELECT COUNT(*)
+                        FROM prestiti
+                        WHERE gioco_id = ?
+                          AND rientro IS NULL
+                    """, (
+                        nuovo_gioco_id,
+                    )).fetchone()[0]
+
+                    disponibili = (
+                        copie_totali
+                        - copie_fuori
+                    )
+
+                    if disponibili <= 0:
+                        raise GiocoNonDisponibile(
+                            "Nel frattempo l'ultima copia disponibile "
+                            "è stata assegnata. Scegli un altro gioco."
+                        )
+
+                    # 5. Chiude il vecchio prestito.
+                    cursore = db.execute("""
                         UPDATE prestiti
                         SET rientro = ?
                         WHERE id = ?
+                          AND documento_id = ?
                           AND rientro IS NULL
                     """, (
                         timestamp,
-                        prestito["id"]
+                        prestito["id"],
+                        documento["id"]
                     ))
 
+                    # Se nessuna riga è stata modificata, non procediamo
+                    # mai con l'apertura del nuovo prestito.
+                    if cursore.rowcount != 1:
+                        raise CambioNonValido(
+                            "Non è stato possibile chiudere il prestito "
+                            "precedente. Nessuna modifica è stata salvata."
+                        )
+
+                    # 6. Apre il nuovo prestito nello stesso istante.
                     db.execute("""
                         INSERT INTO prestiti (
                             documento_id,
@@ -1069,18 +1200,41 @@ class PrestitiApp(ttk.Window):
                         timestamp
                     ))
 
-                    nuovo = db.execute("""
-                        SELECT nome
-                        FROM giochi
-                        WHERE id = ?
-                    """, (
-                        nuovo_gioco_id,
-                    )).fetchone()
+                    # Il blocco 'with' esegue il COMMIT solo se
+                    # tutte le operazioni sopra sono andate a buon fine.
+                    # Qualsiasi eccezione provoca il ROLLBACK completo.
+
+            except GiocoNonDisponibile as e:
+                messagebox.showwarning(
+                    "Gioco non disponibile",
+                    str(e)
+                )
+
+                # Il prestito corrente non è stato modificato:
+                # ricarichiamo il selettore per aggiornare le disponibilità.
+                self.show_cambio_gioco(
+                    token,
+                    documento,
+                    prestito
+                )
+                return
+
+            except CambioNonValido as e:
+                messagebox.showwarning(
+                    "Cambio non registrato",
+                    str(e)
+                )
+
+                # Lo stato del token è cambiato: ripartiamo dalla lettura
+                # del token invece di lasciare a schermo dati ormai obsoleti.
+                self.show_cambio_token()
+                return
 
             except sqlite3.Error as e:
                 messagebox.showerror(
                     "Errore database",
-                    str(e)
+                    "Il cambio non è stato registrato.\n\n"
+                    f"Dettaglio: {e}"
                 )
                 return
 
