@@ -1,0 +1,72 @@
+# Documentazione LudoX
+
+Questa cartella raccoglie la documentazione tecnica e funzionale di LudoX.
+
+L'obiettivo è separare chiaramente:
+
+- ciò che LudoX **è e deve garantire**;
+- le decisioni architetturali già approvate;
+- le parti ancora da definire;
+- i dettagli implementativi del database e dei singoli moduli.
+
+Le GitHub Issues conservano la roadmap, le discussioni e la storia delle decisioni. I documenti in `docs/` rappresentano invece la descrizione corrente del progetto quando una decisione è sufficientemente consolidata.
+
+## Documenti
+
+| Documento | Stato | Contenuto |
+| --- | --- | --- |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Draft consolidato | Architettura generale, contesti client, offline-first e futura evoluzione client/server |
+| [ORGANIZATIONS.md](ORGANIZATIONS.md) | Draft consolidato | Modello Organization e selezione dell'organizzazione attiva |
+| [EVENTS.md](EVENTS.md) | Draft consolidato | Modello Event, stati, selezione e ciclo di vita |
+| [MODULES.md](MODULES.md) | Draft | Regole comuni dei moduli event-specific |
+| [LENDING.md](LENDING.md) | Draft consolidato | Modello funzionale del modulo Prestiti |
+| [DATABASE.md](DATABASE.md) | Draft iniziale | Principi del database e base per lo schema v1 |
+| [OPERATION.md](OPERATION.md) | Corrente | Procedura operativa della modalità token attualmente disponibile |
+
+Gli stati indicano la maturità della documentazione, non necessariamente lo stato di implementazione nel software.
+
+## Marker per decisioni e attività aperte
+
+LudoX utilizza quattro marker ricercabili a livello di progetto:
+
+- `TBD` — decisione progettuale ancora da prendere;
+- `QUESTION` — domanda aperta da discutere;
+- `TODO` — attività già definita ma ancora da eseguire;
+- `FIXME` — comportamento o documentazione noti come errati e da correggere.
+
+Nei file Markdown i marker vengono scritti come blockquote, ad esempio:
+
+```text
+> TBD: Definire il comportamento in caso di conflitto durante l'importazione.
+```
+
+Quando la decisione viene presa, il marker deve essere rimosso e il contenuto trasformato in documentazione normale.
+
+### Visual Studio Code
+
+Il repository può usare l'estensione **Better Todo Tree** per raccogliere i marker in una vista unica del workspace.
+
+La configurazione proposta è inclusa in:
+
+- `.vscode/extensions.json` — suggerisce l'estensione;
+- `.vscode/settings.json` — abilita `TODO`, `TBD`, `FIXME` e `QUESTION`, compreso il formato blockquote Markdown.
+
+È sempre possibile usare anche la ricerca globale di VS Code con una regex equivalente, per esempio:
+
+```regex
+\b(TBD|TODO|FIXME|QUESTION):
+```
+
+## Regola di manutenzione
+
+Una decisione non deve essere duplicata in più documenti se non necessario. Il documento più specifico è la fonte principale e gli altri documenti dovrebbero rimandare ad esso.
+
+In particolare:
+
+- architettura generale → `ARCHITECTURE.md`;
+- organizzazioni → `ORGANIZATIONS.md`;
+- eventi → `EVENTS.md`;
+- comportamento comune dei moduli → `MODULES.md`;
+- prestiti → `LENDING.md`;
+- schema fisico e migrazioni → `DATABASE.md`;
+- procedura per chi opera al banco → `OPERATION.md`.
