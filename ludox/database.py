@@ -8,6 +8,26 @@ from datetime import datetime
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = PROJECT_DIR / "ludox.db"
 
+
+def set_db_path(path):
+    """Select the SQLite database used by all data functions."""
+    global DB_PATH
+    candidate = Path(path).expanduser()
+    if not candidate.is_absolute():
+        candidate = PROJECT_DIR / candidate
+    candidate = candidate.resolve(strict=False)
+    if not candidate.parent.exists():
+        raise ValueError(f"Database folder does not exist: {candidate.parent}")
+    if candidate.exists() and candidate.is_dir():
+        raise ValueError(f"Database path is a directory: {candidate}")
+    DB_PATH = candidate
+    return DB_PATH
+
+
+def get_db_path():
+    return DB_PATH
+
+
 def get_db():
     db = sqlite3.connect(DB_PATH)
     db.row_factory = sqlite3.Row

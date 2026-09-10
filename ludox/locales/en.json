@@ -307,5 +307,22 @@
   "setup.invalid_msg": "Check the language and enter a number of tokens greater than zero.",
   "stats.chart_range_tpl": "{start} → {end} • {minutes}-min buckets",
   "usage.summary_zero_tpl": "Period: {start} → {end}  •  Owner: {owner}  •  Titles shown: {titles}  •  Sort: {sort} ({arrow})  •  Zero-time titles excluded",
-  "owner_games.summary_tpl": "{name}  •  Titles: {titles}  •  Copies: {copies}"
+  "owner_games.summary_tpl": "{name}  •  Titles: {titles}  •  Copies: {copies}",
+  "settings.database": "Database",
+  "settings.database_help": "Type a name (for example AMIGO2026.db), choose where to create a new database, or open an existing LudoX database. If you change database, LudoX switches immediately to the selected file.",
+  "settings.database_new": "NEW…",
+  "settings.database_open": "OPEN EXISTING…",
+  "settings.database_new_title": "New LudoX database",
+  "settings.database_open_title": "Open LudoX database",
+  "settings.sqlite_files": "SQLite databases",
+  "settings.all_files": "All files",
+  "settings.invalid_database": "Invalid database",
+  "settings.invalid_database_msg_tpl": "Select a valid database name or path.\n\nDetail: {error}",
+  "settings.database_busy": "Database change not allowed",
+  "settings.database_busy_msg": "You cannot change database while documents/loans are still open in the current database. Close them before changing file.",
+  "settings.target_active_token_limit_tpl": "The selected database contains at least token {token} still in use. Configure at least {token} tokens before opening it.",
+  "settings.database_switch_failed_tpl": "The selected database could not be opened or created.\n\nDetail: {error}",
+  "settings.saved_database_msg": "Settings have been saved and the selected database is now active.",
+  "settings.save_failed": "Save failed",
+  "settings.save_failed_tpl": "The configuration could not be saved.\n\nDetail: {error}"
 }

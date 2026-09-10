@@ -307,10 +307,10 @@ fisiche effettivamente disponibili nella postazione.
 Esempio:
 
 ```text
-max_tokens = 100
+max_tokens = 50
 
-Token disponibili:      1–100
-Posizioni nello schedario: 1–100
+Token disponibili:         1–50
+Posizioni nello schedario: 1–50
 ```
 
 Se si modifica questo valore dal Backoffice, verificare che siano presenti sia

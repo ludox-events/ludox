@@ -128,7 +128,7 @@ LudoX mantiene una struttura modulare volutamente semplice:
 
 - `app.py` avvia l'applicazione;
 - `ludox/database.py` contiene schema SQLite e funzioni dati;
-- `ludox/config.py` gestisce `config.ini` e il primo avvio;
+- `ludox/config.py` gestisce `config.ini`, il primo avvio e la scelta del database;
 - `ludox/i18n.py` gestisce la localizzazione;
 - `ludox/ui.py` contiene l'interfaccia grafica;
 - `ludox/locales/` contiene i cataloghi delle traduzioni.

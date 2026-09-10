@@ -5,6 +5,7 @@ import csv
 import sqlite3
 from datetime import datetime, timedelta
 from statistics import median, pstdev
+from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox, filedialog
 
@@ -15,7 +16,10 @@ from ttkbootstrap.widgets import DateEntry
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-from .config import AppConfig, save_config
+from .config import (
+    AppConfig, save_config, normalize_database_setting,
+    database_setting_from_path, resolve_database_path, PROJECT_DIR,
+)
 from .database import (
     get_db, now_iso, formatta_data_ora, conta_prestiti, conta_documenti,
     conta_documenti_attivi, token_libero, documento_aperto_da_token,
@@ -23,7 +27,8 @@ from .database import (
     disponibilita_gioco, cerca_giochi, elenco_proprietari,
     proprietario_per_id, totale_copie_proprietario, gioco_per_id,
     elenco_giochi_backoffice, copie_per_proprietario_del_gioco,
-    riepilogo_proprietari_gioco, massimo_token_aperto,
+    riepilogo_proprietari_gioco, massimo_token_aperto, init_db,
+    set_db_path, get_db_path,
 )
 from .i18n import tr, set_language, get_language, language_display_names
 
@@ -6071,9 +6076,7 @@ class PrestitiApp(ttk.Window):
 
     # ========================================================
     # BACKOFFICE - IMPOSTAZIONI
-    # ========================================================
-
-    def show_impostazioni(self):
+    # =================================    def show_impostazioni(self):
         frame = self.clear()
 
         self.pulsante_indietro(
@@ -6095,8 +6098,8 @@ class PrestitiApp(ttk.Window):
         )
         panel.pack(
             fill=X,
-            padx=180,
-            pady=(20, 25)
+            padx=120,
+            pady=(10, 20)
         )
 
         ttk.Label(
@@ -6123,7 +6126,7 @@ class PrestitiApp(ttk.Window):
             values=list(display_to_code.keys()),
             state="readonly",
             width=28
-        ).pack(anchor=W, pady=(0, 20), ipady=3)
+        ).pack(anchor=W, pady=(0, 18), ipady=3)
 
         ttk.Label(
             panel,
@@ -6145,7 +6148,77 @@ class PrestitiApp(ttk.Window):
             panel,
             text=tr("settings.tokens_help"),
             bootstyle="secondary"
-        ).pack(anchor=W, pady=(0, 22))
+        ).pack(anchor=W, pady=(0, 18))
+
+        ttk.Label(
+            panel,
+            text=tr("settings.database"),
+            font=("Arial", 12, "bold")
+        ).pack(anchor=W, pady=(0, 5))
+
+        database_var = tk.StringVar(value=self.config.database)
+        database_row = ttk.Frame(panel)
+        database_row.pack(fill=X, pady=(0, 8))
+
+        ttk.Entry(
+            database_row,
+            textvariable=database_var
+        ).pack(side=LEFT, fill=X, expand=YES, ipady=3)
+
+        def scegli_nuovo_database():
+            selected = filedialog.asksaveasfilename(
+                parent=self,
+                title=tr("settings.database_new_title"),
+                initialdir=str(PROJECT_DIR),
+                initialfile=Path(
+                    database_var.get().strip() or "ludox.db"
+                ).name,
+                defaultextension=".db",
+                filetypes=[
+                    (tr("settings.sqlite_files"), "*.db *.sqlite *.sqlite3"),
+                    (tr("settings.all_files"), "*.*"),
+                ],
+            )
+            if selected:
+                database_var.set(database_setting_from_path(selected))
+
+        def scegli_database_esistente():
+            selected = filedialog.askopenfilename(
+                parent=self,
+                title=tr("settings.database_open_title"),
+                initialdir=str(PROJECT_DIR),
+                filetypes=[
+                    (tr("settings.sqlite_files"), "*.db *.sqlite *.sqlite3"),
+                    (tr("settings.all_files"), "*.*"),
+                ],
+            )
+            if selected:
+                database_var.set(database_setting_from_path(selected))
+
+        database_buttons = ttk.Frame(panel)
+        database_buttons.pack(fill=X, pady=(0, 4))
+
+        ttk.Button(
+            database_buttons,
+            text=tr("settings.database_new"),
+            command=scegli_nuovo_database,
+            bootstyle="secondary-outline"
+        ).pack(side=LEFT, padx=(0, 8))
+
+        ttk.Button(
+            database_buttons,
+            text=tr("settings.database_open"),
+            command=scegli_database_esistente,
+            bootstyle="secondary-outline"
+        ).pack(side=LEFT)
+
+        ttk.Label(
+            panel,
+            text=tr("settings.database_help"),
+            bootstyle="secondary",
+            wraplength=720,
+            justify=LEFT
+        ).pack(anchor=W, pady=(0, 20))
 
         def salva():
             try:
@@ -6160,33 +6233,101 @@ class PrestitiApp(ttk.Window):
                 )
                 return
 
-            highest_open = massimo_token_aperto()
-            if highest_open > max_tokens:
+            try:
+                database = normalize_database_setting(database_var.get())
+                target_path = resolve_database_path(database)
+            except (OSError, ValueError) as exc:
                 messagebox.showwarning(
-                    tr("settings.invalid_tokens"),
-                    tr(
-                        "settings.active_token_limit_tpl",
-                        token=highest_open
-                    )
+                    tr("settings.invalid_database"),
+                    tr("settings.invalid_database_msg_tpl", error=str(exc))
                 )
                 return
+
+            current_path = get_db_path().resolve(strict=False)
+            database_changed = target_path != current_path
+
+            # Avoid abandoning an event database while documents are still
+            # physically deposited in it.
+            if database_changed and conta_documenti_attivi() > 0:
+                messagebox.showwarning(
+                    tr("settings.database_busy"),
+                    tr("settings.database_busy_msg")
+                )
+                return
+
+            if not database_changed:
+                highest_open = massimo_token_aperto()
+                if highest_open > max_tokens:
+                    messagebox.showwarning(
+                        tr("settings.invalid_tokens"),
+                        tr(
+                            "settings.active_token_limit_tpl",
+                            token=highest_open
+                        )
+                    )
+                    return
 
             language = display_to_code.get(
                 language_var.get(),
                 "it"
             )
 
-            self.config = AppConfig(
+            old_path = current_path
+            switched = False
+            if database_changed:
+                try:
+                    set_db_path(target_path)
+                    switched = True
+                    init_db(default_owner_name=tr("owner.default"))
+                    highest_open = massimo_token_aperto()
+                    if highest_open > max_tokens:
+                        set_db_path(old_path)
+                        switched = False
+                        messagebox.showwarning(
+                            tr("settings.invalid_tokens"),
+                            tr(
+                                "settings.target_active_token_limit_tpl",
+                                token=highest_open
+                            )
+                        )
+                        return
+                except (sqlite3.Error, OSError, ValueError) as exc:
+                    set_db_path(old_path)
+                    switched = False
+                    messagebox.showwarning(
+                        tr("settings.invalid_database"),
+                        tr("settings.database_switch_failed_tpl", error=str(exc))
+                    )
+                    return
+
+            candidate = AppConfig(
                 language=language,
-                max_tokens=max_tokens
+                max_tokens=max_tokens,
+                database=database
             )
-            save_config(self.config)
+
+            try:
+                save_config(candidate)
+            except (OSError, ValueError) as exc:
+                if switched:
+                    set_db_path(old_path)
+                messagebox.showwarning(
+                    tr("settings.save_failed"),
+                    tr("settings.save_failed_tpl", error=str(exc))
+                )
+                return
+
+            self.config = candidate
             set_language(language)
             self.title(tr("app.title"))
 
             messagebox.showinfo(
                 tr("settings.saved"),
-                tr("settings.saved_msg")
+                tr(
+                    "settings.saved_database_msg"
+                    if database_changed
+                    else "settings.saved_msg"
+                )
             )
             self.show_backoffice()
 

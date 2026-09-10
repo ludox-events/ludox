@@ -24,7 +24,7 @@ giochi durante eventi, serate ludiche, biblioteche e ludoteche.
 ```text
 app.py                  bootstrap dell'applicazione
 config.ini              configurazione locale, creato al primo avvio
-ludox.db                database locale, creato al primo avvio
+ludox.db                nome database predefinito; può essere sostituito/selezionato
 
 ludox/
 ├── database.py         accesso SQLite e funzioni dati
@@ -36,7 +36,7 @@ ludox/
     └── en.json         traduzioni inglesi
 ```
 
-`config.ini` e `ludox.db` sono dati locali e non vengono versionati.
+`config.ini` e i database SQLite locali (`*.db`, `*.sqlite`, `*.sqlite3`) non vengono versionati.
 
 ## Primo avvio
 
@@ -46,19 +46,27 @@ di avviare l'interfaccia principale.
 Vengono richiesti:
 
 - lingua dell'interfaccia, con **Italiano** come valore iniziale;
-- numero massimo di token/posizioni fisiche, con **100** come valore suggerito.
+- numero massimo di token/posizioni fisiche, con **50** come valore suggerito;
+- database SQLite da utilizzare: puoi digitare un nome, scegliere dove crearne uno nuovo oppure selezionare un database esistente dal disco.
 
 Il file generato ha questa forma:
 
 ```ini
 [general]
 language = it
-max_tokens = 100
+max_tokens = 50
+database = ludox.db
 ```
 
 Le impostazioni possono essere modificate successivamente dal Backoffice.
-La lingua viene applicata immediatamente alle schermate ricreate dopo il
-salvataggio.
+Lingua e numero di token vengono applicati subito. Anche il database può essere
+cambiato dal Backoffice, ma LudoX impedisce il cambio mentre nel database
+attuale sono presenti documenti/prestiti ancora aperti.
+
+Se nel campo database viene scritto soltanto un nome, per esempio
+`AMIGO2026.db`, il file viene creato nella cartella dell'applicazione. Se si
+seleziona un file fuori dalla cartella di LudoX, in `config.ini` viene salvato
+il relativo percorso assoluto.
 
 ## Traduzioni
 
