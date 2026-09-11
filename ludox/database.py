@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 from datetime import datetime
 
@@ -356,3 +357,91 @@ def massimo_token_aperto():
             "SELECT COALESCE(MAX(token), 0) FROM documenti WHERE uscita IS NULL"
         ).fetchone()[0]
     return int(value or 0)
+
+
+class ErrorePersistenza(Exception):
+    """Database failure exposed by the extracted lending operations."""
+
+
+@contextmanager
+def transazione_prestiti(immediata=False):
+    """Keep the existing commit/rollback boundary, optionally locking first."""
+    try:
+        with get_db() as db:
+            if immediata:
+                db.execute("BEGIN IMMEDIATE")
+            yield db
+    except sqlite3.Error as exc:
+        raise ErrorePersistenza(str(exc)) from exc
+
+
+def inserisci_documento(db, token, timestamp):
+    return db.execute(
+        "INSERT INTO documenti (token, ingresso) VALUES (?, ?)",
+        (token, timestamp),
+    ).lastrowid
+
+
+def inserisci_prestito(db, documento_id, gioco_id, timestamp):
+    return db.execute(
+        "INSERT INTO prestiti (documento_id, gioco_id, uscita) VALUES (?, ?, ?)",
+        (documento_id, gioco_id, timestamp),
+    ).lastrowid
+
+
+def nome_gioco_in_transazione(db, gioco_id):
+    return db.execute("SELECT nome FROM giochi WHERE id = ?", (gioco_id,)).fetchone()
+
+
+def documento_per_cambio(db, documento_id, token):
+    return db.execute(
+        "SELECT id, token FROM documenti WHERE id = ? AND token = ? AND uscita IS NULL",
+        (documento_id, token),
+    ).fetchone()
+
+
+def prestito_per_cambio(db, prestito_id, documento_id):
+    return db.execute("""
+        SELECT p.id, p.gioco_id, g.nome AS gioco_nome
+        FROM prestiti p JOIN giochi g ON g.id = p.gioco_id
+        WHERE p.id = ? AND p.documento_id = ? AND p.rientro IS NULL
+    """, (prestito_id, documento_id)).fetchone()
+
+
+def gioco_per_cambio(db, gioco_id):
+    return db.execute(
+        "SELECT id, nome, attivo FROM giochi WHERE id = ?", (gioco_id,)
+    ).fetchone()
+
+
+def conteggi_copie_in_transazione(db, gioco_id):
+    totali = db.execute(
+        "SELECT COALESCE(SUM(quantita), 0) FROM copie_gioco WHERE gioco_id = ?",
+        (gioco_id,),
+    ).fetchone()[0]
+    fuori = db.execute(
+        "SELECT COUNT(*) FROM prestiti WHERE gioco_id = ? AND rientro IS NULL",
+        (gioco_id,),
+    ).fetchone()[0]
+    return totali, fuori
+
+
+def chiudi_prestito_per_cambio(db, prestito_id, documento_id, timestamp):
+    return db.execute("""
+        UPDATE prestiti SET rientro = ?
+        WHERE id = ? AND documento_id = ? AND rientro IS NULL
+    """, (timestamp, prestito_id, documento_id)).rowcount
+
+
+def chiudi_prestito_per_restituzione(db, prestito_id, timestamp):
+    return db.execute(
+        "UPDATE prestiti SET rientro = ? WHERE id = ? AND rientro IS NULL",
+        (timestamp, prestito_id),
+    ).rowcount
+
+
+def chiudi_documento_per_restituzione(db, documento_id, timestamp):
+    return db.execute(
+        "UPDATE documenti SET uscita = ? WHERE id = ? AND uscita IS NULL",
+        (timestamp, documento_id),
+    ).rowcount

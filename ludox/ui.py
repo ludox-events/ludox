@@ -21,15 +21,15 @@ from .config import (
     database_setting_from_path, resolve_database_path, PROJECT_DIR,
 )
 from .database import (
-    get_db, now_iso, formatta_data_ora, conta_prestiti, conta_documenti,
-    conta_documenti_attivi, token_libero, documento_aperto_da_token,
-    prestito_aperto_documento, copie_totali_gioco, copie_in_prestito,
+    get_db, formatta_data_ora, conta_prestiti, conta_documenti,
+    conta_documenti_attivi, copie_totali_gioco, copie_in_prestito,
     disponibilita_gioco, cerca_giochi, elenco_proprietari,
     proprietario_per_id, totale_copie_proprietario, gioco_per_id,
     elenco_giochi_backoffice, copie_per_proprietario_del_gioco,
     riepilogo_proprietari_gioco, massimo_token_aperto, init_db,
     set_db_path, get_db_path,
 )
+from . import lending
 from .i18n import tr, set_language, get_language, language_display_names
 
 APP_THEME = "flatly"
@@ -437,65 +437,21 @@ class PrestitiApp(ttk.Window):
         )
 
     def crea_nuovo_prestito(self, gioco_id):
-        disponibili, _ = disponibilita_gioco(
-            gioco_id
-        )
-
-        if disponibili <= 0:
+        try:
+            risultato = lending.nuovo_prestito(gioco_id, self.config.max_tokens)
+        except lending.GiocoNonDisponibile as e:
             messagebox.showwarning(
                 tr("Non disponibile"),
-                tr("Non ci sono copie disponibili.")
+                tr(str(e))
             )
             return
-
-        token = token_libero(self.config.max_tokens)
-
-        if token is None:
+        except lending.TokenEsauriti as e:
             messagebox.showerror(
                 tr("Token esauriti"),
-                tr("Non ci sono posizioni documento libere.")
+                tr(str(e))
             )
             return
-
-        timestamp = now_iso()
-
-        try:
-            with get_db() as db:
-                cursor = db.execute("""
-                    INSERT INTO documenti (
-                        token,
-                        ingresso
-                    )
-                    VALUES (?, ?)
-                """, (
-                    token,
-                    timestamp
-                ))
-
-                documento_id = cursor.lastrowid
-
-                db.execute("""
-                    INSERT INTO prestiti (
-                        documento_id,
-                        gioco_id,
-                        uscita
-                    )
-                    VALUES (?, ?, ?)
-                """, (
-                    documento_id,
-                    gioco_id,
-                    timestamp
-                ))
-
-                gioco = db.execute("""
-                    SELECT nome
-                    FROM giochi
-                    WHERE id = ?
-                """, (
-                    gioco_id,
-                )).fetchone()
-
-        except sqlite3.Error as e:
+        except lending.ErrorePersistenza as e:
             messagebox.showerror(
                 tr("Errore database"),
                 tr(str(e))
@@ -503,8 +459,8 @@ class PrestitiApp(ttk.Window):
             return
 
         self.show_token_assegnato(
-            token,
-            gioco["nome"]
+            risultato.token,
+            risultato.gioco_nome
         )
 
     def show_token_assegnato(self, token, gioco_nome):
@@ -616,27 +572,24 @@ class PrestitiApp(ttk.Window):
                 )
                 return
 
-            documento = documento_aperto_da_token(
-                token
-            )
-
-            if not documento:
+            try:
+                situazione = lending.consulta_token(token)
+            except lending.TokenLibero:
                 messagebox.showwarning(
                     tr("Token libero"),
                     tr(f"Il token {token} non ha un prestito aperto.")
                 )
                 return
 
-            prestito = prestito_aperto_documento(
-                documento["id"]
-            )
-
-            if not prestito:
+            except lending.PrestitoAssente:
                 messagebox.showerror(
                     tr("Errore"),
                     tr("Non risulta un gioco aperto.")
                 )
                 return
+
+            documento = situazione.documento
+            prestito = situazione.prestito
 
             self.show_cambio_gioco(
                 token,
@@ -704,180 +657,15 @@ class PrestitiApp(ttk.Window):
         ).pack(pady=4)
 
         def cambia(nuovo_gioco_id):
-            """
-            Registra il cambio in un'unica transazione atomica.
-
-            Prima di modificare il database ricontrolla che:
-            - il documento sia ancora aperto;
-            - il prestito visualizzato sia ancora quello aperto;
-            - il nuovo gioco esista, sia attivo e abbia almeno una copia;
-            - il nuovo gioco sia ancora disponibile.
-
-            BEGIN IMMEDIATE serializza le operazioni di scrittura SQLite:
-            evita che due istanze leggano contemporaneamente la stessa
-            disponibilità e registrino entrambe l'ultima copia disponibile.
-            """
-
-            class CambioNonValido(Exception):
-                pass
-
-            class GiocoNonDisponibile(Exception):
-                pass
-
-            timestamp = now_iso()
-
             try:
-                with get_db() as db:
-                    # Acquisisce subito il lock di scrittura.
-                    # Tutti i controlli successivi e le due scritture
-                    # fanno quindi parte della stessa transazione.
-                    db.execute(
-                        "BEGIN IMMEDIATE"
-                    )
-
-                    # 1. Il documento deve essere ancora aperto
-                    #    e associato allo stesso token.
-                    documento_corrente = db.execute("""
-                        SELECT id, token
-                        FROM documenti
-                        WHERE id = ?
-                          AND token = ?
-                          AND uscita IS NULL
-                    """, (
-                        documento["id"],
-                        token
-                    )).fetchone()
-
-                    if not documento_corrente:
-                        raise CambioNonValido(
-                            "Il documento non risulta più aperto. "
-                            "Il cambio non è stato registrato."
-                        )
-
-                    # 2. Il prestito che stiamo chiudendo deve essere
-                    #    ancora esattamente quello aperto per il documento.
-                    prestito_corrente = db.execute("""
-                        SELECT
-                            p.id,
-                            p.gioco_id,
-                            g.nome AS gioco_nome
-                        FROM prestiti p
-                        JOIN giochi g
-                          ON g.id = p.gioco_id
-                        WHERE p.id = ?
-                          AND p.documento_id = ?
-                          AND p.rientro IS NULL
-                    """, (
-                        prestito["id"],
-                        documento["id"]
-                    )).fetchone()
-
-                    if not prestito_corrente:
-                        raise CambioNonValido(
-                            "Il prestito è cambiato o è già stato chiuso. "
-                            "Il cambio non è stato registrato."
-                        )
-
-                    # Ulteriore protezione: il gioco corrente deve essere
-                    # lo stesso che era visualizzato quando è stata aperta
-                    # la schermata di cambio.
-                    if (
-                        prestito_corrente["gioco_id"]
-                        != prestito["gioco_id"]
-                    ):
-                        raise CambioNonValido(
-                            "Il gioco associato al token è cambiato. "
-                            "Riapri la procedura di cambio."
-                        )
-
-                    # 3. Il nuovo titolo deve esistere ed essere ancora attivo.
-                    nuovo = db.execute("""
-                        SELECT id, nome, attivo
-                        FROM giochi
-                        WHERE id = ?
-                    """, (
-                        nuovo_gioco_id,
-                    )).fetchone()
-
-                    if (
-                        not nuovo
-                        or nuovo["attivo"] != 1
-                    ):
-                        raise CambioNonValido(
-                            "Il gioco selezionato non è più disponibile "
-                            "nel catalogo attivo."
-                        )
-
-                    # 4. Ricontrollo della disponibilità DENTRO
-                    #    la stessa transazione.
-                    copie_totali = db.execute("""
-                        SELECT COALESCE(SUM(quantita), 0)
-                        FROM copie_gioco
-                        WHERE gioco_id = ?
-                    """, (
-                        nuovo_gioco_id,
-                    )).fetchone()[0]
-
-                    copie_fuori = db.execute("""
-                        SELECT COUNT(*)
-                        FROM prestiti
-                        WHERE gioco_id = ?
-                          AND rientro IS NULL
-                    """, (
-                        nuovo_gioco_id,
-                    )).fetchone()[0]
-
-                    disponibili = (
-                        copie_totali
-                        - copie_fuori
-                    )
-
-                    if disponibili <= 0:
-                        raise GiocoNonDisponibile(
-                            "Nel frattempo l'ultima copia disponibile "
-                            "è stata assegnata. Scegli un altro gioco."
-                        )
-
-                    # 5. Chiude il vecchio prestito.
-                    cursore = db.execute("""
-                        UPDATE prestiti
-                        SET rientro = ?
-                        WHERE id = ?
-                          AND documento_id = ?
-                          AND rientro IS NULL
-                    """, (
-                        timestamp,
-                        prestito["id"],
-                        documento["id"]
-                    ))
-
-                    # Se nessuna riga è stata modificata, non procediamo
-                    # mai con l'apertura del nuovo prestito.
-                    if cursore.rowcount != 1:
-                        raise CambioNonValido(
-                            "Non è stato possibile chiudere il prestito "
-                            "precedente. Nessuna modifica è stata salvata."
-                        )
-
-                    # 6. Apre il nuovo prestito nello stesso istante.
-                    db.execute("""
-                        INSERT INTO prestiti (
-                            documento_id,
-                            gioco_id,
-                            uscita
-                        )
-                        VALUES (?, ?, ?)
-                    """, (
-                        documento["id"],
-                        nuovo_gioco_id,
-                        timestamp
-                    ))
-
-                    # Il blocco 'with' esegue il COMMIT solo se
-                    # tutte le operazioni sopra sono andate a buon fine.
-                    # Qualsiasi eccezione provoca il ROLLBACK completo.
-
-            except GiocoNonDisponibile as e:
+                nuovo_nome = lending.cambia_gioco(
+                    token=token,
+                    documento_id=documento["id"],
+                    prestito_id=prestito["id"],
+                    gioco_id_atteso=prestito["gioco_id"],
+                    nuovo_gioco_id=nuovo_gioco_id,
+                )
+            except lending.GiocoNonDisponibile as e:
                 messagebox.showwarning(
                     tr("Gioco non disponibile"),
                     tr(str(e))
@@ -892,7 +680,7 @@ class PrestitiApp(ttk.Window):
                 )
                 return
 
-            except CambioNonValido as e:
+            except lending.CambioNonValido as e:
                 messagebox.showwarning(
                     tr("Cambio non registrato"),
                     tr(str(e))
@@ -903,7 +691,7 @@ class PrestitiApp(ttk.Window):
                 self.show_cambio_token()
                 return
 
-            except sqlite3.Error as e:
+            except lending.ErrorePersistenza as e:
                 messagebox.showerror(
                     tr("Errore database"),
                     tr("Il cambio non è stato registrato.\n\n"
@@ -914,7 +702,7 @@ class PrestitiApp(ttk.Window):
             self.show_cambio_completato(
                 token,
                 prestito["gioco_nome"],
-                nuovo["nome"]
+                nuovo_nome
             )
 
         self.crea_selettore_giochi(
@@ -1031,27 +819,24 @@ class PrestitiApp(ttk.Window):
                 )
                 return
 
-            documento = documento_aperto_da_token(
-                token
-            )
-
-            if not documento:
+            try:
+                situazione = lending.consulta_token(token)
+            except lending.TokenLibero:
                 messagebox.showwarning(
                     tr("Token libero"),
                     tr(f"Il token {token} non risulta occupato.")
                 )
                 return
 
-            prestito = prestito_aperto_documento(
-                documento["id"]
-            )
-
-            if not prestito:
+            except lending.PrestitoAssente:
                 messagebox.showerror(
                     tr("Errore"),
                     tr("Non risulta un gioco aperto per questo token.")
                 )
                 return
+
+            documento = situazione.documento
+            prestito = situazione.prestito
 
             # PRIMA CONFERMA
             conferma = messagebox.askyesno(
@@ -1161,41 +946,12 @@ class PrestitiApp(ttk.Window):
             if not conferma:
                 return
 
-            timestamp = now_iso()
-
             try:
-                with get_db() as db:
-                    prestito_update = db.execute("""
-                        UPDATE prestiti
-                        SET rientro = ?
-                        WHERE id = ?
-                          AND rientro IS NULL
-                    """, (
-                        timestamp,
-                        prestito["id"]
-                    ))
-
-                    documento_update = db.execute("""
-                        UPDATE documenti
-                        SET uscita = ?
-                        WHERE id = ?
-                          AND uscita IS NULL
-                    """, (
-                        timestamp,
-                        documento["id"]
-                    ))
-
-                    if prestito_update.rowcount != 1:
-                        raise sqlite3.Error(
-                            "Il prestito non risulta più aperto."
-                        )
-
-                    if documento_update.rowcount != 1:
-                        raise sqlite3.Error(
-                            "Il documento non risulta più depositato."
-                        )
-
-            except sqlite3.Error as e:
+                lending.restituzione_finale(
+                    documento_id=documento["id"],
+                    prestito_id=prestito["id"],
+                )
+            except lending.ErrorePersistenza as e:
                 messagebox.showerror(
                     tr("Errore database"),
                     tr(str(e))

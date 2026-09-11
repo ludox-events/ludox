@@ -86,7 +86,7 @@ un'organizzazione, assicurati di avere le autorizzazioni necessarie.
 
 ## Test delle modifiche
 
-### Test automatici (FASE A della issue #16)
+### Test automatici
 
 Da un ambiente virtuale attivo, nella root del repository:
 
@@ -101,10 +101,23 @@ configurazione. Ogni test usa percorsi temporanei; le connessioni SQLite fuori
 dalla directory temporanea del test vengono rifiutate. I file INI vengono
 sempre passati esplicitamente, senza leggere la configurazione dell'utente.
 
-Gli inserimenti SQL nei test preparano dati e stati aperti/chiusi: non testano
-i callback applicativi di apertura, cambio gioco e restituzione. Questi flussi,
-le validazioni dei form, le statistiche e i report rimangono da coprire dopo
-la separazione prevista dalla issue #11. Non sono inclusi test Tkinter.
+I test della FASE A preparano tramite SQL dati e stati aperti/chiusi per
+verificare le funzioni dati. `tests/test_lending.py` esercita invece le operazioni
+effettive di apertura, cambio e restituzione estratte dalla UI nella prima fase
+della issue #11: `ludox/lending.py` contiene i controlli operativi e usa le
+funzioni SQL di `ludox/database.py`. Il service non importa Tkinter.
+
+Sono verificati anche storico, riuso dei token, timestamp condivisi, stati
+obsoleti, lock del cambio e rollback in caso di errore intermedio. Le conferme
+e la navigazione restano nella UI e richiedono verifica manuale su un database
+di prova. Non sono inclusi test Tkinter. Catalogo, statistiche, report e
+impostazioni rimangono fuori da questa prima fase della separazione.
+
+Per preservare il comportamento attuale, l'apertura controlla disponibilità e
+token prima della transazione, mentre il cambio li ricontrolla sotto lock.
+La restituzione aggiorna gli identificativi ricevuti senza aggiungere un nuovo
+controllo di appartenenza del prestito al documento: il chiamante deve passare
+gli identificativi della stessa situazione restituita da `consulta_token`.
 
 La caratterizzazione preserva anche particolarità correnti: le copie di un
 proprietario disattivato contribuiscono alla disponibilità; la ricerca include
