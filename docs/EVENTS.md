@@ -18,11 +18,25 @@ Un Event contiene almeno:
 - slug/codice pubblico;
 - data e ora di inizio;
 - data e ora di fine;
+- timezone dell'evento;
 - stato.
 
 Lo slug è obbligatorio ed è pensato come identificatore leggibile e stabile utile anche per future esportazioni, integrazioni o distribuzione esterna.
 
-- TBD: Definire il formato ammesso dello slug e se la sua unicità deve essere garantita per Organization o sull'intero database.
+Lo slug:
+
+- usa lettere ASCII minuscole `a-z`, numeri `0-9`, trattino `-` e underscore `_`;
+- è univoco all'interno della Organization;
+- può quindi essere riutilizzato da Organization differenti.
+
+Esempio:
+
+```text
+amigo-2027
+primavera-in-gioco-2027
+```
+
+Se in futuro un sistema esterno richiede un codice con regole differenti, tale valore deve essere mantenuto in un campo opzionale separato e non deve modificare le regole dello slug.
 
 ## Dati opzionali
 
@@ -82,11 +96,15 @@ Vedi [MODULES.md](MODULES.md).
 
 ## Cancellazione
 
-Un Event può essere eliminato soltanto quando è vuoto e non esiste storico operativo da preservare.
+Un Event può essere eliminato definitivamente finché non contiene transazioni storiche da preservare.
 
-Un Event non vuoto deve essere conservato e può essere archiviato o annullato.
+La presenza di configurazioni, moduli abilitati, giochi, copie o altri dati preparatori non impedisce di per sé la cancellazione: se non esistono transazioni storiche, i dati preparatori collegati possono essere rimossi insieme all'Event.
 
-- TBD: Formalizzare tecnicamente la condizione di "evento vuoto", inclusi moduli abilitati ma senza dati, configurazioni create e record ausiliari.
+Quando esiste almeno una transazione storica, l'Event non deve più essere eliminato e può soltanto essere conservato, archiviato o annullato.
+
+Per `game_library`, sessioni e prestiti registrati costituiscono storico operativo.
+
+- TBD: Per ogni nuovo modulo, definire esplicitamente quali record costituiscono una transazione storica che rende l'Event non eliminabile.
 
 ## Importazione e riuso dei dati
 

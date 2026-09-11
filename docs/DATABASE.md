@@ -42,7 +42,7 @@ Event
 Module data
 ```
 
-I dati del modulo Prestiti appartengono all'Event e non a un catalogo globale dell'Organization.
+I dati del modulo `game_library` appartengono all'Event e non a un catalogo globale dell'Organization.
 
 ## Tabelle candidate
 
@@ -53,12 +53,13 @@ organizations
 events
 event_modules
 
-lending_games
-lending_owner_labels
-lending_game_copies
-lending_sessions
-lending_loans
-lending_settings
+game_library_games
+game_library_owner_labels
+game_library_game_copies
+game_library_copy_identifiers
+game_library_sessions
+game_library_loans
+game_library_settings
 ```
 
 - TBD: Definire lo schema SQL v1 effettivo, i nomi definitivi delle tabelle e le foreign key.
@@ -71,7 +72,9 @@ Lo schema v1 deve rappresentare le copie fisiche come record individuali.
 
 La quantità mostrata all'utente è quindi derivabile dal numero di copie che appartengono a un titolo e soddisfano le condizioni di disponibilità.
 
-Ogni copia può avere un codice esterno/QR/barcode opzionale, senza obbligare la modalità token a identificare la scatola specifica durante un prestito.
+Ogni copia può avere zero, uno o più identificativi opzionali in una relazione separata dalla copia. I tipi inizialmente previsti sono almeno `LUDOX_QR` ed `EXTERNAL_BARCODE`.
+
+La modalità token non è obbligata a identificare la scatola specifica durante un prestito.
 
 ## Sessioni e prestiti
 
@@ -93,10 +96,11 @@ Lo schema deve impedire operazioni distruttive che rendano incoerente lo storico
 Sono già stabiliti i seguenti principi:
 
 - Organization non viene cancellata dal normale flusso: viene disattivata;
-- un Event può essere eliminato soltanto se vuoto;
-- un gioco con storico di prestiti non viene eliminato, ma può essere disattivato;
+- un Event può essere eliminato finché non contiene transazioni storiche; dati preparatori e configurazioni possono essere eliminati in cascata insieme all'Event;
+- nel modulo `game_library`, sessioni e prestiti registrati costituiscono storico operativo;
+- un gioco o una copia con storico di prestiti non viene eliminato, ma può essere disattivato;
 - la ludoteca non può essere azzerata dopo che è stato registrato almeno un prestito;
-- il modulo Prestiti non può essere disabilitato con sessioni/prestiti aperti.
+- il modulo `game_library` non può essere disabilitato con sessioni/prestiti aperti.
 
 - TBD: Tradurre questi principi in regole precise di `FOREIGN KEY`, `ON DELETE`, controlli applicativi e transazioni.
 
@@ -120,7 +124,11 @@ Non è richiesta compatibilità automatica con i database sperimentali precedent
 
 A partire dallo schema v1, ogni modifica strutturale deve prevedere una migrazione esplicita.
 
-- TBD: Definire il meccanismo concreto di registrazione/esecuzione delle migration e la strategia di backup prima di una migration distruttiva o non reversibile.
+Le versioni dello schema usano numeri interi progressivi (`1`, `2`, `3`, ...), indipendenti dalla versione applicativa di LudoX.
+
+Le migration vengono applicate in ordine crescente. Prima di una migration non banale, distruttiva o non reversibile deve essere creato un backup del database.
+
+- TBD: Definire il meccanismo concreto di registrazione/esecuzione delle migration e il formato/posizione dei backup.
 
 ## Service layer
 
@@ -140,16 +148,28 @@ Questo permette di mantenere la logica funzionale stabile anche se in futuro SQL
 
 - TBD: Definire la suddivisione minima dei service senza introdurre complessità non necessaria.
 
-## Timestamp
+## Timestamp e timezone
 
-I domini Event e Prestiti richiedono date e orari affidabili per storico e report.
+Ogni Event possiede una timezone esplicita basata su identificatori IANA, per esempio `Europe/Rome`.
 
-- TBD: Definire convenzione temporale dello schema v1: formato, timezone e comportamento in modalità locale/server.
+I timestamp delle transazioni vengono memorizzati in UTC in formato ISO 8601. La conversione nella timezone dell'Event avviene per visualizzazione, input e report.
+
+Esempio:
+
+```text
+DB:       2026-09-11T15:42:18Z
+Event TZ: Europe/Rome
+UI:       11/09/2026 17:42:18
+```
+
+Questa convenzione evita ambiguità tra client, server e cambi tra ora solare e ora legale.
 
 ## Identificatori
 
 Ogni entità persistente possiede un identificativo interno.
 
-Event possiede inoltre uno slug obbligatorio; giochi e copie possono avere identificativi esterni opzionali.
+Event possiede inoltre uno slug obbligatorio. Lo slug utilizza `a-z`, `0-9`, `-` e `_` ed è univoco all'interno della Organization.
 
-- TBD: Definire dove sia necessaria unicità globale, per Organization oppure per Event.
+Giochi e copie possono avere identificativi esterni opzionali. Gli identificativi delle copie vengono mantenuti in una relazione separata, così una stessa copia può avere più codici contemporaneamente.
+
+- TBD: Definire le regole di unicità degli identificativi esterni dei giochi e dei codici `LUDOX_QR` / `EXTERNAL_BARCODE`.

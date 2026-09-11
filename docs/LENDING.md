@@ -1,12 +1,16 @@
-# Modulo Prestiti
+# Prestiti Ludoteca / Game Library
 
 **Stato:** draft consolidato del modello funzionale v1.
 
-Questo documento descrive il modello concettuale del modulo Prestiti. La procedura pratica della modalità token attualmente disponibile è descritta in [OPERATION.md](OPERATION.md).
+Questo documento descrive il modello concettuale del modulo con identificatore tecnico `game_library`.
+
+Nell'interfaccia italiana il modulo è denominato **Prestiti Ludoteca**. Nell'interfaccia inglese il termine di riferimento è **Game Library**.
+
+La procedura pratica della modalità token attualmente disponibile è descritta in [OPERATION.md](OPERATION.md).
 
 ## Ambito
 
-Il modulo Prestiti appartiene a un singolo Event e gestisce:
+Il modulo `game_library` appartiene a un singolo Event e gestisce:
 
 - ludoteca dell'evento;
 - giochi;
@@ -45,9 +49,21 @@ Dati funzionali minimi:
 
 Può essere previsto un identificativo esterno opzionale utile per collegare il titolo a una sorgente esterna.
 
+Può inoltre essere associato al gioco un **livello di difficoltà opzionale**. La presenza della difficoltà non deve dipendere obbligatoriamente da BGG o da una singola sorgente: il valore potrà essere inserito o calcolato a partire da fonti diverse. Una futura integrazione potrà utilizzare dati BGG quando disponibili.
+
 Le copie non vengono però memorizzate soltanto come un numero aggregato: nello schema v1 ogni scatola fisica deve poter essere rappresentata da un record distinto.
 
-- TBD: Definire la regola definitiva di unicità dei titoli all'interno dello stesso Event e la normalizzazione dei nomi durante inserimento/importazione.
+All'interno dello stesso Event, titoli identici dopo una normalizzazione minima vengono considerati lo stesso gioco. La normalizzazione minima comprende almeno rimozione degli spazi iniziali/finali e confronto case-insensitive.
+
+Esempi equivalenti:
+
+```text
+Kingdomino
+KINGDOMINO
+ kingdomino 
+```
+
+Nomi soltanto simili, come `Kingdomino` e `King Domino`, non vengono mai uniti automaticamente.
 
 ## Copie fisiche
 
@@ -81,16 +97,32 @@ Un gioco che possiede storico di prestiti non viene eliminato: può essere disat
 
 ## Identificativi
 
-Ogni gioco e ogni copia possiedono sempre un identificativo interno LudoX.
+Ogni gioco e ogni copia possiedono sempre un identificativo interno LudoX, indipendente dai codici visibili all'utente.
 
-Sono inoltre previsti identificativi opzionali:
+Un gioco può avere un identificativo esterno opzionale associato a una fonte esterna.
 
-- identificativo esterno del gioco, associato a una fonte esterna;
-- codice della singola copia, utilizzabile in futuro come QR code o barcode.
+Una singola copia fisica può avere **più identificativi opzionali contemporaneamente**. Gli identificativi della copia devono quindi essere modellati separatamente dalla copia stessa.
 
-Il codice della copia deve poter essere assegnato o modificato successivamente dal Backoffice. È quindi possibile iniziare con copie prive di codice e identificarle individualmente in seguito.
+I tipi inizialmente previsti sono almeno:
 
-- TBD: Definire formato, vincoli e strategie di generazione/importazione dei codici delle copie.
+- `LUDOX_QR` — QR code generato da LudoX;
+- `EXTERNAL_BARCODE` — barcode già presente sulla scatola o proveniente da un sistema esterno.
+
+Esempio:
+
+```text
+copia #102
+├── LUDOX_QR        LX-C-000102
+└── EXTERNAL_BARCODE 8001234567890
+```
+
+Gli identificativi devono poter essere assegnati o modificati successivamente dal Backoffice. È quindi possibile iniziare con copie prive di codici e identificarle individualmente in seguito.
+
+LudoX dovrà poter generare QR code per le copie e produrre etichette stampabili da applicare fisicamente alle scatole.
+
+- TBD: Definire formato e vincoli dei valori `LUDOX_QR` e `EXTERNAL_BARCODE`, incluse le relative regole di unicità.
+
+- TBD: Definire i formati fisici supportati per la stampa delle etichette QR, ad esempio fogli di etichette A4, stampanti termiche o dimensioni personalizzabili.
 
 ## Proprietari / etichette operative
 
@@ -125,7 +157,18 @@ Deve essere possibile anche importare un elenco omogeneo e assegnare durante l'i
 
 La ludoteca può essere completamente svuotata soltanto se nell'Event non è mai stato registrato alcun prestito. Dopo la creazione dello storico dei prestiti non deve essere disponibile un reset distruttivo della ludoteca.
 
-- TBD: Definire preview, match dei titoli, conflitti e gestione di refusi come `Kingdomino` / `King Domino`. Non deve essere applicata automaticamente una fusione fuzzy che possa unire giochi differenti.
+Durante l'importazione:
+
+- un titolo identico dopo normalizzazione minima viene associato al gioco già presente e le copie vengono aggregate;
+- un titolo soltanto simile a uno esistente può essere segnalato come possibile corrispondenza;
+- la corrispondenza suggerita deve essere confermata dall'utente;
+- non viene mai eseguita una fusione fuzzy automatica.
+
+Esempio: se il file contiene `King Domino` e nella ludoteca esiste `Kingdomino`, LudoX può segnalare la somiglianza e chiedere se usare il titolo esistente oppure crearne uno nuovo.
+
+La segnalazione dei nomi simili è una funzionalità del flusso di importazione e non è richiesta durante il normale inserimento manuale dei giochi.
+
+- TBD: Definire la UX della preview di importazione, la gestione dei conflitti e il criterio utilizzato per proporre nomi potenzialmente simili.
 
 ## Esportazione della ludoteca
 
@@ -168,7 +211,7 @@ Il numero massimo di slot è una configurazione del modulo Prestiti del singolo 
 
 Gli slot ripartono da 1 in ogni Event.
 
-- TBD: Confermare definitivamente la politica automatica di assegnazione dello slot libero. La soluzione preferita è il primo slot disponibile a partire dal numero più basso; non esiste un requisito database che imponga un'assegnazione casuale.
+L'assegnazione automatica utilizza il **primo slot libero partendo dal numero più basso**. Non esiste un requisito database che richieda un'assegnazione casuale.
 
 ## Modalità token
 
@@ -215,7 +258,7 @@ KDM-002 rientra
 
 Il QR/barcode non sostituisce quindi lo slot fisico: sostituisce il token fisico come mezzo operativo per risalire alla sessione.
 
-La modalità QR/barcode non è necessariamente implementata nello schema v1, ma lo schema deve evitare di rendere costosa la sua introduzione successiva.
+Lo schema v1 deve prevedere fin dall'inizio la configurazione della modalità operativa del modulo e la possibilità di associare identificativi alle copie. La prima modalità effettivamente operativa resta quella basata su token; la modalità QR/barcode può essere implementata successivamente senza richiedere una riprogettazione del modello dati.
 
 ## Prestiti
 
@@ -244,7 +287,7 @@ Le sessioni appartengono all'Event e possono essere gestite da altri client o re
 
 ## Disabilitazione del modulo
 
-Il modulo Prestiti non può essere disabilitato finché esistono sessioni o prestiti aperti.
+Il modulo Prestiti Ludoteca non può essere disabilitato finché esistono sessioni o prestiti aperti.
 
 La disabilitazione, quando consentita, non cancella lo storico.
 
@@ -252,7 +295,7 @@ La disabilitazione, quando consentita, non cancella lo storico.
 
 ## Statistiche e report
 
-Statistiche e report del modulo Prestiti sono sempre riferiti all'Event corrente.
+Statistiche e report del modulo Prestiti Ludoteca sono sempre riferiti all'Event corrente.
 
 Non vengono aggregate automaticamente informazioni provenienti da eventi differenti.
 

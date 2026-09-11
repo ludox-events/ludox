@@ -15,10 +15,10 @@ Database / workspace LudoX
 │
 ├── Organization A
 │   ├── Event 1
-│   │   ├── Prestiti
-│   │   └── Attività
+│   │   ├── Prestiti Ludoteca / Game Library
+│   │   └── Attività / Activities
 │   └── Event 2
-│       └── Prestiti
+│       └── Prestiti Ludoteca / Game Library
 │
 └── Organization B
     └── Event 3
@@ -33,7 +33,7 @@ Un database può contenere più organizzazioni e più eventi. LudoX deve continu
 
 L'Evento è il contenitore operativo principale. I moduli e i loro dati appartengono all'evento.
 
-Non esiste un catalogo giochi globale obbligatorio dell'Organization. La ludoteca utilizzata dal modulo Prestiti appartiene al singolo evento.
+Non esiste un catalogo giochi globale obbligatorio dell'Organization. La ludoteca utilizzata dal modulo `game_library` appartiene al singolo evento.
 
 ### Organization come contenitore logico
 
@@ -49,8 +49,8 @@ LudoX mette a disposizione funzionalità modulari che vengono abilitate per cias
 
 I moduli attualmente confermati nel modello sono:
 
-- **Prestiti**;
-- **Attività**.
+- **Prestiti Ludoteca** nell'interfaccia italiana, identificatore tecnico `game_library` e termine inglese **Game Library**;
+- **Attività**, identificatore tecnico `activities` e termine inglese **Activities**.
 
 Le configurazioni operative di un modulo appartengono all'evento nel quale il modulo è abilitato.
 
@@ -117,7 +117,7 @@ Le impostazioni operative come il numero di slot del modulo Prestiti appartengon
 
 ## Privacy
 
-Il modulo Prestiti mantiene il principio di privacy by design: la sessione di prestito è anonima e il software non necessita di dati identificativi della persona per gestire il documento custodito fisicamente.
+Il modulo Prestiti Ludoteca / Game Library mantiene il principio di privacy by design: la sessione di prestito è anonima e il software non necessita di dati identificativi della persona per gestire il documento custodito fisicamente.
 
 Eventuali futuri moduli che trattano partecipanti o prenotazioni costituiscono un dominio distinto e non devono trasformare automaticamente una sessione di prestito anonima in un record identificato.
 

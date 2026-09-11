@@ -12,12 +12,10 @@ L'Event funge da contenitore e abilita i moduli; non vengono create definizioni 
 
 I moduli attualmente confermati nel modello sono:
 
-- **Prestiti** — gestione della ludoteca e dei prestiti di giochi;
-- **Attività** — gestione delle attività previste durante l'evento.
+- `game_library` — **Prestiti Ludoteca** nell'interfaccia italiana e **Game Library** nell'interfaccia inglese; gestisce la ludoteca dell'evento e i relativi prestiti;
+- `activities` — **Attività** nell'interfaccia italiana e **Activities** nell'interfaccia inglese.
 
-Il nome mostrato nell'interfaccia deve poter essere tradotto tramite il sistema i18n.
-
-- TBD: Definire gli identificatori tecnici stabili dei moduli nello schema e nel codice.
+Gli identificatori tecnici sono stabili e indipendenti dalla lingua mostrata all'utente. I nomi visualizzati vengono tradotti tramite il sistema i18n.
 
 Il possibile modulo Accoglienza/Iscrizioni rimane un'area futura ancora da formalizzare e non fa parte delle decisioni consolidate di questo documento.
 
@@ -34,11 +32,11 @@ L'abilitazione crea o rende disponibile il contesto necessario al modulo per que
 
 Ogni configurazione operativa del modulo è **event-specific**.
 
-Esempio per Prestiti:
+Esempio per `game_library` / Prestiti Ludoteca:
 
 ```text
 AMIGO
-└── Prestiti
+└── Prestiti Ludoteca
     ├── numero massimo di slot
     └── modalità operativa
 ```
@@ -53,9 +51,9 @@ Un modulo può essere disabilitato senza cancellarne automaticamente i dati.
 
 Ogni modulo può imporre propri vincoli di sicurezza prima della disabilitazione.
 
-Per Prestiti, la disabilitazione non è consentita mentre esistono sessioni o prestiti aperti.
+Per `game_library`, la disabilitazione non è consentita mentre esistono sessioni o prestiti aperti.
 
-- TBD: Definire il comportamento di una futura operazione amministrativa di chiusura forzata del modulo Prestiti.
+- TBD: Definire il comportamento di una futura operazione amministrativa di chiusura forzata del modulo Prestiti Ludoteca.
 
 ## Isolamento dei dati
 

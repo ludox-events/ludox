@@ -19,7 +19,7 @@ Le GitHub Issues conservano la roadmap, le discussioni e la storia delle decisio
 | [ORGANIZATIONS.md](ORGANIZATIONS.md) | Draft consolidato | Modello Organization e selezione dell'organizzazione attiva |
 | [EVENTS.md](EVENTS.md) | Draft consolidato | Modello Event, stati, selezione e ciclo di vita |
 | [MODULES.md](MODULES.md) | Draft | Regole comuni dei moduli event-specific |
-| [LENDING.md](LENDING.md) | Draft consolidato | Modello funzionale del modulo Prestiti |
+| [LENDING.md](LENDING.md) | Draft consolidato | Modello funzionale Prestiti Ludoteca / Game Library |
 | [DATABASE.md](DATABASE.md) | Draft iniziale | Principi del database e base per lo schema v1 |
 | [OPERATION.md](OPERATION.md) | Corrente | Procedura operativa della modalità token attualmente disponibile |
 
@@ -34,7 +34,7 @@ LudoX utilizza quattro marker ricercabili a livello di progetto:
 - `TODO` — attività già definita ma ancora da eseguire;
 - `FIXME` — comportamento o documentazione noti come errati e da correggere.
 
-Nei file Markdown i marker vengono scritti come blockquote, ad esempio:
+Nei file Markdown i marker vengono scritti come elementi di elenco, ad esempio:
 
 ```text
 - TBD: Definire il comportamento in caso di conflitto durante l'importazione.

@@ -1,4 +1,4 @@
-# Operatività dei prestiti LudoX
+# Operatività Prestiti Ludoteca LudoX
 
 **Stato:** procedura della modalità token attualmente disponibile.
 
