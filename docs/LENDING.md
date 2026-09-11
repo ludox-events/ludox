@@ -1,6 +1,15 @@
 # Prestiti Ludoteca / Game Library
 
-**Stato:** draft consolidato del modello funzionale v1.
+> **STATUS: APPROVED SPECIFICATION — READ ONLY**
+>
+> **IMPLEMENTATION: PARTIALLY IMPLEMENTED**
+>
+> Questo documento è una specifica approvata di LudoX. Durante
+> l'implementazione non deve essere modificato, salvo richiesta esplicita
+> dell'utente. I marker `TBD` e `QUESTION` restano decisioni aperte e non
+> autorizzano Codex a scegliere autonomamente una soluzione.
+
+
 
 Questo documento descrive il modello concettuale del modulo con identificatore tecnico `game_library`.
 

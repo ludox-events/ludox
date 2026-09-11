@@ -85,3 +85,57 @@ Va mantenuta distinta la differenza tra:
 - **export/backup del database** — copia completa del workspace SQLite;
 - **export dei dati di un modulo** — per esempio esportazione della ludoteca in CSV/XLSX per riutilizzo o scambio.
 
+## Specifiche approvate e Codex
+
+Le specifiche approvate contengono l'intestazione:
+
+```text
+STATUS: APPROVED SPECIFICATION — READ ONLY
+```
+
+Lo stato dell'implementazione viene indicato separatamente:
+
+```text
+IMPLEMENTATION: NOT IMPLEMENTED
+IMPLEMENTATION: PARTIALLY IMPLEMENTED
+IMPLEMENTATION: IMPLEMENTED
+```
+
+La presenza di `TBD` o `QUESTION` non rende modificabile il documento e non
+autorizza Codex a prendere autonomamente la decisione mancante.
+
+Le regole operative complete per Codex sono definite nel file
+[`../AGENTS.md`](../AGENTS.md).
+
+### Uso consigliato di Codex per una feature
+
+Per una normale implementazione è sufficiente dare a Codex un prompt simile:
+
+```text
+Implementa <feature / issue>.
+
+Prima leggi AGENTS.md e le specifiche pertinenti in docs/.
+Le specifiche con STATUS: APPROVED SPECIFICATION — READ ONLY non devono
+essere modificate.
+
+Mantieni la modifica limitata alla feature richiesta e non implementare
+architettura futura non necessaria.
+
+Se trovi un conflitto con una specifica approvata, fermati e spiegami il
+conflitto prima di modificare codice o documentazione.
+
+Alla fine indicami:
+- file modificati;
+- test eseguiti;
+- eventuali conflitti o decisioni rimaste aperte.
+```
+
+Per modificare intenzionalmente una specifica, la richiesta deve invece
+dirlo esplicitamente, per esempio:
+
+```text
+Aggiorna docs/LENDING.md per recepire questa decisione: <decisione>.
+Non implementare ancora il codice.
+```
+
+In questo modo progettazione e implementazione restano due attività separate.

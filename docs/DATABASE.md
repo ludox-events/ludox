@@ -1,6 +1,15 @@
 # Database LudoX
 
-**Stato:** draft iniziale — schema v1 da definire.
+> **STATUS: APPROVED SPECIFICATION — READ ONLY**
+>
+> **IMPLEMENTATION: NOT IMPLEMENTED**
+>
+> Questo documento è una specifica approvata di LudoX. Durante
+> l'implementazione non deve essere modificato, salvo richiesta esplicita
+> dell'utente. I marker `TBD` e `QUESTION` restano decisioni aperte e non
+> autorizzano Codex a scegliere autonomamente una soluzione.
+
+
 
 Questo documento raccoglie i principi che devono guidare lo schema dati. Le tabelle e i vincoli definitivi verranno formalizzati nel passaggio successivo.
 

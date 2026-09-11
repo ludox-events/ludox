@@ -1,6 +1,15 @@
 # Architettura di LudoX
 
-**Stato:** draft consolidato.
+> **STATUS: APPROVED SPECIFICATION — READ ONLY**
+>
+> **IMPLEMENTATION: PARTIALLY IMPLEMENTED**
+>
+> Questo documento è una specifica approvata di LudoX. Durante
+> l'implementazione non deve essere modificato, salvo richiesta esplicita
+> dell'utente. I marker `TBD` e `QUESTION` restano decisioni aperte e non
+> autorizzano Codex a scegliere autonomamente una soluzione.
+
+
 
 Questo documento descrive i principi architetturali generali di LudoX. I dettagli dei singoli domini sono documentati nei file dedicati.
 

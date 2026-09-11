@@ -1,60 +1,122 @@
-# LudoX - istruzioni per Codex
+# LudoX — Codex instructions
 
-## Specifiche
+These instructions apply to the whole repository unless a more specific
+`AGENTS.md` exists in a subdirectory.
 
-La cartella `docs/specs/` contiene le specifiche funzionali e architetturali
-approvate del progetto.
+## 1. Approved specifications are read-only
 
-Le specifiche sono autoritative.
+Any Markdown file containing:
 
-NON modificare, riscrivere, semplificare o reinterpretare i file presenti
-in `docs/specs/` durante un'attività di implementazione, salvo richiesta
-esplicita dell'utente.
+> **STATUS: APPROVED SPECIFICATION — READ ONLY**
 
-Se una specifica:
-- è ambigua;
-- è incoerente con un'altra specifica;
-- non è implementabile con l'architettura attuale;
-- richiede una modifica non prevista allo schema del database;
-- sembra contenere un errore;
+is an authoritative LudoX specification.
 
-NON correggerla autonomamente.
+During an implementation task:
 
-Segnala il problema all'utente e spiega quale decisione è necessaria.
+- DO NOT modify an approved specification.
+- DO NOT change the specification to match the current code.
+- DO NOT silently implement behavior that contradicts the specification.
+- DO NOT resolve `TBD` or `QUESTION` markers on your own.
+- DO NOT treat a `TBD` or `QUESTION` as permission to choose an implementation.
 
-## Implementazione
+If the requested implementation conflicts with an approved specification:
 
-Quando viene richiesto di implementare una feature:
-1. leggere prima la relativa specifica;
-2. verificare il codice esistente;
-3. implementare il comportamento descritto;
-4. evitare modifiche non necessarie fuori dallo scope della feature;
-5. eseguire i test pertinenti.
+1. stop before making the conflicting change;
+2. identify the exact specification file and section involved;
+3. explain the conflict briefly;
+4. propose the smallest specification change needed;
+5. wait for explicit user approval before changing the specification or
+   implementing behavior that contradicts it.
 
-Non aggiungere funzionalità non richieste anche se sembrano miglioramenti.
+A user request that explicitly asks to update a named specification/document
+counts as approval to edit only the requested documentation.
 
-## Database
+## 2. Specification status and implementation status are separate
 
-Non modificare lo schema del database salvo quando:
-- è espressamente previsto dalla specifica; oppure
-- l'utente lo richiede esplicitamente.
+Specification files may contain both:
 
-Non introdurre migrazioni o cambiamenti incompatibili autonomamente.
+- `STATUS: APPROVED SPECIFICATION — READ ONLY`
+- `IMPLEMENTATION: NOT IMPLEMENTED`
+- `IMPLEMENTATION: PARTIALLY IMPLEMENTED`
+- `IMPLEMENTATION: IMPLEMENTED`
 
-## Git
+`IMPLEMENTATION` describes the current software state. It does not make the
+specification editable.
 
-- Non creare commit salvo richiesta esplicita.
-- Non effettuare push.
-- Non creare branch salvo richiesta esplicita.
-- Lasciare le modifiche nel working tree per la revisione dell'utente.
+## 3. Current protected specifications
 
-## Modifiche alle specifiche
+The following files are specifications and should normally be treated as
+read-only during implementation:
 
-Codice e specifiche sono due attività distinte.
+- `docs/ARCHITECTURE.md`
+- `docs/ORGANIZATIONS.md`
+- `docs/EVENTS.md`
+- `docs/MODULES.md`
+- `docs/LENDING.md`
+- `docs/DATABASE.md`
+- `docs/OPERATION.md`
 
-Durante un'attività di implementazione:
-- è consentito modificare il codice;
-- non è consentito modificare le specifiche.
+The header inside each file is the authoritative protection signal. Future
+specification files should use the same header.
 
-Se l'implementazione richiede una modifica delle specifiche, fermarsi e
-segnalare la questione all'utente.
+## 4. Keep implementation scope narrow
+
+Implement only the requested feature.
+
+In particular:
+
+- do not perform unrelated refactors;
+- do not migrate the database schema unless explicitly requested;
+- do not implement future architecture merely because it is described in
+  the specifications;
+- do not add speculative abstractions for features that are not part of the
+  current task;
+- preserve existing behavior unless the task explicitly changes it.
+
+Example: implementing database export/backup must not trigger implementation
+of the future database schema described in `docs/DATABASE.md`.
+
+## 5. Database changes require explicit scope
+
+Before changing database tables, relationships, migrations, or schema
+versioning, verify that the current task explicitly requires a schema change.
+
+If it does not, leave the schema unchanged.
+
+When a task only needs to read, back up, export, or inspect the current
+database, prefer an implementation that works with the existing schema.
+
+## 6. Documentation during implementation
+
+Implementation tasks may update ordinary implementation documentation when
+needed, but protected specifications must not be changed unless explicitly
+requested.
+
+If implementation reveals a possible specification improvement, report it
+separately instead of editing the specification.
+
+## 7. Completion report
+
+At the end of an implementation task, report:
+
+- files changed;
+- tests/checks performed;
+- whether any approved specification was affected;
+- any specification conflict or unresolved decision discovered.
+
+If no approved specification was modified, state that explicitly.
+
+## 8. Preferred implementation workflow
+
+Before coding:
+
+1. read this `AGENTS.md`;
+2. identify the relevant approved specification(s);
+3. read only the sections needed for the task;
+4. confirm that the requested change does not conflict with them;
+5. implement the smallest coherent change;
+6. run the relevant tests/checks;
+7. report the result without editing approved specifications.
+
+When unsure whether a decision belongs to implementation or specification,
+ask the user instead of deciding silently.

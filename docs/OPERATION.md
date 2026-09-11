@@ -1,6 +1,15 @@
 # Operatività Prestiti Ludoteca LudoX
 
-**Stato:** procedura della modalità token attualmente disponibile.
+> **STATUS: APPROVED SPECIFICATION — READ ONLY**
+>
+> **IMPLEMENTATION: IMPLEMENTED**
+>
+> Questo documento è una specifica approvata di LudoX. Durante
+> l'implementazione non deve essere modificato, salvo richiesta esplicita
+> dell'utente. I marker `TBD` e `QUESTION` restano decisioni aperte e non
+> autorizzano Codex a scegliere autonomamente una soluzione.
+
+
 
 Questo documento descrive come organizzare fisicamente la postazione di prestito e come utilizzare LudoX nella modalità basata su token numerati.
 

@@ -1,6 +1,15 @@
 # Moduli LudoX
 
-**Stato:** draft.
+> **STATUS: APPROVED SPECIFICATION — READ ONLY**
+>
+> **IMPLEMENTATION: NOT IMPLEMENTED**
+>
+> Questo documento è una specifica approvata di LudoX. Durante
+> l'implementazione non deve essere modificato, salvo richiesta esplicita
+> dell'utente. I marker `TBD` e `QUESTION` restano decisioni aperte e non
+> autorizzano Codex a scegliere autonomamente una soluzione.
+
+
 
 ## Definizione
 
