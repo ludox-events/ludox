@@ -70,3 +70,18 @@ In particolare:
 - prestiti → `LENDING.md`;
 - schema fisico e migrazioni → `DATABASE.md`;
 - procedura per chi opera al banco → `OPERATION.md`.
+
+
+## Priorità di implementazione
+
+La documentazione architetturale descrive il modello target, ma non determina automaticamente l'ordine delle modifiche al software.
+
+Le funzionalità possono essere implementate in modo incrementale, privilegiando interventi utili e a basso rischio prima della migrazione allo schema database v1.
+
+Una priorità candidata è l'**export/backup del database corrente**, utile anche come base di sicurezza prima delle future migration.
+
+Va mantenuta distinta la differenza tra:
+
+- **export/backup del database** — copia completa del workspace SQLite;
+- **export dei dati di un modulo** — per esempio esportazione della ludoteca in CSV/XLSX per riutilizzo o scambio.
+
