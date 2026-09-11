@@ -22,7 +22,7 @@ Un Event contiene almeno:
 
 Lo slug è obbligatorio ed è pensato come identificatore leggibile e stabile utile anche per future esportazioni, integrazioni o distribuzione esterna.
 
-> TBD: Definire il formato ammesso dello slug e se la sua unicità deve essere garantita per Organization o sull'intero database.
+- TBD: Definire il formato ammesso dello slug e se la sua unicità deve essere garantita per Organization o sull'intero database.
 
 ## Dati opzionali
 
@@ -51,7 +51,7 @@ Gli stati previsti sono:
 
 Possono esistere più eventi `active` contemporaneamente all'interno della stessa Organization.
 
-> QUESTION: Stabilire se lo stato debba essere modificato esclusivamente manualmente oppure se LudoX possa proporre cambi di stato in base alle date dell'evento.
+- QUESTION: Stabilire se lo stato debba essere modificato esclusivamente manualmente oppure se LudoX possa proporre cambi di stato in base alle date dell'evento.
 
 ## Event corrente sul client
 
@@ -64,7 +64,7 @@ Ogni client lavora con un solo Event alla volta.
 
 Cambiare Event sulla postazione è consentito anche se nell'evento precedente esistono sessioni di prestito ancora aperte. I dati appartengono all'Event, non al client.
 
-> TBD: Definire il punto dell'interfaccia in cui avviene il cambio Event: Home, schermata iniziale o altro selettore operativo.
+- TBD: Definire il punto dell'interfaccia in cui avviene il cambio Event: Home, schermata iniziale o altro selettore operativo.
 
 ## Moduli
 
@@ -86,7 +86,7 @@ Un Event può essere eliminato soltanto quando è vuoto e non esiste storico ope
 
 Un Event non vuoto deve essere conservato e può essere archiviato o annullato.
 
-> TBD: Formalizzare tecnicamente la condizione di "evento vuoto", inclusi moduli abilitati ma senza dati, configurazioni create e record ausiliari.
+- TBD: Formalizzare tecnicamente la condizione di "evento vuoto", inclusi moduli abilitati ma senza dati, configurazioni create e record ausiliari.
 
 ## Importazione e riuso dei dati
 

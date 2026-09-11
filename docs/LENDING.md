@@ -47,7 +47,7 @@ Può essere previsto un identificativo esterno opzionale utile per collegare il 
 
 Le copie non vengono però memorizzate soltanto come un numero aggregato: nello schema v1 ogni scatola fisica deve poter essere rappresentata da un record distinto.
 
-> TBD: Definire la regola definitiva di unicità dei titoli all'interno dello stesso Event e la normalizzazione dei nomi durante inserimento/importazione.
+- TBD: Definire la regola definitiva di unicità dei titoli all'interno dello stesso Event e la normalizzazione dei nomi durante inserimento/importazione.
 
 ## Copie fisiche
 
@@ -90,7 +90,7 @@ Sono inoltre previsti identificativi opzionali:
 
 Il codice della copia deve poter essere assegnato o modificato successivamente dal Backoffice. È quindi possibile iniziare con copie prive di codice e identificarle individualmente in seguito.
 
-> TBD: Definire formato, vincoli e strategie di generazione/importazione dei codici delle copie.
+- TBD: Definire formato, vincoli e strategie di generazione/importazione dei codici delle copie.
 
 ## Proprietari / etichette operative
 
@@ -125,7 +125,7 @@ Deve essere possibile anche importare un elenco omogeneo e assegnare durante l'i
 
 La ludoteca può essere completamente svuotata soltanto se nell'Event non è mai stato registrato alcun prestito. Dopo la creazione dello storico dei prestiti non deve essere disponibile un reset distruttivo della ludoteca.
 
-> TBD: Definire preview, match dei titoli, conflitti e gestione di refusi come `Kingdomino` / `King Domino`. Non deve essere applicata automaticamente una fusione fuzzy che possa unire giochi differenti.
+- TBD: Definire preview, match dei titoli, conflitti e gestione di refusi come `Kingdomino` / `King Domino`. Non deve essere applicata automaticamente una fusione fuzzy che possa unire giochi differenti.
 
 ## Esportazione della ludoteca
 
@@ -140,7 +140,7 @@ Non contiene lo storico dei prestiti.
 
 Lo storico rimane legato all'Event originale.
 
-> TBD: Definire il formato canonico di interoperabilità CSV/XLSX e quali campi opzionali devono essere esportati.
+- TBD: Definire il formato canonico di interoperabilità CSV/XLSX e quali campi opzionali devono essere esportati.
 
 ## Sessione anonima e documento
 
@@ -168,7 +168,7 @@ Il numero massimo di slot è una configurazione del modulo Prestiti del singolo 
 
 Gli slot ripartono da 1 in ogni Event.
 
-> TBD: Confermare definitivamente la politica automatica di assegnazione dello slot libero. La soluzione preferita è il primo slot disponibile a partire dal numero più basso; non esiste un requisito database che imponga un'assegnazione casuale.
+- TBD: Confermare definitivamente la politica automatica di assegnazione dello slot libero. La soluzione preferita è il primo slot disponibile a partire dal numero più basso; non esiste un requisito database che imponga un'assegnazione casuale.
 
 ## Modalità token
 
@@ -248,7 +248,7 @@ Il modulo Prestiti non può essere disabilitato finché esistono sessioni o pres
 
 La disabilitazione, quando consentita, non cancella lo storico.
 
-> TBD: Definire in futuro un'eventuale procedura amministrativa esplicita per la chiusura forzata di situazioni rimaste aperte.
+- TBD: Definire in futuro un'eventuale procedura amministrativa esplicita per la chiusura forzata di situazioni rimaste aperte.
 
 ## Statistiche e report
 

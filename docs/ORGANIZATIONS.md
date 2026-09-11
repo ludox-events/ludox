@@ -47,7 +47,7 @@ Sono previsti come informazioni opzionali:
 
 L'assenza dei campi opzionali non deve impedire l'utilizzo dell'Organization.
 
-> TBD: Definire come viene memorizzato e distribuito il logo, evitando una dipendenza da percorsi locali non portabili tra client/server.
+- TBD: Definire come viene memorizzato e distribuito il logo, evitando una dipendenza da percorsi locali non portabili tra client/server.
 
 ## Stato
 

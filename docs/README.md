@@ -37,7 +37,7 @@ LudoX utilizza quattro marker ricercabili a livello di progetto:
 Nei file Markdown i marker vengono scritti come blockquote, ad esempio:
 
 ```text
-> TBD: Definire il comportamento in caso di conflitto durante l'importazione.
+- TBD: Definire il comportamento in caso di conflitto durante l'importazione.
 ```
 
 Quando la decisione viene presa, il marker deve essere rimosso e il contenuto trasformato in documentazione normale.
@@ -49,7 +49,7 @@ Il repository può usare l'estensione **Better Todo Tree** per raccogliere i mar
 La configurazione proposta è inclusa in:
 
 - `.vscode/extensions.json` — suggerisce l'estensione;
-- `.vscode/settings.json` — abilita `TODO`, `TBD`, `FIXME` e `QUESTION`, compreso il formato blockquote Markdown.
+- `.vscode/settings.json` — abilita `TODO`, `TBD`, `FIXME` e `QUESTION`, compreso il formato a elenco Markdown.
 
 È sempre possibile usare anche la ricerca globale di VS Code con una regex equivalente, per esempio:
 

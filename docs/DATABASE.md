@@ -61,9 +61,9 @@ lending_loans
 lending_settings
 ```
 
-> TBD: Definire lo schema SQL v1 effettivo, i nomi definitivi delle tabelle e le foreign key.
+- TBD: Definire lo schema SQL v1 effettivo, i nomi definitivi delle tabelle e le foreign key.
 
-> TBD: Decidere in quali tabelle event-specific mantenere un `event_id` diretto anche quando l'appartenenza all'Event potrebbe essere ricavata tramite altre relazioni. La priorità è evitare query ambigue e preservare l'integrità dei dati senza duplicazioni inutili.
+- TBD: Decidere in quali tabelle event-specific mantenere un `event_id` diretto anche quando l'appartenenza all'Event potrebbe essere ricavata tramite altre relazioni. La priorità è evitare query ambigue e preservare l'integrità dei dati senza duplicazioni inutili.
 
 ## Copie fisiche
 
@@ -98,7 +98,7 @@ Sono già stabiliti i seguenti principi:
 - la ludoteca non può essere azzerata dopo che è stato registrato almeno un prestito;
 - il modulo Prestiti non può essere disabilitato con sessioni/prestiti aperti.
 
-> TBD: Tradurre questi principi in regole precise di `FOREIGN KEY`, `ON DELETE`, controlli applicativi e transazioni.
+- TBD: Tradurre questi principi in regole precise di `FOREIGN KEY`, `ON DELETE`, controlli applicativi e transazioni.
 
 ## Versione dello schema
 
@@ -120,7 +120,7 @@ Non è richiesta compatibilità automatica con i database sperimentali precedent
 
 A partire dallo schema v1, ogni modifica strutturale deve prevedere una migrazione esplicita.
 
-> TBD: Definire il meccanismo concreto di registrazione/esecuzione delle migration e la strategia di backup prima di una migration distruttiva o non reversibile.
+- TBD: Definire il meccanismo concreto di registrazione/esecuzione delle migration e la strategia di backup prima di una migration distruttiva o non reversibile.
 
 ## Service layer
 
@@ -138,13 +138,13 @@ Database access
 
 Questo permette di mantenere la logica funzionale stabile anche se in futuro SQLite locale viene affiancato o sostituito da un servizio LAN/web.
 
-> TBD: Definire la suddivisione minima dei service senza introdurre complessità non necessaria.
+- TBD: Definire la suddivisione minima dei service senza introdurre complessità non necessaria.
 
 ## Timestamp
 
 I domini Event e Prestiti richiedono date e orari affidabili per storico e report.
 
-> TBD: Definire convenzione temporale dello schema v1: formato, timezone e comportamento in modalità locale/server.
+- TBD: Definire convenzione temporale dello schema v1: formato, timezone e comportamento in modalità locale/server.
 
 ## Identificatori
 
@@ -152,4 +152,4 @@ Ogni entità persistente possiede un identificativo interno.
 
 Event possiede inoltre uno slug obbligatorio; giochi e copie possono avere identificativi esterni opzionali.
 
-> TBD: Definire dove sia necessaria unicità globale, per Organization oppure per Event.
+- TBD: Definire dove sia necessaria unicità globale, per Organization oppure per Event.

@@ -102,7 +102,7 @@ I client non dovranno condividere direttamente un file SQLite attraverso una car
 
 Una futura interfaccia web potrà riutilizzare lo stesso livello di servizio e lo stesso modello logico.
 
-> TBD: Definire l'architettura concreta del server LAN e il protocollo tra client e server quando verrà affrontata la funzionalità multi-postazione.
+- TBD: Definire l'architettura concreta del server LAN e il protocollo tra client e server quando verrà affrontata la funzionalità multi-postazione.
 
 ## Separazione tra configurazione locale e dati applicativi
 

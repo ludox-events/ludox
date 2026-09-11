@@ -17,7 +17,7 @@ I moduli attualmente confermati nel modello sono:
 
 Il nome mostrato nell'interfaccia deve poter essere tradotto tramite il sistema i18n.
 
-> TBD: Definire gli identificatori tecnici stabili dei moduli nello schema e nel codice.
+- TBD: Definire gli identificatori tecnici stabili dei moduli nello schema e nel codice.
 
 Il possibile modulo Accoglienza/Iscrizioni rimane un'area futura ancora da formalizzare e non fa parte delle decisioni consolidate di questo documento.
 
@@ -55,7 +55,7 @@ Ogni modulo può imporre propri vincoli di sicurezza prima della disabilitazione
 
 Per Prestiti, la disabilitazione non è consentita mentre esistono sessioni o prestiti aperti.
 
-> TBD: Definire il comportamento di una futura operazione amministrativa di chiusura forzata del modulo Prestiti.
+- TBD: Definire il comportamento di una futura operazione amministrativa di chiusura forzata del modulo Prestiti.
 
 ## Isolamento dei dati
 
