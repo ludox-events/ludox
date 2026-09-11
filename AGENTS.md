@@ -52,6 +52,7 @@ read-only during implementation:
 - `docs/ORGANIZATIONS.md`
 - `docs/EVENTS.md`
 - `docs/MODULES.md`
+- `docs/CONFIGURATION.md`
 - `docs/LENDING.md`
 - `docs/DATABASE.md`
 - `docs/OPERATION.md`

@@ -71,3 +71,7 @@ I dati dei moduli appartengono all'Event.
 Statistiche, ricerche e operazioni normali devono quindi essere eseguite sempre nel contesto dell'Event corrente e non devono mescolare automaticamente dati di eventi differenti.
 
 Eventuali analisi aggregate tra eventi saranno funzionalità esplicite di livello superiore e non il comportamento predefinito dei moduli.
+
+## Configurazione dei moduli
+
+Le impostazioni specifiche di un modulo appartengono allo specifico Event. Le regole generali di scoping sono definite in [CONFIGURATION.md](CONFIGURATION.md).

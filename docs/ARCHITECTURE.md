@@ -139,3 +139,7 @@ Non viene garantita la migrazione automatica dai database sperimentali precedent
 A partire dallo schema v1, l'evoluzione del database deve essere versionata e gestita tramite migrazioni.
 
 Vedi [DATABASE.md](DATABASE.md).
+
+## Scope della configurazione
+
+La distinzione tra configurazione della postazione, Organization, Event e moduli è definita in [CONFIGURATION.md](CONFIGURATION.md).

@@ -440,3 +440,7 @@ La struttura sopra è una specifica di progetto. Prima dell'implementazione devo
 - strategia di backup.
 
 Lo schema SQL non viene definito in questa fase.
+
+## Scope della configurazione
+
+La persistenza delle impostazioni deve rispettare gli scope definiti in [CONFIGURATION.md](CONFIGURATION.md). In particolare, `max_slots` appartiene al modulo `game_library` dell'Event e non alla configurazione locale della postazione.
