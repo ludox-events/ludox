@@ -86,6 +86,33 @@ un'organizzazione, assicurati di avere le autorizzazioni necessarie.
 
 ## Test delle modifiche
 
+### Test automatici (FASE A della issue #16)
+
+Da un ambiente virtuale attivo, nella root del repository:
+
+```bash
+python -m pip install -r requirements-dev.txt
+pytest
+```
+
+Questa suite non richiede le dipendenze GUI. Copre lo schema SQLite corrente,
+le funzioni dati, i token, la disponibilità, la formattazione delle date e la
+configurazione. Ogni test usa percorsi temporanei; le connessioni SQLite fuori
+dalla directory temporanea del test vengono rifiutate. I file INI vengono
+sempre passati esplicitamente, senza leggere la configurazione dell'utente.
+
+Gli inserimenti SQL nei test preparano dati e stati aperti/chiusi: non testano
+i callback applicativi di apertura, cambio gioco e restituzione. Questi flussi,
+le validazioni dei form, le statistiche e i report rimangono da coprire dopo
+la separazione prevista dalla issue #11. Non sono inclusi test Tkinter.
+
+La caratterizzazione preserva anche particolarità correnti: le copie di un
+proprietario disattivato contribuiscono alla disponibilità; la ricerca include
+titoli con tutte le copie in prestito; un limite token booleano viene accettato
+da `validate_config` e salvato, ma non riletto da `load_config`.
+
+### Verifiche manuali
+
 Prima di proporre una modifica è consigliato verificare almeno:
 
 - avvio dell'applicazione;
