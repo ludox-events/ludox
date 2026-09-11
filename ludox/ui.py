@@ -22,14 +22,12 @@ from .config import (
 )
 from .database import (
     get_db, formatta_data_ora, conta_prestiti, conta_documenti,
-    conta_documenti_attivi, copie_totali_gioco, copie_in_prestito,
+    conta_documenti_attivi,
     disponibilita_gioco, cerca_giochi, elenco_proprietari,
-    proprietario_per_id, totale_copie_proprietario, gioco_per_id,
-    elenco_giochi_backoffice, copie_per_proprietario_del_gioco,
-    riepilogo_proprietari_gioco, massimo_token_aperto, init_db,
+    proprietario_per_id, massimo_token_aperto, init_db,
     set_db_path, get_db_path,
 )
-from . import lending
+from . import catalog, lending
 from .i18n import tr, set_language, get_language, language_display_names
 
 APP_THEME = "flatly"
@@ -4615,7 +4613,7 @@ class PrestitiApp(ttk.Window):
             "Inventario delle copie messe a disposizione da ciascun proprietario"
         )
 
-        proprietari = elenco_proprietari()
+        proprietari = catalog.elenco_proprietari()
         proprietari_by_name = {
             row["nome"]: row["id"]
             for row in proprietari
@@ -4775,39 +4773,10 @@ class PrestitiApp(ttk.Window):
 
             proprietario_id = proprietari_by_name[nome]
 
-            with get_db() as db:
-                righe = db.execute("""
-                    SELECT
-                        g.id AS gioco_id,
-                        g.nome AS gioco,
-                        g.attivo AS gioco_attivo,
-                        cg.quantita AS copie_proprietario,
-                        (
-                            SELECT COALESCE(SUM(cg2.quantita), 0)
-                            FROM copie_gioco cg2
-                            WHERE cg2.gioco_id = g.id
-                        ) AS copie_totali,
-                        (
-                            SELECT COUNT(*)
-                            FROM prestiti pr
-                            WHERE pr.gioco_id = g.id
-                              AND pr.rientro IS NULL
-                        ) AS prestiti_attivi_titolo
-                    FROM copie_gioco cg
-                    JOIN giochi g
-                      ON g.id = cg.gioco_id
-                    WHERE cg.proprietario_id = ?
-                      AND cg.quantita > 0
-                    ORDER BY g.nome
-                """, (
-                    proprietario_id,
-                )).fetchall()
-
-            totale_titoli = len(righe)
-            totale_copie = sum(
-                row["copie_proprietario"]
-                for row in righe
-            )
+            inventario = catalog.inventario_proprietario(proprietario_id)
+            righe = inventario.righe
+            totale_titoli = inventario.totale_titoli
+            totale_copie = inventario.totale_copie
 
             riepilogo_var.set(
                 tr(f"{nome}  •  Titoli: {totale_titoli}  •  Copie: {totale_copie}")
@@ -4905,14 +4874,14 @@ class PrestitiApp(ttk.Window):
             expand=YES
         )
 
-        for proprietario in elenco_proprietari():
+        for proprietario in catalog.elenco_proprietari():
             tree.insert(
                 "",
                 END,
                 iid=str(proprietario["id"]),
                 values=(
                     proprietario["nome"],
-                    totale_copie_proprietario(
+                    catalog.totale_copie_proprietario(
                         proprietario["id"]
                     ),
                     tr("common.yes") if proprietario["attivo"] else tr("common.no")
@@ -4994,26 +4963,16 @@ class PrestitiApp(ttk.Window):
         entry.focus_set()
 
         def salva():
-            nome = nome_var.get().strip()
-
-            if not nome:
+            try:
+                catalog.aggiungi_proprietario(nome_var.get())
+            except catalog.NomeMancante:
                 messagebox.showwarning(
                     tr("Nome mancante"),
                     tr("Inserisci il nome del proprietario.")
                 )
                 return
 
-            try:
-                with get_db() as db:
-                    db.execute("""
-                        INSERT INTO proprietari (
-                            nome,
-                            attivo
-                        )
-                        VALUES (?, 1)
-                    """, (nome,))
-
-            except sqlite3.IntegrityError:
+            except catalog.NomeDuplicato:
                 messagebox.showerror(
                     tr("Proprietario già presente"),
                     tr("Esiste già un proprietario con questo nome.")
@@ -5039,7 +4998,7 @@ class PrestitiApp(ttk.Window):
         )
 
     def show_modifica_proprietario(self, proprietario_id):
-        proprietario = proprietario_per_id(
+        proprietario = catalog.proprietario_per_id(
             proprietario_id
         )
 
@@ -5098,7 +5057,7 @@ class PrestitiApp(ttk.Window):
             card,
             text=(
                 tr(f"Copie associate: "
-                f"{totale_copie_proprietario(proprietario_id)}")
+                f"{catalog.totale_copie_proprietario(proprietario_id)}")
             ),
             font=("Arial", 12),
             bootstyle="secondary"
@@ -5118,46 +5077,31 @@ class PrestitiApp(ttk.Window):
         )
 
         def salva():
-            nome = nome_var.get().strip()
-
-            if not nome:
+            nome = nome_var.get()
+            attivo = attivo_var.get()
+            try:
+                try:
+                    catalog.modifica_proprietario(proprietario_id, nome, attivo)
+                except catalog.ConfermaDisattivazione:
+                    conferma = messagebox.askyesno(
+                        tr("Proprietario con copie associate"),
+                        tr("Questo proprietario ha ancora copie "
+                        "associate ai giochi.\n\n"
+                        "Vuoi comunque disattivarlo?")
+                    )
+                    if not conferma:
+                        return
+                    catalog.modifica_proprietario(
+                        proprietario_id, nome, attivo_var.get(),
+                        conferma_disattivazione=True,
+                    )
+            except catalog.NomeMancante:
                 messagebox.showwarning(
                     tr("Nome mancante"),
                     tr("Inserisci il nome del proprietario.")
                 )
                 return
-
-            if (
-                not attivo_var.get()
-                and totale_copie_proprietario(
-                    proprietario_id
-                ) > 0
-            ):
-                conferma = messagebox.askyesno(
-                    tr("Proprietario con copie associate"),
-                    tr("Questo proprietario ha ancora copie "
-                    "associate ai giochi.\n\n"
-                    "Vuoi comunque disattivarlo?")
-                )
-
-                if not conferma:
-                    return
-
-            try:
-                with get_db() as db:
-                    db.execute("""
-                        UPDATE proprietari
-                        SET
-                            nome = ?,
-                            attivo = ?
-                        WHERE id = ?
-                    """, (
-                        nome,
-                        1 if attivo_var.get() else 0,
-                        proprietario_id
-                    ))
-
-            except sqlite3.IntegrityError:
+            except catalog.NomeDuplicato:
                 messagebox.showerror(
                     tr("Nome duplicato"),
                     tr("Esiste già un proprietario con questo nome.")
@@ -5251,18 +5195,18 @@ class PrestitiApp(ttk.Window):
             expand=YES
         )
 
-        for gioco in elenco_giochi_backoffice():
+        for gioco in catalog.elenco_giochi_backoffice():
             tree.insert(
                 "",
                 END,
                 iid=str(gioco["id"]),
                 values=(
                     gioco["nome"],
-                    riepilogo_proprietari_gioco(
+                    catalog.riepilogo_proprietari_gioco(
                         gioco["id"]
                     ),
                     gioco["copie_totali"],
-                    copie_in_prestito(
+                    catalog.copie_in_prestito(
                         gioco["id"]
                     ),
                     tr("common.yes") if gioco["attivo"] else tr("common.no")
@@ -5345,28 +5289,16 @@ class PrestitiApp(ttk.Window):
         entry.focus_set()
 
         def salva():
-            nome = nome_var.get().strip()
-
-            if not nome:
+            try:
+                gioco_id = catalog.aggiungi_gioco(nome_var.get())
+            except catalog.NomeMancante:
                 messagebox.showwarning(
                     tr("Nome mancante"),
                     tr("Inserisci il nome del gioco.")
                 )
                 return
 
-            try:
-                with get_db() as db:
-                    cursor = db.execute("""
-                        INSERT INTO giochi (
-                            nome,
-                            attivo
-                        )
-                        VALUES (?, 1)
-                    """, (nome,))
-
-                    gioco_id = cursor.lastrowid
-
-            except sqlite3.IntegrityError:
+            except catalog.NomeDuplicato:
                 messagebox.showerror(
                     tr("Gioco già presente"),
                     tr("Esiste già un gioco con questo nome.")
@@ -5394,7 +5326,7 @@ class PrestitiApp(ttk.Window):
         )
 
     def show_modifica_gioco(self, gioco_id):
-        gioco = gioco_per_id(
+        gioco = catalog.gioco_per_id(
             gioco_id
         )
 
@@ -5545,7 +5477,7 @@ class PrestitiApp(ttk.Window):
             for item in tree.get_children():
                 tree.delete(item)
 
-            righe = copie_per_proprietario_del_gioco(
+            righe = catalog.copie_per_proprietario_del_gioco(
                 gioco_id
             )
 
@@ -5648,86 +5580,26 @@ class PrestitiApp(ttk.Window):
 
         def salva_quantita():
             proprietario_id = proprietario_selezionato["id"]
-
-            if proprietario_id is None:
+            try:
+                catalog.imposta_quantita(gioco_id, proprietario_id, quantita_var.get())
+            except catalog.ProprietarioNonSelezionato:
                 messagebox.showwarning(
                     tr("Seleziona un proprietario"),
                     tr("Seleziona prima un proprietario nella tabella.")
                 )
                 return
-
-            try:
-                quantita = int(
-                    quantita_var.get()
-                )
-
-                if quantita < 0:
-                    raise ValueError
-
-            except ValueError:
+            except catalog.QuantitaNonValida:
                 messagebox.showwarning(
                     tr("Quantità non valida"),
                     tr("Inserisci un numero intero maggiore o uguale a zero.")
                 )
                 return
-
-            # Il totale complessivo non può scendere
-            # sotto le copie attualmente in prestito.
-            with get_db() as db:
-                altre_copie = db.execute("""
-                    SELECT COALESCE(SUM(quantita), 0)
-                    FROM copie_gioco
-                    WHERE gioco_id = ?
-                      AND proprietario_id <> ?
-                """, (
-                    gioco_id,
-                    proprietario_id
-                )).fetchone()[0]
-
-            nuovo_totale = altre_copie + quantita
-            fuori = copie_in_prestito(
-                gioco_id
-            )
-
-            if nuovo_totale < fuori:
+            except catalog.CopieInsufficienti as e:
                 messagebox.showwarning(
                     tr("Copie insufficienti"),
-                    tr(f"Ci sono attualmente {fuori} copie "
-                    f"di questo gioco in prestito.\n\n"
-                    f"Il totale non può essere ridotto "
-                    f"a {nuovo_totale}.")
+                    tr(str(e))
                 )
                 return
-
-            with get_db() as db:
-                if quantita == 0:
-                    db.execute("""
-                        DELETE FROM copie_gioco
-                        WHERE gioco_id = ?
-                          AND proprietario_id = ?
-                    """, (
-                        gioco_id,
-                        proprietario_id
-                    ))
-                else:
-                    db.execute("""
-                        INSERT INTO copie_gioco (
-                            gioco_id,
-                            proprietario_id,
-                            quantita
-                        )
-                        VALUES (?, ?, ?)
-                        ON CONFLICT(
-                            gioco_id,
-                            proprietario_id
-                        )
-                        DO UPDATE SET
-                            quantita = excluded.quantita
-                    """, (
-                        gioco_id,
-                        proprietario_id,
-                        quantita
-                    ))
 
             aggiorna_lista()
 
@@ -5754,45 +5626,22 @@ class PrestitiApp(ttk.Window):
         # ----------------------------------------------------
 
         def salva_gioco():
-            nome = nome_var.get().strip()
-
-            if not nome:
+            try:
+                catalog.modifica_gioco(gioco_id, nome_var.get(), attivo_var.get())
+            except catalog.NomeMancante:
                 messagebox.showwarning(
                     tr("Nome mancante"),
                     tr("Inserisci il nome del gioco.")
                 )
                 return
-
-            fuori = copie_in_prestito(
-                gioco_id
-            )
-
-            if (
-                not attivo_var.get()
-                and fuori > 0
-            ):
+            except catalog.GiocoInPrestito:
                 messagebox.showwarning(
                     tr("Gioco in prestito"),
                     tr("Non puoi disattivare un gioco "
                     "mentre ci sono copie in prestito.")
                 )
                 return
-
-            try:
-                with get_db() as db:
-                    db.execute("""
-                        UPDATE giochi
-                        SET
-                            nome = ?,
-                            attivo = ?
-                        WHERE id = ?
-                    """, (
-                        nome,
-                        1 if attivo_var.get() else 0,
-                        gioco_id
-                    ))
-
-            except sqlite3.IntegrityError:
+            except catalog.NomeDuplicato:
                 messagebox.showerror(
                     tr("Nome duplicato"),
                     tr("Esiste già un gioco con questo nome.")
@@ -5832,7 +5681,9 @@ class PrestitiApp(ttk.Window):
 
     # ========================================================
     # BACKOFFICE - IMPOSTAZIONI
-    # =================================    def show_impostazioni(self):
+    # ========================================================
+
+    def show_impostazioni(self):
         frame = self.clear()
 
         self.pulsante_indietro(

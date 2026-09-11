@@ -110,8 +110,20 @@ funzioni SQL di `ludox/database.py`. Il service non importa Tkinter.
 Sono verificati anche storico, riuso dei token, timestamp condivisi, stati
 obsoleti, lock del cambio e rollback in caso di errore intermedio. Le conferme
 e la navigazione restano nella UI e richiedono verifica manuale su un database
-di prova. Non sono inclusi test Tkinter. Catalogo, statistiche, report e
-impostazioni rimangono fuori da questa prima fase della separazione.
+di prova. Non sono inclusi test Tkinter. Statistiche, report generali e
+impostazioni rimangono da separare dalla UI.
+
+La seconda fase della issue #11 estrae in `ludox/catalog.py` aggiunta/modifica
+di giochi e proprietari, quantità e inventario per proprietario. Le query
+rimangono in `ludox/database.py`. `tests/test_catalog.py` verifica nomi,
+duplicati, disattivazioni, quantità, inventario e conservazione dello storico.
+Per disattivare un proprietario con copie, il service solleva
+`ConfermaDisattivazione` senza scrivere: la UI chiede conferma e solo in caso
+affermativo ripete la richiesta con `conferma_disattivazione=True`.
+Un gioco con prestiti aperti non può invece essere disattivato.
+I controlli delle quantità precedono la transazione di scrittura, come prima.
+La quantità zero rimuove l'associazione gioco/proprietario; le copie restano
+aggregate e i prestiti dell'inventario sono conteggiati per titolo.
 
 Per preservare il comportamento attuale, l'apertura controlla disponibilità e
 token prima della transazione, mentre il cambio li ricontrolla sotto lock.

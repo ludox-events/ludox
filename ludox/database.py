@@ -445,3 +445,79 @@ def chiudi_documento_per_restituzione(db, documento_id, timestamp):
         "UPDATE documenti SET uscita = ? WHERE id = ? AND uscita IS NULL",
         (timestamp, documento_id),
     ).rowcount
+
+
+class NomeDuplicato(Exception):
+    """Integrity failure historically reported as a duplicate catalog name."""
+
+
+@contextmanager
+def _scrittura_nome_catalogo():
+    try:
+        with get_db() as db:
+            yield db
+    except sqlite3.IntegrityError as exc:
+        raise NomeDuplicato(str(exc)) from exc
+
+
+def inserisci_proprietario(nome):
+    with _scrittura_nome_catalogo() as db:
+        return db.execute(
+            "INSERT INTO proprietari (nome, attivo) VALUES (?, 1)", (nome,)
+        ).lastrowid
+
+
+def aggiorna_proprietario(proprietario_id, nome, attivo):
+    with _scrittura_nome_catalogo() as db:
+        db.execute("UPDATE proprietari SET nome = ?, attivo = ? WHERE id = ?",
+                   (nome, attivo, proprietario_id))
+
+
+def inserisci_gioco(nome):
+    with _scrittura_nome_catalogo() as db:
+        return db.execute(
+            "INSERT INTO giochi (nome, attivo) VALUES (?, 1)", (nome,)
+        ).lastrowid
+
+
+def aggiorna_gioco(gioco_id, nome, attivo):
+    with _scrittura_nome_catalogo() as db:
+        db.execute("UPDATE giochi SET nome = ?, attivo = ? WHERE id = ?",
+                   (nome, attivo, gioco_id))
+
+
+def copie_altri_proprietari(gioco_id, proprietario_id):
+    with get_db() as db:
+        return db.execute("""
+            SELECT COALESCE(SUM(quantita), 0) FROM copie_gioco
+            WHERE gioco_id = ? AND proprietario_id <> ?
+        """, (gioco_id, proprietario_id)).fetchone()[0]
+
+
+def aggiorna_quantita_copie(gioco_id, proprietario_id, quantita):
+    with get_db() as db:
+        if quantita == 0:
+            db.execute("DELETE FROM copie_gioco WHERE gioco_id = ? AND proprietario_id = ?",
+                       (gioco_id, proprietario_id))
+        else:
+            db.execute("""
+                INSERT INTO copie_gioco (gioco_id, proprietario_id, quantita)
+                VALUES (?, ?, ?)
+                ON CONFLICT(gioco_id, proprietario_id)
+                DO UPDATE SET quantita = excluded.quantita
+            """, (gioco_id, proprietario_id, quantita))
+
+
+def giochi_per_proprietario(proprietario_id):
+    with get_db() as db:
+        return db.execute("""
+            SELECT g.id AS gioco_id, g.nome AS gioco, g.attivo AS gioco_attivo,
+                cg.quantita AS copie_proprietario,
+                (SELECT COALESCE(SUM(cg2.quantita), 0) FROM copie_gioco cg2
+                 WHERE cg2.gioco_id = g.id) AS copie_totali,
+                (SELECT COUNT(*) FROM prestiti pr
+                 WHERE pr.gioco_id = g.id AND pr.rientro IS NULL) AS prestiti_attivi_titolo
+            FROM copie_gioco cg JOIN giochi g ON g.id = cg.gioco_id
+            WHERE cg.proprietario_id = ? AND cg.quantita > 0
+            ORDER BY g.nome
+        """, (proprietario_id,)).fetchall()
