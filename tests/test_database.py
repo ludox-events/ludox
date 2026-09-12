@@ -18,9 +18,32 @@ def test_initialization_creates_current_schema_and_default_owner(isolated_files)
             "SELECT name FROM sqlite_master WHERE type='index'"
         )}
         assert db.execute("PRAGMA foreign_keys").fetchone()[0] == 1
-    assert tables == {"proprietari", "giochi", "copie_gioco", "documenti", "prestiti"}
+    assert tables == {
+        "organizations", "proprietari", "giochi", "copie_gioco",
+        "documenti", "prestiti",
+    }
     assert {"idx_token_aperto", "idx_prestito_aperto_documento"} <= indexes
     assert [r["nome"] for r in data.elenco_proprietari()] == ["Organizzazione"]
+
+
+def test_organization_persistence_lists_reads_and_updates(db):
+    first_id = data.inserisci_organizzazione("Ludoteca B")
+    second_id = data.inserisci_organizzazione("Associazione A")
+
+    assert [row["id"] for row in data.elenco_organizzazioni()] == [
+        second_id, first_id,
+    ]
+    assert data.organizzazione_per_id(first_id)["name"] == "Ludoteca B"
+    assert data.organizzazione_per_id(999) is None
+
+    assert data.aggiorna_organizzazione(first_id, "Ludoteca C", 0) == 1
+    assert data.aggiorna_organizzazione(999, "Missing", 1) == 0
+    assert [row["id"] for row in data.elenco_organizzazioni(True)] == [second_id]
+    assert dict(data.organizzazione_per_id(first_id)) == {
+        "id": first_id,
+        "name": "Ludoteca C",
+        "active": 0,
+    }
 
 
 def test_initialization_preserves_existing_data_and_owner(catalog):

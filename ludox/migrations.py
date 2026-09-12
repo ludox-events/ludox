@@ -11,7 +11,7 @@ from typing import Callable, Iterable
 
 
 LEGACY_SCHEMA_VERSION = 0
-CURRENT_SCHEMA_VERSION = LEGACY_SCHEMA_VERSION
+CURRENT_SCHEMA_VERSION = 1
 
 
 class MigrationError(sqlite3.DatabaseError):
@@ -66,9 +66,19 @@ class MigrationResult:
     backup_path: Path | None
 
 
-# Version 1 is reserved for the future first stable schema. Issue #12 only
-# introduces the runner, so there are no production migrations yet.
-MIGRATIONS: tuple[Migration, ...] = ()
+def _migrate_to_version_1(connection):
+    connection.execute("""
+        CREATE TABLE organizations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL CHECK(length(trim(name)) > 0),
+            active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1))
+        )
+    """)
+
+
+MIGRATIONS: tuple[Migration, ...] = (
+    Migration(1, _migrate_to_version_1),
+)
 
 
 def schema_version(connection):

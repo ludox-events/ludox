@@ -26,43 +26,48 @@ def test_new_empty_database_is_distinguished_from_initialized_legacy(isolated_fi
     assert path.exists()
     with sqlite3.connect(path) as connection:
         assert migrations.inspect_database(connection) == migrations.DatabaseState(
-            migrations.DatabaseKind.LEGACY_UNVERSIONED,
-            migrations.LEGACY_SCHEMA_VERSION,
+            migrations.DatabaseKind.VERSIONED_SUPPORTED,
+            migrations.CURRENT_SCHEMA_VERSION,
         )
+        assert connection.execute(
+            "SELECT name FROM sqlite_schema WHERE name = 'organizations'"
+        ).fetchone() is not None
 
 
 def test_existing_legacy_database_keeps_data_and_version_zero(isolated_files):
     path = database.get_db_path()
-    database.init_db()
     with sqlite3.connect(path) as connection:
-        connection.execute("INSERT INTO giochi(nome) VALUES ('Azul')")
+        connection.execute("CREATE TABLE legacy_data(value TEXT)")
+        connection.execute("INSERT INTO legacy_data VALUES ('preserved')")
+        assert migrations.inspect_database(connection) == migrations.DatabaseState(
+            migrations.DatabaseKind.LEGACY_UNVERSIONED,
+            0,
+        )
 
     database.init_db()
 
     with sqlite3.connect(path) as connection:
         assert migrations.inspect_database(connection) == migrations.DatabaseState(
-            migrations.DatabaseKind.LEGACY_UNVERSIONED,
-            0,
+            migrations.DatabaseKind.VERSIONED_SUPPORTED,
+            1,
         )
         assert connection.execute(
-            "SELECT nome FROM giochi"
-        ).fetchone()[0] == "Azul"
+            "SELECT value FROM legacy_data"
+        ).fetchone()[0] == "preserved"
 
 
 def test_supported_versioned_database_is_detected_without_migration(isolated_files):
     path = database.get_db_path()
+    first_result = migrations.migrate_database(path)
     with sqlite3.connect(path) as connection:
-        connection.execute("CREATE TABLE versioned_data(value TEXT)")
-        connection.execute("PRAGMA user_version = 1")
-        assert migrations.inspect_database(
-            connection, supported_version=1
-        ) == migrations.DatabaseState(
+        assert migrations.inspect_database(connection) == migrations.DatabaseState(
             migrations.DatabaseKind.VERSIONED_SUPPORTED,
             1,
         )
 
-    result = migrations.migrate_database(path, target_version=1)
+    result = migrations.migrate_database(path)
 
+    assert first_result == migrations.MigrationResult(0, 1, (1,), None)
     assert result == migrations.MigrationResult(1, 1, (), None)
 
 
@@ -150,20 +155,20 @@ def test_future_database_version_is_rejected_without_changes(isolated_files):
     with sqlite3.connect(path) as connection:
         connection.execute("CREATE TABLE existing_data(value TEXT)")
         connection.execute("INSERT INTO existing_data VALUES ('preserved')")
-        connection.execute("PRAGMA user_version = 1")
+        connection.execute("PRAGMA user_version = 2")
         assert migrations.inspect_database(connection) == migrations.DatabaseState(
             migrations.DatabaseKind.FUTURE_UNSUPPORTED,
-            1,
+            2,
         )
 
     with pytest.raises(
         migrations.UnsupportedSchemaVersion,
-        match="newer than supported version 0",
+        match="newer than supported version 1",
     ):
         database.init_db()
 
     with sqlite3.connect(path) as connection:
-        assert migrations.schema_version(connection) == 1
+        assert migrations.schema_version(connection) == 2
         assert connection.execute(
             "SELECT value FROM existing_data"
         ).fetchone()[0] == "preserved"
