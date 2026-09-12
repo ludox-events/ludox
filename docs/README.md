@@ -23,6 +23,7 @@ Le GitHub Issues conservano la roadmap, le discussioni e la storia delle decisio
 | [LENDING.md](LENDING.md) | Draft consolidato | Modello funzionale Prestiti Ludoteca / Game Library |
 | [DATABASE.md](DATABASE.md) | Draft iniziale | Principi del database e base per lo schema v1 |
 | [OPERATION.md](OPERATION.md) | Corrente | Procedura operativa della modalità token attualmente disponibile |
+| [MANUAL_TESTS.md](MANUAL_TESTS.md) | Corrente | Checklist dei test manuali da eseguire sulle funzionalità operative |
 
 Gli stati indicano la maturità della documentazione, non necessariamente lo stato di implementazione nel software.
 
@@ -70,7 +71,8 @@ In particolare:
 - comportamento comune dei moduli → `MODULES.md`;
 - prestiti → `LENDING.md`;
 - schema fisico e migrazioni → `DATABASE.md`;
-- procedura per chi opera al banco → `OPERATION.md`.
+- procedura per chi opera al banco → `OPERATION.md`;
+- verifiche manuali del software → `MANUAL_TESTS.md`.
 
 
 ## Priorità di implementazione
