@@ -38,8 +38,23 @@ def get_db():
     return db
 
 
-def init_db(default_owner_name="Organizzazione"):
-    migrations.migrate_database(DB_PATH)
+def init_db(
+    default_owner_name="Organizzazione",
+    *,
+    migration_authorized=False,
+    now=None,
+):
+    from . import bootstrap
+
+    return bootstrap.prepare_database(
+        DB_PATH,
+        migration_authorized=migration_authorized,
+        initialize_schema=lambda: initialize_current_schema(default_owner_name),
+        now=now,
+    )
+
+
+def initialize_current_schema(default_owner_name="Organizzazione"):
     with get_db() as db:
         db.execute("""
             CREATE TABLE IF NOT EXISTS proprietari (

@@ -1,6 +1,7 @@
 """Exercise migration infrastructure only against temporary SQLite files."""
 
 import sqlite3
+from datetime import datetime
 
 import pytest
 
@@ -13,17 +14,26 @@ def _read_version(path):
         return migrations.schema_version(connection)
 
 
-def test_new_empty_database_is_distinguished_from_initialized_legacy(isolated_files):
+def test_new_empty_database_is_detected_without_creating_it(isolated_files):
     path = database.get_db_path()
-    with sqlite3.connect(path) as connection:
-        assert migrations.inspect_database(connection) == migrations.DatabaseState(
-            migrations.DatabaseKind.EMPTY_UNVERSIONED,
-            0,
-        )
 
-    database.init_db()
+    plan = migrations.plan_database(path)
 
-    assert path.exists()
+    assert plan.state == migrations.DatabaseState(
+        migrations.DatabaseKind.EMPTY_UNVERSIONED,
+        0,
+    )
+    assert plan.pending_versions == (1,)
+    assert plan.migration_required is False
+    assert not path.exists()
+
+
+def test_initialized_database_is_current_and_contains_organizations(isolated_files):
+    path = database.get_db_path()
+
+    result = database.init_db()
+
+    assert result.backup_path is None
     with sqlite3.connect(path) as connection:
         assert migrations.inspect_database(connection) == migrations.DatabaseState(
             migrations.DatabaseKind.VERSIONED_SUPPORTED,
@@ -34,39 +44,39 @@ def test_new_empty_database_is_distinguished_from_initialized_legacy(isolated_fi
         ).fetchone() is not None
 
 
-def test_existing_legacy_database_keeps_data_and_version_zero(isolated_files):
+def test_existing_legacy_database_keeps_data_after_approved_migration(
+    isolated_files,
+):
     path = database.get_db_path()
     with sqlite3.connect(path) as connection:
         connection.execute("CREATE TABLE legacy_data(value TEXT)")
         connection.execute("INSERT INTO legacy_data VALUES ('preserved')")
-        assert migrations.inspect_database(connection) == migrations.DatabaseState(
-            migrations.DatabaseKind.LEGACY_UNVERSIONED,
-            0,
-        )
 
-    database.init_db()
+    result = database.init_db(
+        migration_authorized=True,
+        now=datetime(2026, 9, 12, 17, 59, 0),
+    )
 
     with sqlite3.connect(path) as connection:
-        assert migrations.inspect_database(connection) == migrations.DatabaseState(
-            migrations.DatabaseKind.VERSIONED_SUPPORTED,
-            1,
-        )
+        assert migrations.schema_version(connection) == 1
         assert connection.execute(
             "SELECT value FROM legacy_data"
         ).fetchone()[0] == "preserved"
+    assert result.backup_path == path.with_name(
+        "test.backup-v0-to-v1-20260912-175900.db"
+    )
+    assert result.backup_path.exists()
 
 
-def test_supported_versioned_database_is_detected_without_migration(isolated_files):
+def test_supported_versioned_database_needs_no_migration(isolated_files):
     path = database.get_db_path()
     first_result = migrations.migrate_database(path)
-    with sqlite3.connect(path) as connection:
-        assert migrations.inspect_database(connection) == migrations.DatabaseState(
-            migrations.DatabaseKind.VERSIONED_SUPPORTED,
-            1,
-        )
 
+    plan = migrations.plan_database(path)
     result = migrations.migrate_database(path)
 
+    assert plan.state.kind is migrations.DatabaseKind.VERSIONED_SUPPORTED
+    assert plan.pending_versions == ()
     assert first_result == migrations.MigrationResult(0, 1, (1,), None)
     assert result == migrations.MigrationResult(1, 1, (), None)
 
@@ -82,7 +92,7 @@ def test_no_migration_is_applied_when_database_is_current(isolated_files):
     result = migrations.migrate_database(
         path,
         target_version=0,
-        migration_steps=(migrations.Migration(1, unexpected_migration, True),),
+        migration_steps=(migrations.Migration(1, unexpected_migration),),
     )
 
     assert called is False
@@ -156,10 +166,6 @@ def test_future_database_version_is_rejected_without_changes(isolated_files):
         connection.execute("CREATE TABLE existing_data(value TEXT)")
         connection.execute("INSERT INTO existing_data VALUES ('preserved')")
         connection.execute("PRAGMA user_version = 2")
-        assert migrations.inspect_database(connection) == migrations.DatabaseState(
-            migrations.DatabaseKind.FUTURE_UNSUPPORTED,
-            2,
-        )
 
     with pytest.raises(
         migrations.UnsupportedSchemaVersion,
@@ -177,7 +183,29 @@ def test_future_database_version_is_rejected_without_changes(isolated_files):
         ).fetchone() is None
 
 
-def test_required_backup_is_created_before_migration(isolated_files):
+def test_existing_database_requires_completed_backup(isolated_files):
+    path = database.get_db_path()
+    with sqlite3.connect(path) as connection:
+        connection.execute("CREATE TABLE existing_data(value TEXT)")
+
+    def migration_one(connection):
+        connection.execute("CREATE TABLE should_not_exist(value TEXT)")
+
+    with pytest.raises(migrations.BackupRequired):
+        migrations.migrate_database(
+            path,
+            target_version=1,
+            migration_steps=(migrations.Migration(1, migration_one),),
+        )
+
+    assert _read_version(path) == 0
+    with sqlite3.connect(path) as connection:
+        assert connection.execute(
+            "SELECT name FROM sqlite_master WHERE name = 'should_not_exist'"
+        ).fetchone() is None
+
+
+def test_complete_backup_can_be_used_for_migration(isolated_files):
     path = database.get_db_path()
     backup_path = path.with_name("before-migration.db")
     with sqlite3.connect(path) as connection:
@@ -187,15 +215,15 @@ def test_required_backup_is_created_before_migration(isolated_files):
     def migration_one(connection):
         connection.execute("CREATE TABLE migrated(value TEXT)")
 
+    migrations.create_backup(path, backup_path)
     result = migrations.migrate_database(
         path,
         target_version=1,
-        migration_steps=(migrations.Migration(1, migration_one, True),),
+        migration_steps=(migrations.Migration(1, migration_one),),
         backup_path=backup_path,
     )
 
     assert result.backup_path == backup_path
-    assert backup_path.exists()
     with sqlite3.connect(backup_path) as backup:
         assert migrations.schema_version(backup) == 0
         assert backup.execute(
@@ -204,28 +232,36 @@ def test_required_backup_is_created_before_migration(isolated_files):
         assert backup.execute(
             "SELECT name FROM sqlite_master WHERE name = 'migrated'"
         ).fetchone() is None
+
+
+def test_automatic_backup_name_never_overwrites_existing_file(isolated_files):
+    path = database.get_db_path()
     with sqlite3.connect(path) as connection:
-        assert migrations.schema_version(connection) == 1
-        assert connection.execute(
-            "SELECT name FROM sqlite_master WHERE name = 'migrated'"
-        ).fetchone() is not None
+        connection.execute("CREATE TABLE legacy_data(value TEXT)")
+    plan = migrations.plan_database(path)
+    moment = datetime(2026, 9, 12, 17, 59, 0)
+    first = migrations.automatic_backup_path(plan, moment)
+    first.touch()
+
+    second = migrations.automatic_backup_path(plan, moment)
+
+    assert first == path.with_name(
+        "test.backup-v0-to-v1-20260912-175900.db"
+    )
+    assert second == path.with_name(
+        "test.backup-v0-to-v1-20260912-175900-2.db"
+    )
 
 
-def test_required_backup_must_be_configured_before_migration(isolated_files):
+def test_missing_intermediate_migration_fails_during_planning(isolated_files):
     path = database.get_db_path()
 
-    def migration_one(connection):
-        connection.execute("CREATE TABLE should_not_exist(value TEXT)")
-
-    with pytest.raises(migrations.BackupRequired):
-        migrations.migrate_database(
+    with pytest.raises(migrations.MissingMigration) as error:
+        migrations.plan_database(
             path,
-            target_version=1,
-            migration_steps=(migrations.Migration(1, migration_one, True),),
+            target_version=2,
+            migration_steps=(migrations.Migration(2, lambda connection: None),),
         )
 
-    assert _read_version(path) == 0
-    with sqlite3.connect(path) as connection:
-        assert connection.execute(
-            "SELECT name FROM sqlite_master WHERE name = 'should_not_exist'"
-        ).fetchone() is None
+    assert error.value.version == 1
+    assert not path.exists()
