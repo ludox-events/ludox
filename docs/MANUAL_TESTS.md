@@ -77,6 +77,14 @@ Eseguire queste verifiche solo su database di test o copie dei database, mai sul
 - [ ] Tornare al database iniziale e verificare che i dati precedenti siano nuovamente disponibili.
 - [ ] Chiudere e riavviare LudoX e verificare che venga riaperto il workspace previsto.
 
+### Compatibilità con database legacy
+
+Prerequisito: una copia di test di un database creato da una versione di
+LudoX precedente all'introduzione del versioning, contenente dati riconoscibili.
+
+- [ ] Selezionare la copia dal Backoffice e verificare che l'applicazione si apra e mostri i dati esistenti.
+- [ ] Chiudere e riavviare LudoX, quindi verificare che lo stesso database e i suoi dati siano ancora disponibili.
+
 ## Regola per le nuove feature
 
 Quando una issue introduce un nuovo comportamento visibile o un nuovo flusso operativo:
