@@ -1,10 +1,7 @@
 # Copyright (C) 2026 Matteo Sassi
 # SPDX-License-Identifier: AGPL-3.0-only
 
-import csv
-import sqlite3
 from datetime import datetime, timedelta
-from statistics import median, pstdev
 from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox, filedialog
@@ -17,19 +14,9 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from .config import (
-    AppConfig, save_config, normalize_database_setting,
-    database_setting_from_path, resolve_database_path, PROJECT_DIR,
+    AppConfig, PROJECT_DIR,
 )
-from .database import (
-    get_db, now_iso, formatta_data_ora, conta_prestiti, conta_documenti,
-    conta_documenti_attivi, token_libero, documento_aperto_da_token,
-    prestito_aperto_documento, copie_totali_gioco, copie_in_prestito,
-    disponibilita_gioco, cerca_giochi, elenco_proprietari,
-    proprietario_per_id, totale_copie_proprietario, gioco_per_id,
-    elenco_giochi_backoffice, copie_per_proprietario_del_gioco,
-    riepilogo_proprietari_gioco, massimo_token_aperto, init_db,
-    set_db_path, get_db_path,
-)
+from . import catalog, lending, reporting, workspace
 from .i18n import tr, set_language, get_language, language_display_names
 
 APP_THEME = "flatly"
@@ -134,6 +121,7 @@ class PrestitiApp(ttk.Window):
 
     def show_home(self):
         frame = self.clear()
+        riepilogo = lending.riepilogo_home()
 
         self.titolo_pagina(
             frame,
@@ -153,7 +141,7 @@ class PrestitiApp(ttk.Window):
         self.crea_card(
             cards,
             0,
-            conta_prestiti(),
+            riepilogo.prestiti,
             "PRESTITI EFFETTUATI",
             "primary"
         )
@@ -161,7 +149,7 @@ class PrestitiApp(ttk.Window):
         self.crea_card(
             cards,
             1,
-            conta_documenti(),
+            riepilogo.documenti,
             "PERSONE / DOCUMENTI",
             "info"
         )
@@ -169,7 +157,7 @@ class PrestitiApp(ttk.Window):
         self.crea_card(
             cards,
             2,
-            conta_documenti_attivi(),
+            riepilogo.documenti_attivi,
             "PRESTITI ATTIVI",
             "success"
         )
@@ -344,25 +332,19 @@ class PrestitiApp(ttk.Window):
             for item in tree.get_children():
                 tree.delete(item)
 
-            giochi = cerca_giochi(
-                ricerca_var.get()
+            giochi = lending.cerca_giochi_con_disponibilita(
+                ricerca_var.get(),
+                gioco_da_escludere
             )
 
             for gioco in giochi:
-                if gioco_da_escludere == gioco["id"]:
-                    continue
-
-                disponibili, totali = disponibilita_gioco(
-                    gioco["id"]
-                )
-
                 tree.insert(
                     "",
                     END,
                     iid=str(gioco["id"]),
                     values=(
                         gioco["nome"],
-                        f"{disponibili} / {totali}"
+                        f"{gioco['disponibili']} / {gioco['copie_totali']}"
                     )
                 )
 
@@ -383,7 +365,7 @@ class PrestitiApp(ttk.Window):
                 return
 
             gioco_id = int(selezione[0])
-            disponibili, _ = disponibilita_gioco(
+            disponibili, _ = lending.disponibilita_gioco(
                 gioco_id
             )
 
@@ -437,65 +419,21 @@ class PrestitiApp(ttk.Window):
         )
 
     def crea_nuovo_prestito(self, gioco_id):
-        disponibili, _ = disponibilita_gioco(
-            gioco_id
-        )
-
-        if disponibili <= 0:
+        try:
+            risultato = lending.nuovo_prestito(gioco_id, self.config.max_tokens)
+        except lending.GiocoNonDisponibile as e:
             messagebox.showwarning(
                 tr("Non disponibile"),
-                tr("Non ci sono copie disponibili.")
+                tr(str(e))
             )
             return
-
-        token = token_libero(self.config.max_tokens)
-
-        if token is None:
+        except lending.TokenEsauriti as e:
             messagebox.showerror(
                 tr("Token esauriti"),
-                tr("Non ci sono posizioni documento libere.")
+                tr(str(e))
             )
             return
-
-        timestamp = now_iso()
-
-        try:
-            with get_db() as db:
-                cursor = db.execute("""
-                    INSERT INTO documenti (
-                        token,
-                        ingresso
-                    )
-                    VALUES (?, ?)
-                """, (
-                    token,
-                    timestamp
-                ))
-
-                documento_id = cursor.lastrowid
-
-                db.execute("""
-                    INSERT INTO prestiti (
-                        documento_id,
-                        gioco_id,
-                        uscita
-                    )
-                    VALUES (?, ?, ?)
-                """, (
-                    documento_id,
-                    gioco_id,
-                    timestamp
-                ))
-
-                gioco = db.execute("""
-                    SELECT nome
-                    FROM giochi
-                    WHERE id = ?
-                """, (
-                    gioco_id,
-                )).fetchone()
-
-        except sqlite3.Error as e:
+        except lending.ErrorePersistenza as e:
             messagebox.showerror(
                 tr("Errore database"),
                 tr(str(e))
@@ -503,8 +441,8 @@ class PrestitiApp(ttk.Window):
             return
 
         self.show_token_assegnato(
-            token,
-            gioco["nome"]
+            risultato.token,
+            risultato.gioco_nome
         )
 
     def show_token_assegnato(self, token, gioco_nome):
@@ -616,27 +554,24 @@ class PrestitiApp(ttk.Window):
                 )
                 return
 
-            documento = documento_aperto_da_token(
-                token
-            )
-
-            if not documento:
+            try:
+                situazione = lending.consulta_token(token)
+            except lending.TokenLibero:
                 messagebox.showwarning(
                     tr("Token libero"),
                     tr(f"Il token {token} non ha un prestito aperto.")
                 )
                 return
 
-            prestito = prestito_aperto_documento(
-                documento["id"]
-            )
-
-            if not prestito:
+            except lending.PrestitoAssente:
                 messagebox.showerror(
                     tr("Errore"),
                     tr("Non risulta un gioco aperto.")
                 )
                 return
+
+            documento = situazione.documento
+            prestito = situazione.prestito
 
             self.show_cambio_gioco(
                 token,
@@ -704,180 +639,15 @@ class PrestitiApp(ttk.Window):
         ).pack(pady=4)
 
         def cambia(nuovo_gioco_id):
-            """
-            Registra il cambio in un'unica transazione atomica.
-
-            Prima di modificare il database ricontrolla che:
-            - il documento sia ancora aperto;
-            - il prestito visualizzato sia ancora quello aperto;
-            - il nuovo gioco esista, sia attivo e abbia almeno una copia;
-            - il nuovo gioco sia ancora disponibile.
-
-            BEGIN IMMEDIATE serializza le operazioni di scrittura SQLite:
-            evita che due istanze leggano contemporaneamente la stessa
-            disponibilità e registrino entrambe l'ultima copia disponibile.
-            """
-
-            class CambioNonValido(Exception):
-                pass
-
-            class GiocoNonDisponibile(Exception):
-                pass
-
-            timestamp = now_iso()
-
             try:
-                with get_db() as db:
-                    # Acquisisce subito il lock di scrittura.
-                    # Tutti i controlli successivi e le due scritture
-                    # fanno quindi parte della stessa transazione.
-                    db.execute(
-                        "BEGIN IMMEDIATE"
-                    )
-
-                    # 1. Il documento deve essere ancora aperto
-                    #    e associato allo stesso token.
-                    documento_corrente = db.execute("""
-                        SELECT id, token
-                        FROM documenti
-                        WHERE id = ?
-                          AND token = ?
-                          AND uscita IS NULL
-                    """, (
-                        documento["id"],
-                        token
-                    )).fetchone()
-
-                    if not documento_corrente:
-                        raise CambioNonValido(
-                            "Il documento non risulta più aperto. "
-                            "Il cambio non è stato registrato."
-                        )
-
-                    # 2. Il prestito che stiamo chiudendo deve essere
-                    #    ancora esattamente quello aperto per il documento.
-                    prestito_corrente = db.execute("""
-                        SELECT
-                            p.id,
-                            p.gioco_id,
-                            g.nome AS gioco_nome
-                        FROM prestiti p
-                        JOIN giochi g
-                          ON g.id = p.gioco_id
-                        WHERE p.id = ?
-                          AND p.documento_id = ?
-                          AND p.rientro IS NULL
-                    """, (
-                        prestito["id"],
-                        documento["id"]
-                    )).fetchone()
-
-                    if not prestito_corrente:
-                        raise CambioNonValido(
-                            "Il prestito è cambiato o è già stato chiuso. "
-                            "Il cambio non è stato registrato."
-                        )
-
-                    # Ulteriore protezione: il gioco corrente deve essere
-                    # lo stesso che era visualizzato quando è stata aperta
-                    # la schermata di cambio.
-                    if (
-                        prestito_corrente["gioco_id"]
-                        != prestito["gioco_id"]
-                    ):
-                        raise CambioNonValido(
-                            "Il gioco associato al token è cambiato. "
-                            "Riapri la procedura di cambio."
-                        )
-
-                    # 3. Il nuovo titolo deve esistere ed essere ancora attivo.
-                    nuovo = db.execute("""
-                        SELECT id, nome, attivo
-                        FROM giochi
-                        WHERE id = ?
-                    """, (
-                        nuovo_gioco_id,
-                    )).fetchone()
-
-                    if (
-                        not nuovo
-                        or nuovo["attivo"] != 1
-                    ):
-                        raise CambioNonValido(
-                            "Il gioco selezionato non è più disponibile "
-                            "nel catalogo attivo."
-                        )
-
-                    # 4. Ricontrollo della disponibilità DENTRO
-                    #    la stessa transazione.
-                    copie_totali = db.execute("""
-                        SELECT COALESCE(SUM(quantita), 0)
-                        FROM copie_gioco
-                        WHERE gioco_id = ?
-                    """, (
-                        nuovo_gioco_id,
-                    )).fetchone()[0]
-
-                    copie_fuori = db.execute("""
-                        SELECT COUNT(*)
-                        FROM prestiti
-                        WHERE gioco_id = ?
-                          AND rientro IS NULL
-                    """, (
-                        nuovo_gioco_id,
-                    )).fetchone()[0]
-
-                    disponibili = (
-                        copie_totali
-                        - copie_fuori
-                    )
-
-                    if disponibili <= 0:
-                        raise GiocoNonDisponibile(
-                            "Nel frattempo l'ultima copia disponibile "
-                            "è stata assegnata. Scegli un altro gioco."
-                        )
-
-                    # 5. Chiude il vecchio prestito.
-                    cursore = db.execute("""
-                        UPDATE prestiti
-                        SET rientro = ?
-                        WHERE id = ?
-                          AND documento_id = ?
-                          AND rientro IS NULL
-                    """, (
-                        timestamp,
-                        prestito["id"],
-                        documento["id"]
-                    ))
-
-                    # Se nessuna riga è stata modificata, non procediamo
-                    # mai con l'apertura del nuovo prestito.
-                    if cursore.rowcount != 1:
-                        raise CambioNonValido(
-                            "Non è stato possibile chiudere il prestito "
-                            "precedente. Nessuna modifica è stata salvata."
-                        )
-
-                    # 6. Apre il nuovo prestito nello stesso istante.
-                    db.execute("""
-                        INSERT INTO prestiti (
-                            documento_id,
-                            gioco_id,
-                            uscita
-                        )
-                        VALUES (?, ?, ?)
-                    """, (
-                        documento["id"],
-                        nuovo_gioco_id,
-                        timestamp
-                    ))
-
-                    # Il blocco 'with' esegue il COMMIT solo se
-                    # tutte le operazioni sopra sono andate a buon fine.
-                    # Qualsiasi eccezione provoca il ROLLBACK completo.
-
-            except GiocoNonDisponibile as e:
+                nuovo_nome = lending.cambia_gioco(
+                    token=token,
+                    documento_id=documento["id"],
+                    prestito_id=prestito["id"],
+                    gioco_id_atteso=prestito["gioco_id"],
+                    nuovo_gioco_id=nuovo_gioco_id,
+                )
+            except lending.GiocoNonDisponibile as e:
                 messagebox.showwarning(
                     tr("Gioco non disponibile"),
                     tr(str(e))
@@ -892,7 +662,7 @@ class PrestitiApp(ttk.Window):
                 )
                 return
 
-            except CambioNonValido as e:
+            except lending.CambioNonValido as e:
                 messagebox.showwarning(
                     tr("Cambio non registrato"),
                     tr(str(e))
@@ -903,7 +673,7 @@ class PrestitiApp(ttk.Window):
                 self.show_cambio_token()
                 return
 
-            except sqlite3.Error as e:
+            except lending.ErrorePersistenza as e:
                 messagebox.showerror(
                     tr("Errore database"),
                     tr("Il cambio non è stato registrato.\n\n"
@@ -914,7 +684,7 @@ class PrestitiApp(ttk.Window):
             self.show_cambio_completato(
                 token,
                 prestito["gioco_nome"],
-                nuovo["nome"]
+                nuovo_nome
             )
 
         self.crea_selettore_giochi(
@@ -1031,27 +801,24 @@ class PrestitiApp(ttk.Window):
                 )
                 return
 
-            documento = documento_aperto_da_token(
-                token
-            )
-
-            if not documento:
+            try:
+                situazione = lending.consulta_token(token)
+            except lending.TokenLibero:
                 messagebox.showwarning(
                     tr("Token libero"),
                     tr(f"Il token {token} non risulta occupato.")
                 )
                 return
 
-            prestito = prestito_aperto_documento(
-                documento["id"]
-            )
-
-            if not prestito:
+            except lending.PrestitoAssente:
                 messagebox.showerror(
                     tr("Errore"),
                     tr("Non risulta un gioco aperto per questo token.")
                 )
                 return
+
+            documento = situazione.documento
+            prestito = situazione.prestito
 
             # PRIMA CONFERMA
             conferma = messagebox.askyesno(
@@ -1161,41 +928,12 @@ class PrestitiApp(ttk.Window):
             if not conferma:
                 return
 
-            timestamp = now_iso()
-
             try:
-                with get_db() as db:
-                    prestito_update = db.execute("""
-                        UPDATE prestiti
-                        SET rientro = ?
-                        WHERE id = ?
-                          AND rientro IS NULL
-                    """, (
-                        timestamp,
-                        prestito["id"]
-                    ))
-
-                    documento_update = db.execute("""
-                        UPDATE documenti
-                        SET uscita = ?
-                        WHERE id = ?
-                          AND uscita IS NULL
-                    """, (
-                        timestamp,
-                        documento["id"]
-                    ))
-
-                    if prestito_update.rowcount != 1:
-                        raise sqlite3.Error(
-                            "Il prestito non risulta più aperto."
-                        )
-
-                    if documento_update.rowcount != 1:
-                        raise sqlite3.Error(
-                            "Il documento non risulta più depositato."
-                        )
-
-            except sqlite3.Error as e:
+                lending.restituzione_finale(
+                    documento_id=documento["id"],
+                    prestito_id=prestito["id"],
+                )
+            except lending.ErrorePersistenza as e:
                 messagebox.showerror(
                     tr("Errore database"),
                     tr(str(e))
@@ -1281,41 +1019,12 @@ class PrestitiApp(ttk.Window):
     @staticmethod
     def arrotonda_giu_bucket(dt, minuti_bucket):
         """Arrotonda un datetime verso il basso al confine del bucket."""
-        mezzanotte = dt.replace(
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0
-        )
-
-        secondi_trascorsi = int(
-            (dt - mezzanotte).total_seconds()
-        )
-        secondi_bucket = minuti_bucket * 60
-        secondi_allineati = (
-            secondi_trascorsi
-            // secondi_bucket
-            * secondi_bucket
-        )
-
-        return mezzanotte + timedelta(
-            seconds=secondi_allineati
-        )
+        return reporting.arrotonda_giu_bucket(dt, minuti_bucket)
 
     @classmethod
     def arrotonda_su_bucket(cls, dt, minuti_bucket):
         """Arrotonda un datetime verso l'alto al confine del bucket."""
-        arrotondato = cls.arrotonda_giu_bucket(
-            dt,
-            minuti_bucket
-        )
-
-        if dt == arrotondato:
-            return arrotondato
-
-        return arrotondato + timedelta(
-            minutes=minuti_bucket
-        )
+        return reporting.arrotonda_su_bucket(dt, minuti_bucket)
 
     @classmethod
     def intervallo_statistiche(
@@ -1330,20 +1039,7 @@ class PrestitiApp(ttk.Window):
         L'inizio viene arrotondato verso il basso e la fine verso l'alto
         in modo da utilizzare sempre bucket temporali completi.
         """
-        inizio_nominale = riferimento - timedelta(
-            hours=ore
-        )
-
-        inizio = cls.arrotonda_giu_bucket(
-            inizio_nominale,
-            minuti_bucket
-        )
-        fine = cls.arrotonda_su_bucket(
-            riferimento,
-            minuti_bucket
-        )
-
-        return inizio, fine
+        return reporting.intervallo_statistiche(riferimento, ore, minuti_bucket)
 
     def show_statistiche(
         self,
@@ -1711,39 +1407,15 @@ class PrestitiApp(ttk.Window):
         # INTERVALLO E CONTATORI
         # ----------------------------------------------------
 
-        inizio, fine = self.intervallo_statistiche(
+        statistiche = reporting.statistiche_periodo(
             riferimento,
             ore,
             minuti_bucket
         )
-
-        inizio_iso = inizio.isoformat(
-            timespec="seconds"
-        )
-        fine_iso = fine.isoformat(
-            timespec="seconds"
-        )
-
-        with get_db() as db:
-            prestiti_periodo = db.execute("""
-                SELECT COUNT(*)
-                FROM prestiti
-                WHERE uscita >= ?
-                  AND uscita < ?
-            """, (
-                inizio_iso,
-                fine_iso
-            )).fetchone()[0]
-
-            persone_periodo = db.execute("""
-                SELECT COUNT(*)
-                FROM documenti
-                WHERE ingresso >= ?
-                  AND ingresso < ?
-            """, (
-                inizio_iso,
-                fine_iso
-            )).fetchone()[0]
+        inizio = statistiche.inizio
+        fine = statistiche.fine
+        prestiti_periodo = statistiche.prestiti
+        persone_periodo = statistiche.documenti
 
         intervallo_testo = (
             f"Periodo visualizzato: "
@@ -1792,93 +1464,18 @@ class PrestitiApp(ttk.Window):
 
         self.crea_grafico(
             frame,
-            inizio,
-            fine,
-            minuti_bucket
+            statistiche
         )
 
     def crea_grafico(
         self,
         parent,
-        inizio,
-        fine,
-        minuti_bucket
+        statistiche
     ):
-        delta = timedelta(
-            minutes=minuti_bucket
-        )
-
-        punti = []
-        t = inizio
-
-        while t < fine:
-            punti.append({
-                "inizio": t,
-                "fine": t + delta,
-                "prestiti": 0,
-                "documenti": 0
-            })
-            t += delta
-
-        inizio_iso = inizio.isoformat(
-            timespec="seconds"
-        )
-        fine_iso = fine.isoformat(
-            timespec="seconds"
-        )
-
-        with get_db() as db:
-            righe_prestiti = db.execute("""
-                SELECT uscita
-                FROM prestiti
-                WHERE uscita >= ?
-                  AND uscita < ?
-            """, (
-                inizio_iso,
-                fine_iso
-            )).fetchall()
-
-            righe_documenti = db.execute("""
-                SELECT ingresso
-                FROM documenti
-                WHERE ingresso >= ?
-                  AND ingresso < ?
-            """, (
-                inizio_iso,
-                fine_iso
-            )).fetchall()
-
-        secondi_bucket = delta.total_seconds()
-
-        for row in righe_prestiti:
-            try:
-                dt = datetime.fromisoformat(
-                    row["uscita"]
-                )
-                indice = int(
-                    (dt - inizio).total_seconds()
-                    // secondi_bucket
-                )
-
-                if 0 <= indice < len(punti):
-                    punti[indice]["prestiti"] += 1
-            except (ValueError, TypeError):
-                continue
-
-        for row in righe_documenti:
-            try:
-                dt = datetime.fromisoformat(
-                    row["ingresso"]
-                )
-                indice = int(
-                    (dt - inizio).total_seconds()
-                    // secondi_bucket
-                )
-
-                if 0 <= indice < len(punti):
-                    punti[indice]["documenti"] += 1
-            except (ValueError, TypeError):
-                continue
+        inizio = statistiche.inizio
+        fine = statistiche.fine
+        minuti_bucket = statistiche.minuti_bucket
+        punti = statistiche.punti
 
         giochi_consegnati = [
             p["prestiti"]
@@ -2235,33 +1832,10 @@ class PrestitiApp(ttk.Window):
             "Ogni cambio gioco genera un nuovo record di prestito"
         )
 
-        with get_db() as db:
-            totale = db.execute("""
-                SELECT COUNT(*)
-                FROM prestiti
-            """).fetchone()[0]
-
-            attivi = db.execute("""
-                SELECT COUNT(*)
-                FROM prestiti
-                WHERE rientro IS NULL
-            """).fetchone()[0]
-
-            righe = db.execute("""
-                SELECT
-                    p.id AS prestito_id,
-                    d.id AS documento_id,
-                    d.token,
-                    g.nome AS gioco,
-                    p.uscita,
-                    p.rientro
-                FROM prestiti p
-                JOIN documenti d
-                  ON d.id = p.documento_id
-                JOIN giochi g
-                  ON g.id = p.gioco_id
-                ORDER BY p.uscita DESC, p.id DESC
-            """).fetchall()
+        storico = reporting.storico_prestiti()
+        totale = storico.totale
+        attivi = storico.attivi
+        righe = storico.righe
 
         riepilogo = ttk.Frame(frame)
         riepilogo.pack(
@@ -2355,8 +1929,8 @@ class PrestitiApp(ttk.Window):
                     row["token"],
                     row["documento_id"],
                     row["gioco"],
-                    formatta_data_ora(row["uscita"]),
-                    formatta_data_ora(row["rientro"]),
+                    row["uscita_testo"],
+                    row["rientro_testo"],
                     tr("common.active") if row["rientro"] is None else tr("common.closed")
                 )
             )
@@ -2379,35 +1953,10 @@ class PrestitiApp(ttk.Window):
             "Registro anonimo: il software non memorizza dati personali"
         )
 
-        with get_db() as db:
-            totale = db.execute("""
-                SELECT COUNT(*)
-                FROM documenti
-            """).fetchone()[0]
-
-            attivi = db.execute("""
-                SELECT COUNT(*)
-                FROM documenti
-                WHERE uscita IS NULL
-            """).fetchone()[0]
-
-            righe = db.execute("""
-                SELECT
-                    d.id,
-                    d.token,
-                    d.ingresso,
-                    d.uscita,
-                    COUNT(p.id) AS numero_prestiti
-                FROM documenti d
-                LEFT JOIN prestiti p
-                  ON p.documento_id = d.id
-                GROUP BY
-                    d.id,
-                    d.token,
-                    d.ingresso,
-                    d.uscita
-                ORDER BY d.ingresso DESC, d.id DESC
-            """).fetchall()
+        storico = reporting.storico_documenti()
+        totale = storico.totale
+        attivi = storico.attivi
+        righe = storico.righe
 
         riepilogo = ttk.Frame(frame)
         riepilogo.pack(
@@ -2496,8 +2045,8 @@ class PrestitiApp(ttk.Window):
                 values=(
                     row["id"],
                     row["token"],
-                    formatta_data_ora(row["ingresso"]),
-                    formatta_data_ora(row["uscita"]),
+                    row["ingresso_testo"],
+                    row["uscita_testo"],
                     row["numero_prestiti"],
                     tr("common.deposited") if row["uscita"] is None else tr("common.returned")
                 )
@@ -2804,228 +2353,26 @@ class PrestitiApp(ttk.Window):
         # DATI DEL REPORT
         # ----------------------------------------------------
 
-        inizio = data_inizio.replace(
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0
+        report = reporting.report_documenti(
+            data_inizio,
+            data_fine,
+            ordina_per=ordina_per,
+            ordine_desc=ordine_desc,
+            adesso=datetime.now()
         )
-
-        fine_esclusiva = (
-            data_fine.replace(
-                hour=0,
-                minute=0,
-                second=0,
-                microsecond=0
-            )
-            + timedelta(days=1)
-        )
-
-        inizio_iso = inizio.isoformat(
-            timespec="seconds"
-        )
-        fine_iso = fine_esclusiva.isoformat(
-            timespec="seconds"
-        )
-
-        with get_db() as db:
-            documenti = db.execute("""
-                SELECT
-                    id,
-                    token,
-                    ingresso,
-                    uscita
-                FROM documenti
-                WHERE ingresso >= ?
-                  AND ingresso < ?
-                ORDER BY ingresso
-            """, (
-                inizio_iso,
-                fine_iso
-            )).fetchall()
-
-            documenti_ids = [
-                row["id"]
-                for row in documenti
-            ]
-
-            prestiti_per_documento = {}
-
-            if documenti_ids:
-                placeholders = ",".join(
-                    "?"
-                    for _ in documenti_ids
-                )
-
-                prestiti = db.execute(
-                    f"""
-                    SELECT
-                        documento_id,
-                        uscita,
-                        rientro
-                    FROM prestiti
-                    WHERE documento_id IN ({placeholders})
-                    ORDER BY documento_id, uscita
-                    """,
-                    documenti_ids
-                ).fetchall()
-
-                for row in prestiti:
-                    prestiti_per_documento.setdefault(
-                        row["documento_id"],
-                        []
-                    ).append(row)
-
-        def formatta_durata(secondi):
-            if secondi is None:
-                return "—"
-
-            secondi = max(
-                0,
-                int(round(secondi))
-            )
-
-            ore_totali, resto = divmod(
-                secondi,
-                3600
-            )
-            minuti, _ = divmod(
-                resto,
-                60
-            )
-
-            if ore_totali > 0:
-                return f"{ore_totali}h {minuti:02d}m"
-
-            return f"{minuti}m"
-
-        adesso = datetime.now()
-
-        righe_report = []
-        tutte_durate_prestiti = []
-
-        for documento in documenti:
-            try:
-                ingresso_dt = datetime.fromisoformat(
-                    documento["ingresso"]
-                )
-            except (ValueError, TypeError):
-                continue
-
-            if documento["uscita"]:
-                try:
-                    uscita_dt = datetime.fromisoformat(
-                        documento["uscita"]
-                    )
-                except (ValueError, TypeError):
-                    uscita_dt = None
-            else:
-                uscita_dt = None
-
-            fine_documento = (
-                uscita_dt
-                if uscita_dt is not None
-                else adesso
-            )
-
-            tempo_documento_secondi = max(
-                0,
-                (
-                    fine_documento
-                    - ingresso_dt
-                ).total_seconds()
-            )
-
-            prestiti_documento = prestiti_per_documento.get(
-                documento["id"],
-                []
-            )
-
-            durate_partite = []
-
-            for prestito in prestiti_documento:
-                if not prestito["rientro"]:
-                    continue
-
-                try:
-                    uscita_prestito = datetime.fromisoformat(
-                        prestito["uscita"]
-                    )
-                    rientro_prestito = datetime.fromisoformat(
-                        prestito["rientro"]
-                    )
-
-                    durata = (
-                        rientro_prestito
-                        - uscita_prestito
-                    ).total_seconds()
-
-                    if durata >= 0:
-                        durate_partite.append(
-                            durata
-                        )
-
-                except (ValueError, TypeError):
-                    continue
-
-            numero_prestiti = len(
-                prestiti_documento
-            )
-
-            tutte_durate_prestiti.extend(
-                durate_partite
-            )
-
-            media_partita_secondi = (
-                sum(durate_partite)
-                / len(durate_partite)
-                if durate_partite
-                else None
-            )
-
-            righe_report.append({
-                "documento_id": documento["id"],
-                "token": documento["token"],
-                "ingresso_dt": ingresso_dt,
-                "ingresso": formatta_data_ora(
-                    documento["ingresso"]
-                ),
-                "uscita": formatta_data_ora(
-                    documento["uscita"]
-                ),
-                "prestiti": numero_prestiti,
-                "tempo_documento_secondi": tempo_documento_secondi,
-                "tempo_documento": formatta_durata(
-                    tempo_documento_secondi
-                ),
-                "media_partita_secondi": media_partita_secondi,
-                "media_partita": formatta_durata(
-                    media_partita_secondi
-                ),
+        inizio = report.inizio
+        righe_report = [
+            {
+                **row,
                 "stato": (
                     tr("common.in_progress")
-                    if documento["uscita"] is None
+                    if row["aperto"]
                     else tr("common.closed")
                 )
-            })
-
-        def chiave_ordinamento(row):
-            if ordina_per == "prestiti":
-                return row["prestiti"]
-
-            if ordina_per == "tempo_documento_secondi":
-                return row["tempo_documento_secondi"]
-
-            if ordina_per == "media_partita_secondi":
-                valore = row["media_partita_secondi"]
-                return -1 if valore is None else valore
-
-            return row["ingresso_dt"]
-
-        righe_report.sort(
-            key=chiave_ordinamento,
-            reverse=ordine_desc
-        )
+            }
+            for row in report.righe
+        ]
+        formatta_durata = reporting.formatta_durata
 
         criterio_testo = {
             "ingresso": tr("people_report.sort_entry"),
@@ -3037,82 +2384,17 @@ class PrestitiApp(ttk.Window):
             tr("people_report.sort_entry")
         )
 
-        # ----------------------------------------------------
-        # RIEPILOGO E STATISTICHE DESCRITTIVE
-        # ----------------------------------------------------
-
-        totale_documenti = len(
-            righe_report
-        )
-
-        totale_prestiti = sum(
-            row["prestiti"]
-            for row in righe_report
-        )
-
-        prestiti_per_persona = [
-            row["prestiti"]
-            for row in righe_report
-        ]
-
-        media_prestiti_persona = (
-            totale_prestiti / totale_documenti
-            if totale_documenti
-            else 0
-        )
-
-        mediana_prestiti_persona = (
-            median(prestiti_per_persona)
-            if prestiti_per_persona
-            else 0
-        )
-
-        dev_std_prestiti_persona = (
-            pstdev(prestiti_per_persona)
-            if prestiti_per_persona
-            else 0
-        )
-
-        persone_almeno_2 = sum(
-            1
-            for valore in prestiti_per_persona
-            if valore >= 2
-        )
-
-        persone_almeno_3 = sum(
-            1
-            for valore in prestiti_per_persona
-            if valore >= 3
-        )
-
-        percentuale_almeno_2 = (
-            persone_almeno_2 / totale_documenti * 100
-            if totale_documenti
-            else 0
-        )
-
-        percentuale_almeno_3 = (
-            persone_almeno_3 / totale_documenti * 100
-            if totale_documenti
-            else 0
-        )
-
-        permanenze = [
-            row["tempo_documento_secondi"]
-            for row in righe_report
-        ]
-
-        permanenza_mediana_secondi = (
-            median(permanenze)
-            if permanenze
-            else None
-        )
-
-        durata_mediana_prestito_secondi = (
-            median(tutte_durate_prestiti)
-            if tutte_durate_prestiti
-            else None
-        )
+        totale_documenti = report.totale_documenti
+        totale_prestiti = report.totale_prestiti
+        prestiti_per_persona = report.prestiti_per_persona
+        media_prestiti_persona = report.media_prestiti_persona
+        mediana_prestiti_persona = report.mediana_prestiti_persona
+        dev_std_prestiti_persona = report.dev_std_prestiti_persona
+        persone_almeno_3 = report.persone_almeno_3
+        percentuale_almeno_2 = report.percentuale_almeno_2
+        percentuale_almeno_3 = report.percentuale_almeno_3
+        permanenza_mediana_secondi = report.permanenza_mediana_secondi
+        durata_mediana_prestito_secondi = report.durata_mediana_prestito_secondi
 
         ttk.Label(
             frame,
@@ -3488,15 +2770,6 @@ class PrestitiApp(ttk.Window):
         # ESPORTAZIONE CSV
         # ----------------------------------------------------
 
-        def minuti_csv(secondi):
-            if secondi is None:
-                return ""
-
-            return (
-                f"{secondi / 60:.2f}"
-                .replace(".", ",")
-            )
-
         def esporta_csv():
             if not righe_report:
                 messagebox.showinfo(
@@ -3524,48 +2797,26 @@ class PrestitiApp(ttk.Window):
             if not percorso:
                 return
 
+            intestazioni = [
+                tr("people_report.csv_document"),
+                tr("people_report.csv_token"),
+                tr("people_report.csv_entry"),
+                tr("people_report.csv_exit"),
+                tr("people_report.csv_num_loans"),
+                tr("people_report.csv_stay"),
+                tr("people_report.csv_stay_minutes"),
+                tr("people_report.csv_avg"),
+                tr("people_report.csv_avg_minutes"),
+                tr("people_report.csv_status")
+            ]
+            righe_csv = reporting.righe_csv_documenti(
+                report,
+                tr("common.in_progress"),
+                tr("common.closed")
+            )
+
             try:
-                with open(
-                    percorso,
-                    "w",
-                    newline="",
-                    encoding="utf-8-sig"
-                ) as csvfile:
-                    writer = csv.writer(
-                        csvfile,
-                        delimiter=";"
-                    )
-
-                    writer.writerow([
-                        tr("people_report.csv_document"),
-                        tr("people_report.csv_token"),
-                        tr("people_report.csv_entry"),
-                        tr("people_report.csv_exit"),
-                        tr("people_report.csv_num_loans"),
-                        tr("people_report.csv_stay"),
-                        tr("people_report.csv_stay_minutes"),
-                        tr("people_report.csv_avg"),
-                        tr("people_report.csv_avg_minutes"),
-                        tr("people_report.csv_status")
-                    ])
-
-                    for row in righe_report:
-                        writer.writerow([
-                            row["documento_id"],
-                            row["token"],
-                            row["ingresso"],
-                            row["uscita"],
-                            row["prestiti"],
-                            row["tempo_documento"],
-                            minuti_csv(
-                                row["tempo_documento_secondi"]
-                            ),
-                            row["media_partita"],
-                            minuti_csv(
-                                row["media_partita_secondi"]
-                            ),
-                            row["stato"]
-                        ])
+                reporting.esporta_csv(percorso, intestazioni, righe_csv)
 
             except OSError as e:
                 messagebox.showerror(
@@ -3747,7 +2998,7 @@ class PrestitiApp(ttk.Window):
             padx=(0, 18)
         )
 
-        proprietari = elenco_proprietari()
+        proprietari = catalog.elenco_proprietari()
         proprietari_by_name = {
             row["nome"]: row["id"]
             for row in proprietari
@@ -3758,7 +3009,7 @@ class PrestitiApp(ttk.Window):
         )
 
         if proprietario_id is not None:
-            proprietario = proprietario_per_id(
+            proprietario = catalog.proprietario_per_id(
                 proprietario_id
             )
             if proprietario:
@@ -4018,256 +3269,22 @@ class PrestitiApp(ttk.Window):
         # COSTRUZIONE DATI REPORT
         # ----------------------------------------------------
 
-        # La data finale è inclusiva:
-        # "dal 05/09 al 06/09" significa
-        # 05/09 00:00 <= uscita < 07/09 00:00.
-        inizio = data_inizio.replace(
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0
+        report = reporting.report_utilizzo(
+            data_inizio,
+            data_fine,
+            proprietario_id=proprietario_id,
+            escludi_tempo_zero=escludi_tempo_zero,
+            ordina_per=ordina_per,
+            ordine_desc=ordine_desc
         )
-        fine_esclusiva = (
-            data_fine.replace(
-                hour=0,
-                minute=0,
-                second=0,
-                microsecond=0
-            )
-            + timedelta(days=1)
-        )
-
-        inizio_iso = inizio.isoformat(
-            timespec="seconds"
-        )
-        fine_iso = fine_esclusiva.isoformat(
-            timespec="seconds"
-        )
-
-        with get_db() as db:
-            giochi = db.execute("""
-                SELECT
-                    g.id,
-                    g.nome,
-                    g.attivo,
-                    COALESCE(SUM(cg.quantita), 0) AS copie_totali
-                FROM giochi g
-                LEFT JOIN copie_gioco cg
-                  ON cg.gioco_id = g.id
-                GROUP BY
-                    g.id,
-                    g.nome,
-                    g.attivo
-                HAVING COALESCE(SUM(cg.quantita), 0) > 0
-                ORDER BY g.nome
-            """).fetchall()
-
-            proprietari_giochi = db.execute("""
-                SELECT
-                    cg.gioco_id,
-                    p.id AS proprietario_id,
-                    p.nome AS proprietario_nome,
-                    cg.quantita
-                FROM copie_gioco cg
-                JOIN proprietari p
-                  ON p.id = cg.proprietario_id
-                WHERE cg.quantita > 0
-                ORDER BY
-                    cg.gioco_id,
-                    p.nome
-            """).fetchall()
-
-            prestiti_periodo = db.execute("""
-                SELECT
-                    gioco_id,
-                    uscita,
-                    rientro
-                FROM prestiti
-                WHERE uscita >= ?
-                  AND uscita < ?
-                ORDER BY uscita
-            """, (
-                inizio_iso,
-                fine_iso
-            )).fetchall()
-
-        proprietari_per_gioco = {}
-
-        for row in proprietari_giochi:
-            proprietari_per_gioco.setdefault(
-                row["gioco_id"],
-                []
-            ).append({
-                "id": row["proprietario_id"],
-                "nome": row["proprietario_nome"],
-                "quantita": row["quantita"]
-            })
-
-        prestiti_per_gioco = {}
-
-        for row in prestiti_periodo:
-            prestiti_per_gioco.setdefault(
-                row["gioco_id"],
-                []
-            ).append(row)
-
-        def formatta_durata(secondi):
-            if secondi is None:
-                return "—"
-
-            secondi = max(
-                0,
-                int(round(secondi))
-            )
-
-            ore_totali, resto = divmod(
-                secondi,
-                3600
-            )
-            minuti, _ = divmod(
-                resto,
-                60
-            )
-
-            if ore_totali > 0:
-                return f"{ore_totali}h {minuti:02d}m"
-
-            return f"{minuti}m"
-
-        righe_report = []
-
-        for gioco in giochi:
-            proprietari_del_gioco = proprietari_per_gioco.get(
-                gioco["id"],
-                []
-            )
-
-            if proprietario_id is not None:
-                if not any(
-                    p["id"] == proprietario_id
-                    for p in proprietari_del_gioco
-                ):
-                    continue
-
-            proprietari_testo = ", ".join(
-                f'{p["nome"]} ({p["quantita"]})'
-                for p in proprietari_del_gioco
-            )
-
-            prestiti_gioco = prestiti_per_gioco.get(
-                gioco["id"],
-                []
-            )
-
-            durate = []
-
-            for prestito in prestiti_gioco:
-                # Le metriche di durata vengono calcolate sui soli prestiti
-                # conclusi. I prestiti ancora aperti restano comunque inclusi
-                # nel conteggio "Prestiti".
-                if not prestito["rientro"]:
-                    continue
-
-                try:
-                    uscita = datetime.fromisoformat(
-                        prestito["uscita"]
-                    )
-                    rientro = datetime.fromisoformat(
-                        prestito["rientro"]
-                    )
-
-                    durata = (
-                        rientro
-                        - uscita
-                    ).total_seconds()
-
-                    if durata >= 0:
-                        durate.append(
-                            durata
-                        )
-
-                except (ValueError, TypeError):
-                    continue
-
-            numero_prestiti = len(
-                prestiti_gioco
-            )
-
-            totale_secondi = sum(
-                durate
-            )
-
-            media_secondi = (
-                totale_secondi / len(durate)
-                if durate
-                else None
-            )
-
-            deviazione_secondi = (
-                pstdev(durate)
-                if durate
-                else None
-            )
-
-            righe_report.append({
-                "gioco": gioco["nome"],
-                "proprietari": proprietari_testo or "—",
-                "copie_totali": gioco["copie_totali"],
-                "prestiti": numero_prestiti,
-                "tempo_totale_secondi": totale_secondi,
-                "tempo_totale": formatta_durata(
-                    totale_secondi
-                ),
-                "media_secondi": media_secondi,
-                "media": formatta_durata(
-                    media_secondi
-                ),
-                "deviazione_secondi": deviazione_secondi,
-                "deviazione": formatta_durata(
-                    deviazione_secondi
-                ),
-                "durate_prestiti": durate
-            })
-
-        # Filtro opzionale: nasconde i giochi che, nell'intervallo,
-        # non hanno accumulato alcun tempo di prestito concluso.
-        if escludi_tempo_zero:
-            righe_report = [
-                row
-                for row in righe_report
-                if row["tempo_totale_secondi"] > 0
-            ]
-
-        # Ordinamento numerico reale per prestiti/durate.
-        # Per valori non disponibili (es. media senza prestiti conclusi)
-        # usiamo -1, così restano in fondo in ordine crescente e
-        # in testa in ordine decrescente solo se esplicitamente richiesto.
-        def chiave_ordinamento(row):
-            if ordina_per == "prestiti":
-                return row["prestiti"]
-
-            if ordina_per == "tempo_totale_secondi":
-                return row["tempo_totale_secondi"]
-
-            if ordina_per == "media_secondi":
-                valore = row["media_secondi"]
-                return -1 if valore is None else valore
-
-            return row["gioco"].casefold()
-
-        righe_report.sort(
-            key=chiave_ordinamento,
-            reverse=ordine_desc
-        )
-
-        # ----------------------------------------------------
-        # RIEPILOGO E STATISTICHE DESCRITTIVE
-        # ----------------------------------------------------
+        inizio = report.inizio
+        righe_report = report.righe
+        formatta_durata = reporting.formatta_durata
 
         proprietario_testo = (
             tr("common.all")
             if proprietario_id is None
-            else proprietario_per_id(
+            else catalog.proprietario_per_id(
                 proprietario_id
             )["nome"]
         )
@@ -4282,66 +3299,16 @@ class PrestitiApp(ttk.Window):
             tr("usage.sort_game")
         )
 
-        totale_titoli = len(
-            righe_report
-        )
-
-        totale_prestiti = sum(
-            row["prestiti"]
-            for row in righe_report
-        )
-
-        prestiti_per_titolo = [
-            row["prestiti"]
-            for row in righe_report
-        ]
-
-        media_prestiti_titolo = (
-            totale_prestiti / totale_titoli
-            if totale_titoli
-            else 0
-        )
-
-        mediana_prestiti_titolo = (
-            median(prestiti_per_titolo)
-            if prestiti_per_titolo
-            else 0
-        )
-
-        dev_std_prestiti_titolo = (
-            pstdev(prestiti_per_titolo)
-            if prestiti_per_titolo
-            else 0
-        )
-
-        titoli_utilizzati = sum(
-            1
-            for valore in prestiti_per_titolo
-            if valore > 0
-        )
-
-        percentuale_titoli_utilizzati = (
-            titoli_utilizzati / totale_titoli * 100
-            if totale_titoli
-            else 0
-        )
-
-        tutte_durate_prestiti = [
-            durata
-            for row in righe_report
-            for durata in row["durate_prestiti"]
-        ]
-
-        durata_mediana_prestito_secondi = (
-            median(tutte_durate_prestiti)
-            if tutte_durate_prestiti
-            else None
-        )
-
-        tempo_totale_fuori_secondi = sum(
-            row["tempo_totale_secondi"]
-            for row in righe_report
-        )
+        totale_titoli = report.totale_titoli
+        totale_prestiti = report.totale_prestiti
+        prestiti_per_titolo = report.prestiti_per_titolo
+        media_prestiti_titolo = report.media_prestiti_titolo
+        mediana_prestiti_titolo = report.mediana_prestiti_titolo
+        dev_std_prestiti_titolo = report.dev_std_prestiti_titolo
+        titoli_utilizzati = report.titoli_utilizzati
+        percentuale_titoli_utilizzati = report.percentuale_titoli_utilizzati
+        durata_mediana_prestito_secondi = report.durata_mediana_prestito_secondi
+        tempo_totale_fuori_secondi = report.tempo_totale_fuori_secondi
 
         ttk.Label(
             frame,
@@ -4707,15 +3674,6 @@ class PrestitiApp(ttk.Window):
         # ESPORTAZIONE CSV
         # ----------------------------------------------------
 
-        def minuti_csv(secondi):
-            if secondi is None:
-                return ""
-
-            return (
-                f"{secondi / 60:.2f}"
-                .replace(".", ",")
-            )
-
         def esporta_csv():
             if not righe_report:
                 messagebox.showinfo(
@@ -4743,50 +3701,22 @@ class PrestitiApp(ttk.Window):
             if not percorso:
                 return
 
+            intestazioni = [
+                tr("usage.sort_game"),
+                tr("usage.csv_owners"),
+                tr("usage.csv_total_copies"),
+                tr("usage.csv_loans"),
+                tr("usage.csv_total_time"),
+                tr("usage.csv_total_minutes"),
+                tr("usage.csv_avg"),
+                tr("usage.csv_avg_minutes"),
+                tr("usage.csv_std"),
+                tr("usage.csv_std_minutes")
+            ]
+            righe_csv = reporting.righe_csv_utilizzo(report)
+
             try:
-                with open(
-                    percorso,
-                    "w",
-                    newline="",
-                    encoding="utf-8-sig"
-                ) as csvfile:
-                    writer = csv.writer(
-                        csvfile,
-                        delimiter=";"
-                    )
-
-                    writer.writerow([
-                        tr("usage.sort_game"),
-                        tr("usage.csv_owners"),
-                        tr("usage.csv_total_copies"),
-                        tr("usage.csv_loans"),
-                        tr("usage.csv_total_time"),
-                        tr("usage.csv_total_minutes"),
-                        tr("usage.csv_avg"),
-                        tr("usage.csv_avg_minutes"),
-                        tr("usage.csv_std"),
-                        tr("usage.csv_std_minutes")
-                    ])
-
-                    for row in righe_report:
-                        writer.writerow([
-                            row["gioco"],
-                            row["proprietari"],
-                            row["copie_totali"],
-                            row["prestiti"],
-                            row["tempo_totale"],
-                            minuti_csv(
-                                row["tempo_totale_secondi"]
-                            ),
-                            row["media"],
-                            minuti_csv(
-                                row["media_secondi"]
-                            ),
-                            row["deviazione"],
-                            minuti_csv(
-                                row["deviazione_secondi"]
-                            )
-                        ])
+                reporting.esporta_csv(percorso, intestazioni, righe_csv)
 
             except OSError as e:
                 messagebox.showerror(
@@ -4859,7 +3789,7 @@ class PrestitiApp(ttk.Window):
             "Inventario delle copie messe a disposizione da ciascun proprietario"
         )
 
-        proprietari = elenco_proprietari()
+        proprietari = catalog.elenco_proprietari()
         proprietari_by_name = {
             row["nome"]: row["id"]
             for row in proprietari
@@ -5019,39 +3949,10 @@ class PrestitiApp(ttk.Window):
 
             proprietario_id = proprietari_by_name[nome]
 
-            with get_db() as db:
-                righe = db.execute("""
-                    SELECT
-                        g.id AS gioco_id,
-                        g.nome AS gioco,
-                        g.attivo AS gioco_attivo,
-                        cg.quantita AS copie_proprietario,
-                        (
-                            SELECT COALESCE(SUM(cg2.quantita), 0)
-                            FROM copie_gioco cg2
-                            WHERE cg2.gioco_id = g.id
-                        ) AS copie_totali,
-                        (
-                            SELECT COUNT(*)
-                            FROM prestiti pr
-                            WHERE pr.gioco_id = g.id
-                              AND pr.rientro IS NULL
-                        ) AS prestiti_attivi_titolo
-                    FROM copie_gioco cg
-                    JOIN giochi g
-                      ON g.id = cg.gioco_id
-                    WHERE cg.proprietario_id = ?
-                      AND cg.quantita > 0
-                    ORDER BY g.nome
-                """, (
-                    proprietario_id,
-                )).fetchall()
-
-            totale_titoli = len(righe)
-            totale_copie = sum(
-                row["copie_proprietario"]
-                for row in righe
-            )
+            inventario = catalog.inventario_proprietario(proprietario_id)
+            righe = inventario.righe
+            totale_titoli = inventario.totale_titoli
+            totale_copie = inventario.totale_copie
 
             riepilogo_var.set(
                 tr(f"{nome}  •  Titoli: {totale_titoli}  •  Copie: {totale_copie}")
@@ -5149,14 +4050,14 @@ class PrestitiApp(ttk.Window):
             expand=YES
         )
 
-        for proprietario in elenco_proprietari():
+        for proprietario in catalog.elenco_proprietari():
             tree.insert(
                 "",
                 END,
                 iid=str(proprietario["id"]),
                 values=(
                     proprietario["nome"],
-                    totale_copie_proprietario(
+                    catalog.totale_copie_proprietario(
                         proprietario["id"]
                     ),
                     tr("common.yes") if proprietario["attivo"] else tr("common.no")
@@ -5238,26 +4139,16 @@ class PrestitiApp(ttk.Window):
         entry.focus_set()
 
         def salva():
-            nome = nome_var.get().strip()
-
-            if not nome:
+            try:
+                catalog.aggiungi_proprietario(nome_var.get())
+            except catalog.NomeMancante:
                 messagebox.showwarning(
                     tr("Nome mancante"),
                     tr("Inserisci il nome del proprietario.")
                 )
                 return
 
-            try:
-                with get_db() as db:
-                    db.execute("""
-                        INSERT INTO proprietari (
-                            nome,
-                            attivo
-                        )
-                        VALUES (?, 1)
-                    """, (nome,))
-
-            except sqlite3.IntegrityError:
+            except catalog.NomeDuplicato:
                 messagebox.showerror(
                     tr("Proprietario già presente"),
                     tr("Esiste già un proprietario con questo nome.")
@@ -5283,7 +4174,7 @@ class PrestitiApp(ttk.Window):
         )
 
     def show_modifica_proprietario(self, proprietario_id):
-        proprietario = proprietario_per_id(
+        proprietario = catalog.proprietario_per_id(
             proprietario_id
         )
 
@@ -5342,7 +4233,7 @@ class PrestitiApp(ttk.Window):
             card,
             text=(
                 tr(f"Copie associate: "
-                f"{totale_copie_proprietario(proprietario_id)}")
+                f"{catalog.totale_copie_proprietario(proprietario_id)}")
             ),
             font=("Arial", 12),
             bootstyle="secondary"
@@ -5362,46 +4253,31 @@ class PrestitiApp(ttk.Window):
         )
 
         def salva():
-            nome = nome_var.get().strip()
-
-            if not nome:
+            nome = nome_var.get()
+            attivo = attivo_var.get()
+            try:
+                try:
+                    catalog.modifica_proprietario(proprietario_id, nome, attivo)
+                except catalog.ConfermaDisattivazione:
+                    conferma = messagebox.askyesno(
+                        tr("Proprietario con copie associate"),
+                        tr("Questo proprietario ha ancora copie "
+                        "associate ai giochi.\n\n"
+                        "Vuoi comunque disattivarlo?")
+                    )
+                    if not conferma:
+                        return
+                    catalog.modifica_proprietario(
+                        proprietario_id, nome, attivo_var.get(),
+                        conferma_disattivazione=True,
+                    )
+            except catalog.NomeMancante:
                 messagebox.showwarning(
                     tr("Nome mancante"),
                     tr("Inserisci il nome del proprietario.")
                 )
                 return
-
-            if (
-                not attivo_var.get()
-                and totale_copie_proprietario(
-                    proprietario_id
-                ) > 0
-            ):
-                conferma = messagebox.askyesno(
-                    tr("Proprietario con copie associate"),
-                    tr("Questo proprietario ha ancora copie "
-                    "associate ai giochi.\n\n"
-                    "Vuoi comunque disattivarlo?")
-                )
-
-                if not conferma:
-                    return
-
-            try:
-                with get_db() as db:
-                    db.execute("""
-                        UPDATE proprietari
-                        SET
-                            nome = ?,
-                            attivo = ?
-                        WHERE id = ?
-                    """, (
-                        nome,
-                        1 if attivo_var.get() else 0,
-                        proprietario_id
-                    ))
-
-            except sqlite3.IntegrityError:
+            except catalog.NomeDuplicato:
                 messagebox.showerror(
                     tr("Nome duplicato"),
                     tr("Esiste già un proprietario con questo nome.")
@@ -5495,18 +4371,18 @@ class PrestitiApp(ttk.Window):
             expand=YES
         )
 
-        for gioco in elenco_giochi_backoffice():
+        for gioco in catalog.elenco_giochi_backoffice():
             tree.insert(
                 "",
                 END,
                 iid=str(gioco["id"]),
                 values=(
                     gioco["nome"],
-                    riepilogo_proprietari_gioco(
+                    catalog.riepilogo_proprietari_gioco(
                         gioco["id"]
                     ),
                     gioco["copie_totali"],
-                    copie_in_prestito(
+                    catalog.copie_in_prestito(
                         gioco["id"]
                     ),
                     tr("common.yes") if gioco["attivo"] else tr("common.no")
@@ -5589,28 +4465,16 @@ class PrestitiApp(ttk.Window):
         entry.focus_set()
 
         def salva():
-            nome = nome_var.get().strip()
-
-            if not nome:
+            try:
+                gioco_id = catalog.aggiungi_gioco(nome_var.get())
+            except catalog.NomeMancante:
                 messagebox.showwarning(
                     tr("Nome mancante"),
                     tr("Inserisci il nome del gioco.")
                 )
                 return
 
-            try:
-                with get_db() as db:
-                    cursor = db.execute("""
-                        INSERT INTO giochi (
-                            nome,
-                            attivo
-                        )
-                        VALUES (?, 1)
-                    """, (nome,))
-
-                    gioco_id = cursor.lastrowid
-
-            except sqlite3.IntegrityError:
+            except catalog.NomeDuplicato:
                 messagebox.showerror(
                     tr("Gioco già presente"),
                     tr("Esiste già un gioco con questo nome.")
@@ -5638,7 +4502,7 @@ class PrestitiApp(ttk.Window):
         )
 
     def show_modifica_gioco(self, gioco_id):
-        gioco = gioco_per_id(
+        gioco = catalog.gioco_per_id(
             gioco_id
         )
 
@@ -5789,7 +4653,7 @@ class PrestitiApp(ttk.Window):
             for item in tree.get_children():
                 tree.delete(item)
 
-            righe = copie_per_proprietario_del_gioco(
+            righe = catalog.copie_per_proprietario_del_gioco(
                 gioco_id
             )
 
@@ -5892,86 +4756,26 @@ class PrestitiApp(ttk.Window):
 
         def salva_quantita():
             proprietario_id = proprietario_selezionato["id"]
-
-            if proprietario_id is None:
+            try:
+                catalog.imposta_quantita(gioco_id, proprietario_id, quantita_var.get())
+            except catalog.ProprietarioNonSelezionato:
                 messagebox.showwarning(
                     tr("Seleziona un proprietario"),
                     tr("Seleziona prima un proprietario nella tabella.")
                 )
                 return
-
-            try:
-                quantita = int(
-                    quantita_var.get()
-                )
-
-                if quantita < 0:
-                    raise ValueError
-
-            except ValueError:
+            except catalog.QuantitaNonValida:
                 messagebox.showwarning(
                     tr("Quantità non valida"),
                     tr("Inserisci un numero intero maggiore o uguale a zero.")
                 )
                 return
-
-            # Il totale complessivo non può scendere
-            # sotto le copie attualmente in prestito.
-            with get_db() as db:
-                altre_copie = db.execute("""
-                    SELECT COALESCE(SUM(quantita), 0)
-                    FROM copie_gioco
-                    WHERE gioco_id = ?
-                      AND proprietario_id <> ?
-                """, (
-                    gioco_id,
-                    proprietario_id
-                )).fetchone()[0]
-
-            nuovo_totale = altre_copie + quantita
-            fuori = copie_in_prestito(
-                gioco_id
-            )
-
-            if nuovo_totale < fuori:
+            except catalog.CopieInsufficienti as e:
                 messagebox.showwarning(
                     tr("Copie insufficienti"),
-                    tr(f"Ci sono attualmente {fuori} copie "
-                    f"di questo gioco in prestito.\n\n"
-                    f"Il totale non può essere ridotto "
-                    f"a {nuovo_totale}.")
+                    tr(str(e))
                 )
                 return
-
-            with get_db() as db:
-                if quantita == 0:
-                    db.execute("""
-                        DELETE FROM copie_gioco
-                        WHERE gioco_id = ?
-                          AND proprietario_id = ?
-                    """, (
-                        gioco_id,
-                        proprietario_id
-                    ))
-                else:
-                    db.execute("""
-                        INSERT INTO copie_gioco (
-                            gioco_id,
-                            proprietario_id,
-                            quantita
-                        )
-                        VALUES (?, ?, ?)
-                        ON CONFLICT(
-                            gioco_id,
-                            proprietario_id
-                        )
-                        DO UPDATE SET
-                            quantita = excluded.quantita
-                    """, (
-                        gioco_id,
-                        proprietario_id,
-                        quantita
-                    ))
 
             aggiorna_lista()
 
@@ -5998,45 +4802,22 @@ class PrestitiApp(ttk.Window):
         # ----------------------------------------------------
 
         def salva_gioco():
-            nome = nome_var.get().strip()
-
-            if not nome:
+            try:
+                catalog.modifica_gioco(gioco_id, nome_var.get(), attivo_var.get())
+            except catalog.NomeMancante:
                 messagebox.showwarning(
                     tr("Nome mancante"),
                     tr("Inserisci il nome del gioco.")
                 )
                 return
-
-            fuori = copie_in_prestito(
-                gioco_id
-            )
-
-            if (
-                not attivo_var.get()
-                and fuori > 0
-            ):
+            except catalog.GiocoInPrestito:
                 messagebox.showwarning(
                     tr("Gioco in prestito"),
                     tr("Non puoi disattivare un gioco "
                     "mentre ci sono copie in prestito.")
                 )
                 return
-
-            try:
-                with get_db() as db:
-                    db.execute("""
-                        UPDATE giochi
-                        SET
-                            nome = ?,
-                            attivo = ?
-                        WHERE id = ?
-                    """, (
-                        nome,
-                        1 if attivo_var.get() else 0,
-                        gioco_id
-                    ))
-
-            except sqlite3.IntegrityError:
+            except catalog.NomeDuplicato:
                 messagebox.showerror(
                     tr("Nome duplicato"),
                     tr("Esiste già un gioco con questo nome.")
@@ -6076,7 +4857,9 @@ class PrestitiApp(ttk.Window):
 
     # ========================================================
     # BACKOFFICE - IMPOSTAZIONI
-    # =================================    def show_impostazioni(self):
+    # ========================================================
+
+    def show_impostazioni(self):
         frame = self.clear()
 
         self.pulsante_indietro(
@@ -6180,7 +4963,9 @@ class PrestitiApp(ttk.Window):
                 ],
             )
             if selected:
-                database_var.set(database_setting_from_path(selected))
+                database_var.set(
+                    workspace.impostazione_database_da_percorso(selected)
+                )
 
         def scegli_database_esistente():
             selected = filedialog.askopenfilename(
@@ -6193,7 +4978,9 @@ class PrestitiApp(ttk.Window):
                 ],
             )
             if selected:
-                database_var.set(database_setting_from_path(selected))
+                database_var.set(
+                    workspace.impostazione_database_da_percorso(selected)
+                )
 
         database_buttons = ttk.Frame(panel)
         database_buttons.pack(fill=X, pady=(0, 4))
@@ -6221,103 +5008,71 @@ class PrestitiApp(ttk.Window):
         ).pack(anchor=W, pady=(0, 20))
 
         def salva():
-            try:
-                max_tokens = int(tokens_var.get().strip())
-            except ValueError:
-                max_tokens = 0
-
-            if max_tokens <= 0:
-                messagebox.showwarning(
-                    tr("settings.invalid_tokens"),
-                    tr("settings.invalid_tokens_msg")
-                )
-                return
-
-            try:
-                database = normalize_database_setting(database_var.get())
-                target_path = resolve_database_path(database)
-            except (OSError, ValueError) as exc:
-                messagebox.showwarning(
-                    tr("settings.invalid_database"),
-                    tr("settings.invalid_database_msg_tpl", error=str(exc))
-                )
-                return
-
-            current_path = get_db_path().resolve(strict=False)
-            database_changed = target_path != current_path
-
-            # Avoid abandoning an event database while documents are still
-            # physically deposited in it.
-            if database_changed and conta_documenti_attivi() > 0:
-                messagebox.showwarning(
-                    tr("settings.database_busy"),
-                    tr("settings.database_busy_msg")
-                )
-                return
-
-            if not database_changed:
-                highest_open = massimo_token_aperto()
-                if highest_open > max_tokens:
-                    messagebox.showwarning(
-                        tr("settings.invalid_tokens"),
-                        tr(
-                            "settings.active_token_limit_tpl",
-                            token=highest_open
-                        )
-                    )
-                    return
-
             language = display_to_code.get(
                 language_var.get(),
                 "it"
             )
 
-            old_path = current_path
-            switched = False
-            if database_changed:
-                try:
-                    set_db_path(target_path)
-                    switched = True
-                    init_db(default_owner_name=tr("owner.default"))
-                    highest_open = massimo_token_aperto()
-                    if highest_open > max_tokens:
-                        set_db_path(old_path)
-                        switched = False
-                        messagebox.showwarning(
-                            tr("settings.invalid_tokens"),
-                            tr(
-                                "settings.target_active_token_limit_tpl",
-                                token=highest_open
-                            )
-                        )
-                        return
-                except (sqlite3.Error, OSError, ValueError) as exc:
-                    set_db_path(old_path)
-                    switched = False
-                    messagebox.showwarning(
-                        tr("settings.invalid_database"),
-                        tr("settings.database_switch_failed_tpl", error=str(exc))
-                    )
-                    return
-
-            candidate = AppConfig(
-                language=language,
-                max_tokens=max_tokens,
-                database=database
-            )
-
             try:
-                save_config(candidate)
-            except (OSError, ValueError) as exc:
-                if switched:
-                    set_db_path(old_path)
+                risultato = workspace.salva_impostazioni(
+                    lingua=language,
+                    max_tokens_testo=tokens_var.get(),
+                    database_testo=database_var.get(),
+                    nome_proprietario_predefinito=tr("owner.default")
+                )
+            except workspace.TokenNonValidi:
+                messagebox.showwarning(
+                    tr("settings.invalid_tokens"),
+                    tr("settings.invalid_tokens_msg")
+                )
+                return
+            except workspace.DatabaseNonValido as exc:
+                messagebox.showwarning(
+                    tr("settings.invalid_database"),
+                    tr("settings.invalid_database_msg_tpl", error=exc.dettaglio)
+                )
+                return
+            except workspace.DatabaseInUso:
+                messagebox.showwarning(
+                    tr("settings.database_busy"),
+                    tr("settings.database_busy_msg")
+                )
+                return
+            except workspace.LimiteTokenCorrente as exc:
+                messagebox.showwarning(
+                    tr("settings.invalid_tokens"),
+                    tr(
+                        "settings.active_token_limit_tpl",
+                        token=exc.token
+                    )
+                )
+                return
+            except workspace.LimiteTokenDestinazione as exc:
+                messagebox.showwarning(
+                    tr("settings.invalid_tokens"),
+                    tr(
+                        "settings.target_active_token_limit_tpl",
+                        token=exc.token
+                    )
+                )
+                return
+            except workspace.CambioDatabaseFallito as exc:
+                messagebox.showwarning(
+                    tr("settings.invalid_database"),
+                    tr(
+                        "settings.database_switch_failed_tpl",
+                        error=exc.dettaglio
+                    )
+                )
+                return
+            except workspace.SalvataggioConfigurazioneFallito as exc:
                 messagebox.showwarning(
                     tr("settings.save_failed"),
-                    tr("settings.save_failed_tpl", error=str(exc))
+                    tr("settings.save_failed_tpl", error=exc.dettaglio)
                 )
                 return
 
-            self.config = candidate
+            self.config = risultato.configurazione
             set_language(language)
             self.title(tr("app.title"))
 
@@ -6325,7 +5080,7 @@ class PrestitiApp(ttk.Window):
                 tr("settings.saved"),
                 tr(
                     "settings.saved_database_msg"
-                    if database_changed
+                    if risultato.database_cambiato
                     else "settings.saved_msg"
                 )
             )
@@ -6343,20 +5098,13 @@ class PrestitiApp(ttk.Window):
     # ========================================================
 
     def chiudi_app(self):
-        attivi = conta_documenti_attivi()
+        situazione = lending.situazione_chiusura()
+        attivi = situazione.documenti_attivi
 
         if attivi > 0:
-            with get_db() as db:
-                token = db.execute("""
-                    SELECT token
-                    FROM documenti
-                    WHERE uscita IS NULL
-                    ORDER BY token
-                """).fetchall()
-
             token_str = ", ".join(
-                str(row["token"])
-                for row in token
+                str(token)
+                for token in situazione.token
             )
 
             conferma = messagebox.askyesno(
