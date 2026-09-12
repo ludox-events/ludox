@@ -5763,28 +5763,6 @@ class PrestitiApp(ttk.Window):
 
         ttk.Label(
             panel,
-            text=tr("settings.tokens"),
-            font=("Arial", 12, "bold")
-        ).pack(anchor=W, pady=(0, 5))
-
-        tokens_var = tk.StringVar(
-            value=str(self.config.max_tokens)
-        )
-        tokens_entry = ttk.Entry(
-            panel,
-            textvariable=tokens_var,
-            width=14
-        )
-        tokens_entry.pack(anchor=W, pady=(0, 4), ipady=3)
-
-        ttk.Label(
-            panel,
-            text=tr("settings.tokens_help"),
-            bootstyle="secondary"
-        ).pack(anchor=W, pady=(0, 18))
-
-        ttk.Label(
-            panel,
             text=tr("settings.database"),
             font=("Arial", 12, "bold")
         ).pack(anchor=W, pady=(0, 5))
@@ -5860,7 +5838,6 @@ class PrestitiApp(ttk.Window):
         def esegui_salvataggio(language, migrazione_autorizzata=False):
             return workspace.salva_impostazioni(
                 lingua=language,
-                max_tokens_testo=tokens_var.get(),
                 database_testo=database_var.get(),
                 nome_proprietario_predefinito=tr("owner.default"),
                 organizzazione_attiva_id=(
@@ -5915,12 +5892,6 @@ class PrestitiApp(ttk.Window):
                 migration_ui.mostra_errore(error, parent=self)
                 self.destroy()
                 return
-            except workspace.TokenNonValidi:
-                messagebox.showwarning(
-                    tr("settings.invalid_tokens"),
-                    tr("settings.invalid_tokens_msg")
-                )
-                return
             except workspace.DatabaseNonValido as exc:
                 messagebox.showwarning(
                     tr("settings.invalid_database"),
@@ -5931,24 +5902,6 @@ class PrestitiApp(ttk.Window):
                 messagebox.showwarning(
                     tr("settings.database_busy"),
                     tr("settings.database_busy_msg")
-                )
-                return
-            except workspace.LimiteTokenCorrente as exc:
-                messagebox.showwarning(
-                    tr("settings.invalid_tokens"),
-                    tr(
-                        "settings.active_token_limit_tpl",
-                        token=exc.token
-                    )
-                )
-                return
-            except workspace.LimiteTokenDestinazione as exc:
-                messagebox.showwarning(
-                    tr("settings.invalid_tokens"),
-                    tr(
-                        "settings.target_active_token_limit_tpl",
-                        token=exc.token
-                    )
                 )
                 return
             except workspace.CambioDatabaseFallito as exc:

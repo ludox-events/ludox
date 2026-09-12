@@ -224,3 +224,17 @@ def test_impostazioni_collegano_conferma_migration_e_chiusura():
 
     assert len(conferme) == 1
     assert len(chiusure) == 2
+
+
+def test_salvataggio_impostazioni_applica_subito_la_lingua_prima_del_rendering():
+    settings = metodo("show_impostazioni")
+    salva = next(
+        node for node in ast.walk(settings)
+        if isinstance(node, ast.FunctionDef) and node.name == "salva"
+    )
+    expressions = [
+        ast.unparse(node.value.func)
+        for node in salva.body
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+    ]
+    assert expressions.index("set_language") < expressions.index("self.show_backoffice")
