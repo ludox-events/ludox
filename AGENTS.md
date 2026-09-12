@@ -162,6 +162,25 @@ commit;
 
 use concise Conventional Commit style messages when appropriate.
 
+Every commit message must include the GitHub issue number that the commit
+belongs to. Use this format when practical:
+
+feat: add organization context (#15)
+docs: document migration workflow (#20)
+test: cover organization selection (#15)
+
+The issue reference is required in addition to the Conventional Commit type.
+Do not use `fixes`, `closes`, or equivalent automatic-closing keywords unless
+the user explicitly asks to close the issue.
+
+When the task clearly identifies an issue, use that issue number. If the
+appropriate issue is not otherwise clear, use the issue associated with the
+current working branch. For example, work on
+`feature/15-organizations-context` defaults to `#15`.
+
+If neither the task nor the branch identifies an issue unambiguously, ask the
+user before creating the commit rather than inventing an issue reference.
+
 Typical natural commit boundaries include:
 
 database migration;
