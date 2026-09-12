@@ -3,7 +3,7 @@
 
 import sqlite3
 
-from ludox import bootstrap, migration_ui, migrations, organizations
+from ludox import bootstrap, events, migration_ui, migrations, organizations
 from ludox.config import ensure_config
 from ludox.database import init_db, set_db_path
 from ludox.i18n import set_language, tr
@@ -45,11 +45,20 @@ def main():
     if not prepara_database_per_avvio(tr("owner.default")):
         return
     organization_context = organizations.sincronizza_contesto(config)
+    event_context = events.sync_context(
+        organization_context.configurazione,
+        (
+            organization_context.organizzazione.id
+            if organization_context.organizzazione is not None
+            else None
+        ),
+    )
     from ludox.ui import PrestitiApp
 
     app = PrestitiApp(
         organization_context.configurazione,
         organization_context,
+        event_context,
     )
     app.mainloop()
 

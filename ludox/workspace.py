@@ -9,7 +9,7 @@ from pathlib import Path
 
 from . import bootstrap, config
 from . import database as data
-from . import migrations, organizations
+from . import events, migrations, organizations
 
 
 class TokenNonValidi(Exception):
@@ -70,6 +70,8 @@ def salva_impostazioni(
     nome_proprietario_predefinito: str,
     organizzazione_attiva_id: int | None = None,
     organizzazione_attiva_nome: str | None = None,
+    evento_attivo_id: int | None = None,
+    evento_attivo_slug: str | None = None,
     migrazione_autorizzata: bool = False,
 ) -> ImpostazioniSalvate:
     try:
@@ -133,9 +135,15 @@ def salva_impostazioni(
         database=database,
         active_organization_id=organizzazione_attiva_id,
         active_organization_name=organizzazione_attiva_nome,
+        active_event_id=evento_attivo_id,
+        active_event_slug=evento_attivo_slug,
     )
     try:
         candidato = organizations.risolvi_contesto(candidato).configurazione
+        candidato = events.resolve_context(
+            candidato,
+            candidato.active_organization_id,
+        ).configuration
     except sqlite3.Error as exc:
         if cambiato:
             data.set_db_path(percorso_precedente)

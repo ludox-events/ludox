@@ -20,7 +20,7 @@ def test_initialization_creates_current_schema_and_default_owner(isolated_files)
         assert db.execute("PRAGMA foreign_keys").fetchone()[0] == 1
     assert tables == {
         "organizations", "proprietari", "giochi", "copie_gioco",
-        "documenti", "prestiti",
+        "documenti", "prestiti", "events", "event_modules",
     }
     assert {"idx_token_aperto", "idx_prestito_aperto_documento"} <= indexes
     assert [r["nome"] for r in data.elenco_proprietari()] == ["Organizzazione"]

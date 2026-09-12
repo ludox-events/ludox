@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from ludox import bootstrap, config, database as data, workspace
+from ludox import bootstrap, config, database as data, events, organizations, workspace
 
 
 def salva(
@@ -20,6 +20,8 @@ def salva(
     organizzazione_attiva_id=None,
     organizzazione_attiva_nome=None,
     migrazione_autorizzata=False,
+    evento_attivo_id=None,
+    evento_attivo_slug=None,
 ):
     return workspace.salva_impostazioni(
         lingua=lingua,
@@ -28,6 +30,8 @@ def salva(
         nome_proprietario_predefinito="Biblioteca",
         organizzazione_attiva_id=organizzazione_attiva_id,
         organizzazione_attiva_nome=organizzazione_attiva_nome,
+        evento_attivo_id=evento_attivo_id,
+        evento_attivo_slug=evento_attivo_slug,
         migrazione_autorizzata=migrazione_autorizzata,
     )
 
@@ -109,6 +113,35 @@ def test_cambio_database_non_accetta_collisione_id_con_nome_diverso(db):
     assert risultato.configurazione.active_organization_id is None
     assert risultato.configurazione.active_organization_name is None
     assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
+
+
+def test_cambio_database_rivalida_organization_ed_event(db):
+    destination = config.PROJECT_DIR / "destination.db"
+    previous = data.get_db_path()
+    data.set_db_path(destination)
+    data.init_db()
+    organization = organizations.crea_organizzazione("Destination")
+    event = events.create_event(
+        organization.id,
+        name="Destination Event",
+        slug="destination",
+        start_datetime="2027-01-01T09:00:00",
+        end_datetime="2027-01-01T18:00:00",
+        timezone="UTC",
+    )
+    data.set_db_path(previous)
+
+    result = salva(
+        "destination.db",
+        organizzazione_attiva_id=organization.id,
+        organizzazione_attiva_nome=organization.nome,
+        evento_attivo_id=event.id,
+        evento_attivo_slug="wrong",
+    )
+
+    assert result.configurazione.active_organization_id == organization.id
+    assert result.configurazione.active_event_id == event.id
+    assert result.configurazione.active_event_slug == event.slug
 
 
 @pytest.mark.parametrize("valore", ["", "abc", "0", "-1"])

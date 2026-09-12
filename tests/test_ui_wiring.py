@@ -60,6 +60,7 @@ def test_pulsanti_home_aprono_le_schermate_principali():
             "self.show_restituzione",
             "self.show_statistiche",
             "self.show_login_backoffice",
+            "self.show_selezione_evento",
         },
     )
 
@@ -71,6 +72,7 @@ def test_pulsanti_backoffice_aprono_le_sezioni_previste():
             "self.show_gestione_giochi",
             "self.show_gestione_proprietari",
             "self.show_gestione_organizzazioni",
+            "self.show_gestione_eventi",
             "self.esporta_ludoteca_legacy",
             "self.show_tutti_prestiti",
             "self.show_tutti_documenti",
@@ -92,6 +94,7 @@ def test_pulsanti_indietro_tornano_alla_schermata_prevista():
         "show_statistiche": "self.show_home",
         "show_login_backoffice": "self.show_home",
         "show_backoffice": "self.show_home",
+        "show_selezione_evento": "self.show_home",
         "show_tutti_prestiti": "self.show_backoffice",
         "show_tutti_documenti": "self.show_backoffice",
         "show_report_documenti": "self.show_backoffice",
@@ -105,6 +108,7 @@ def test_pulsanti_indietro_tornano_alla_schermata_prevista():
         "show_modifica_gioco": "self.show_gestione_giochi",
         "show_impostazioni": "self.show_backoffice",
         "show_gestione_organizzazioni": "self.show_backoffice",
+        "show_gestione_eventi": "self.show_backoffice",
     }
 
     for nome_metodo, destinazione in destinazioni.items():
@@ -164,6 +168,18 @@ def test_azioni_locali_importanti_hanno_il_command_previsto():
         "show_gestione_organizzazioni",
         {"nuova", "salva", "usa_selezionata"},
     )
+    gestione_eventi = metodo("show_gestione_eventi")
+    azioni_eventi = next(
+        node
+        for node in ast.walk(gestione_eventi)
+        if isinstance(node, ast.For)
+        and ast.unparse(node.target) == "(text, command, style)"
+    )
+    assert {
+        ast.unparse(element.elts[1])
+        for element in azioni_eventi.iter.elts
+    } == {"nuovo", "salva", "elimina"}
+    assert_command("show_selezione_evento", {"conferma"})
 
 
 def test_avvio_risolve_il_contesto_prima_di_creare_la_ui():
@@ -184,8 +200,12 @@ def test_avvio_risolve_il_contesto_prima_di_creare_la_ui():
     ]
 
     assert "organizations.sincronizza_contesto" in assegnazioni
+    assert "events.sync_context" in assegnazioni
     assert "PrestitiApp" in assegnazioni
     assert assegnazioni.index("organizations.sincronizza_contesto") < assegnazioni.index(
+        "PrestitiApp"
+    )
+    assert assegnazioni.index("events.sync_context") < assegnazioni.index(
         "PrestitiApp"
     )
     assert chiamate_main[-1] == "app.mainloop"
