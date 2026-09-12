@@ -158,6 +158,11 @@ restituzione, storici e report sugli stessi dati. Un secondo scenario verifica
 che il cambio workspace isoli i dati e che il ritorno al database iniziale li
 renda nuovamente disponibili. Anche questi test usano soltanto file temporanei.
 
+`tests/test_ui_wiring.py` controlla tramite analisi strutturale che i pulsanti
+principali, la navigazione Indietro e le azioni locali siano collegati ai
+callback previsti. Non importa né avvia Tkinter e non verifica layout, stile o
+testi dell'interfaccia, quindi non richiede un display virtuale nella CI.
+
 ### Verifiche manuali
 
 Prima di proporre una modifica è consigliato verificare almeno:
