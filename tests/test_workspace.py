@@ -13,12 +13,20 @@ import pytest
 from ludox import config, database as data, workspace
 
 
-def salva(database, max_tokens="50", lingua="it"):
+def salva(
+    database,
+    max_tokens="50",
+    lingua="it",
+    organizzazione_attiva_id=None,
+    organizzazione_attiva_nome=None,
+):
     return workspace.salva_impostazioni(
         lingua=lingua,
         max_tokens_testo=max_tokens,
         database_testo=database,
         nome_proprietario_predefinito="Biblioteca",
+        organizzazione_attiva_id=organizzazione_attiva_id,
+        organizzazione_attiva_nome=organizzazione_attiva_nome,
     )
 
 
@@ -37,6 +45,18 @@ def test_salvataggio_sullo_stesso_database_non_cambia_workspace(db):
         config.AppConfig("en", 23, "test.db"), False
     )
     assert data.get_db_path() == config.PROJECT_DIR / "test.db"
+    assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
+
+
+def test_salvataggio_preserva_il_contesto_organizzazione(db):
+    risultato = salva(
+        "test.db",
+        organizzazione_attiva_id=3,
+        organizzazione_attiva_nome="Ludoteca Centro",
+    )
+
+    assert risultato.configurazione.active_organization_id == 3
+    assert risultato.configurazione.active_organization_name == "Ludoteca Centro"
     assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
 
 

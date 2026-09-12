@@ -67,6 +67,8 @@ def salva_impostazioni(
     max_tokens_testo: str,
     database_testo: str,
     nome_proprietario_predefinito: str,
+    organizzazione_attiva_id: int | None = None,
+    organizzazione_attiva_nome: str | None = None,
 ) -> ImpostazioniSalvate:
     try:
         max_tokens = int(max_tokens_testo.strip())
@@ -115,6 +117,8 @@ def salva_impostazioni(
         language=lingua,
         max_tokens=max_tokens,
         database=database,
+        active_organization_id=organizzazione_attiva_id,
+        active_organization_name=organizzazione_attiva_nome,
     )
     try:
         config.save_config(candidato, config.CONFIG_PATH)

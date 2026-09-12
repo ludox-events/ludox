@@ -44,9 +44,53 @@ def test_save_load_round_trip_does_not_create_database(tmp_path):
     assert not (tmp_path / "Evento.db").exists()
 
 
+def test_save_load_round_trip_preserves_organization_reference(tmp_path):
+    path = tmp_path / "settings.ini"
+    original = config.AppConfig(
+        "it",
+        50,
+        "ludox.db",
+        active_organization_id=7,
+        active_organization_name=" Ludoteca Centro ",
+    )
+
+    config.save_config(original, path)
+
+    assert config.load_config(path) == config.AppConfig(
+        "it", 50, "ludox.db", 7, "Ludoteca Centro"
+    )
+    saved = path.read_text(encoding="utf-8")
+    assert "[organization]" in saved
+    assert "active_organization_id = 7" in saved
+    assert "active_organization_name = Ludoteca Centro" in saved
+
+
+@pytest.mark.parametrize(
+    "organization",
+    [
+        "active_organization_id = 1",
+        "active_organization_name = Ludoteca Centro",
+        "active_organization_id = invalid\nactive_organization_name = Ludoteca Centro",
+        "active_organization_id = 0\nactive_organization_name = Ludoteca Centro",
+    ],
+)
+def test_invalid_organization_reference_is_ignored(tmp_path, organization):
+    path = tmp_path / "settings.ini"
+    path.write_text(
+        "[general]\nlanguage = en\n\n[organization]\n" + organization,
+        encoding="utf-8",
+    )
+
+    assert config.load_config(path) == config.AppConfig("en", 50, "ludox.db")
+
+
 @pytest.mark.parametrize("changes", [
     {"language": "fr"}, {"max_tokens": 0}, {"max_tokens": -1},
     {"max_tokens": "50"}, {"max_tokens": 1.5}, {"database": " "},
+    {"active_organization_id": 1},
+    {"active_organization_name": "Ludoteca"},
+    {"active_organization_id": 0, "active_organization_name": "Ludoteca"},
+    {"active_organization_id": True, "active_organization_name": "Ludoteca"},
 ])
 def test_invalid_values_are_rejected_without_overwriting(tmp_path, changes):
     candidate = config.AppConfig(**changes)
