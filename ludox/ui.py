@@ -1,7 +1,6 @@
 # Copyright (C) 2026 Matteo Sassi
 # SPDX-License-Identifier: AGPL-3.0-only
 
-import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 import tkinter as tk
@@ -15,17 +14,9 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from .config import (
-    AppConfig, save_config, normalize_database_setting,
-    database_setting_from_path, resolve_database_path, PROJECT_DIR,
+    AppConfig, PROJECT_DIR,
 )
-from .database import (
-    get_db, formatta_data_ora, conta_prestiti, conta_documenti,
-    conta_documenti_attivi,
-    disponibilita_gioco, cerca_giochi, elenco_proprietari,
-    proprietario_per_id, massimo_token_aperto, init_db,
-    set_db_path, get_db_path,
-)
-from . import catalog, lending, reporting
+from . import catalog, lending, reporting, workspace
 from .i18n import tr, set_language, get_language, language_display_names
 
 APP_THEME = "flatly"
@@ -130,6 +121,7 @@ class PrestitiApp(ttk.Window):
 
     def show_home(self):
         frame = self.clear()
+        riepilogo = lending.riepilogo_home()
 
         self.titolo_pagina(
             frame,
@@ -149,7 +141,7 @@ class PrestitiApp(ttk.Window):
         self.crea_card(
             cards,
             0,
-            conta_prestiti(),
+            riepilogo.prestiti,
             "PRESTITI EFFETTUATI",
             "primary"
         )
@@ -157,7 +149,7 @@ class PrestitiApp(ttk.Window):
         self.crea_card(
             cards,
             1,
-            conta_documenti(),
+            riepilogo.documenti,
             "PERSONE / DOCUMENTI",
             "info"
         )
@@ -165,7 +157,7 @@ class PrestitiApp(ttk.Window):
         self.crea_card(
             cards,
             2,
-            conta_documenti_attivi(),
+            riepilogo.documenti_attivi,
             "PRESTITI ATTIVI",
             "success"
         )
@@ -340,25 +332,19 @@ class PrestitiApp(ttk.Window):
             for item in tree.get_children():
                 tree.delete(item)
 
-            giochi = cerca_giochi(
-                ricerca_var.get()
+            giochi = lending.cerca_giochi_con_disponibilita(
+                ricerca_var.get(),
+                gioco_da_escludere
             )
 
             for gioco in giochi:
-                if gioco_da_escludere == gioco["id"]:
-                    continue
-
-                disponibili, totali = disponibilita_gioco(
-                    gioco["id"]
-                )
-
                 tree.insert(
                     "",
                     END,
                     iid=str(gioco["id"]),
                     values=(
                         gioco["nome"],
-                        f"{disponibili} / {totali}"
+                        f"{gioco['disponibili']} / {gioco['copie_totali']}"
                     )
                 )
 
@@ -379,7 +365,7 @@ class PrestitiApp(ttk.Window):
                 return
 
             gioco_id = int(selezione[0])
-            disponibili, _ = disponibilita_gioco(
+            disponibili, _ = lending.disponibilita_gioco(
                 gioco_id
             )
 
@@ -1943,8 +1929,8 @@ class PrestitiApp(ttk.Window):
                     row["token"],
                     row["documento_id"],
                     row["gioco"],
-                    formatta_data_ora(row["uscita"]),
-                    formatta_data_ora(row["rientro"]),
+                    row["uscita_testo"],
+                    row["rientro_testo"],
                     tr("common.active") if row["rientro"] is None else tr("common.closed")
                 )
             )
@@ -2059,8 +2045,8 @@ class PrestitiApp(ttk.Window):
                 values=(
                     row["id"],
                     row["token"],
-                    formatta_data_ora(row["ingresso"]),
-                    formatta_data_ora(row["uscita"]),
+                    row["ingresso_testo"],
+                    row["uscita_testo"],
                     row["numero_prestiti"],
                     tr("common.deposited") if row["uscita"] is None else tr("common.returned")
                 )
@@ -3012,7 +2998,7 @@ class PrestitiApp(ttk.Window):
             padx=(0, 18)
         )
 
-        proprietari = elenco_proprietari()
+        proprietari = catalog.elenco_proprietari()
         proprietari_by_name = {
             row["nome"]: row["id"]
             for row in proprietari
@@ -3023,7 +3009,7 @@ class PrestitiApp(ttk.Window):
         )
 
         if proprietario_id is not None:
-            proprietario = proprietario_per_id(
+            proprietario = catalog.proprietario_per_id(
                 proprietario_id
             )
             if proprietario:
@@ -3298,7 +3284,7 @@ class PrestitiApp(ttk.Window):
         proprietario_testo = (
             tr("common.all")
             if proprietario_id is None
-            else proprietario_per_id(
+            else catalog.proprietario_per_id(
                 proprietario_id
             )["nome"]
         )
@@ -4977,7 +4963,9 @@ class PrestitiApp(ttk.Window):
                 ],
             )
             if selected:
-                database_var.set(database_setting_from_path(selected))
+                database_var.set(
+                    workspace.impostazione_database_da_percorso(selected)
+                )
 
         def scegli_database_esistente():
             selected = filedialog.askopenfilename(
@@ -4990,7 +4978,9 @@ class PrestitiApp(ttk.Window):
                 ],
             )
             if selected:
-                database_var.set(database_setting_from_path(selected))
+                database_var.set(
+                    workspace.impostazione_database_da_percorso(selected)
+                )
 
         database_buttons = ttk.Frame(panel)
         database_buttons.pack(fill=X, pady=(0, 4))
@@ -5018,103 +5008,71 @@ class PrestitiApp(ttk.Window):
         ).pack(anchor=W, pady=(0, 20))
 
         def salva():
-            try:
-                max_tokens = int(tokens_var.get().strip())
-            except ValueError:
-                max_tokens = 0
-
-            if max_tokens <= 0:
-                messagebox.showwarning(
-                    tr("settings.invalid_tokens"),
-                    tr("settings.invalid_tokens_msg")
-                )
-                return
-
-            try:
-                database = normalize_database_setting(database_var.get())
-                target_path = resolve_database_path(database)
-            except (OSError, ValueError) as exc:
-                messagebox.showwarning(
-                    tr("settings.invalid_database"),
-                    tr("settings.invalid_database_msg_tpl", error=str(exc))
-                )
-                return
-
-            current_path = get_db_path().resolve(strict=False)
-            database_changed = target_path != current_path
-
-            # Avoid abandoning an event database while documents are still
-            # physically deposited in it.
-            if database_changed and conta_documenti_attivi() > 0:
-                messagebox.showwarning(
-                    tr("settings.database_busy"),
-                    tr("settings.database_busy_msg")
-                )
-                return
-
-            if not database_changed:
-                highest_open = massimo_token_aperto()
-                if highest_open > max_tokens:
-                    messagebox.showwarning(
-                        tr("settings.invalid_tokens"),
-                        tr(
-                            "settings.active_token_limit_tpl",
-                            token=highest_open
-                        )
-                    )
-                    return
-
             language = display_to_code.get(
                 language_var.get(),
                 "it"
             )
 
-            old_path = current_path
-            switched = False
-            if database_changed:
-                try:
-                    set_db_path(target_path)
-                    switched = True
-                    init_db(default_owner_name=tr("owner.default"))
-                    highest_open = massimo_token_aperto()
-                    if highest_open > max_tokens:
-                        set_db_path(old_path)
-                        switched = False
-                        messagebox.showwarning(
-                            tr("settings.invalid_tokens"),
-                            tr(
-                                "settings.target_active_token_limit_tpl",
-                                token=highest_open
-                            )
-                        )
-                        return
-                except (sqlite3.Error, OSError, ValueError) as exc:
-                    set_db_path(old_path)
-                    switched = False
-                    messagebox.showwarning(
-                        tr("settings.invalid_database"),
-                        tr("settings.database_switch_failed_tpl", error=str(exc))
-                    )
-                    return
-
-            candidate = AppConfig(
-                language=language,
-                max_tokens=max_tokens,
-                database=database
-            )
-
             try:
-                save_config(candidate)
-            except (OSError, ValueError) as exc:
-                if switched:
-                    set_db_path(old_path)
+                risultato = workspace.salva_impostazioni(
+                    lingua=language,
+                    max_tokens_testo=tokens_var.get(),
+                    database_testo=database_var.get(),
+                    nome_proprietario_predefinito=tr("owner.default")
+                )
+            except workspace.TokenNonValidi:
+                messagebox.showwarning(
+                    tr("settings.invalid_tokens"),
+                    tr("settings.invalid_tokens_msg")
+                )
+                return
+            except workspace.DatabaseNonValido as exc:
+                messagebox.showwarning(
+                    tr("settings.invalid_database"),
+                    tr("settings.invalid_database_msg_tpl", error=exc.dettaglio)
+                )
+                return
+            except workspace.DatabaseInUso:
+                messagebox.showwarning(
+                    tr("settings.database_busy"),
+                    tr("settings.database_busy_msg")
+                )
+                return
+            except workspace.LimiteTokenCorrente as exc:
+                messagebox.showwarning(
+                    tr("settings.invalid_tokens"),
+                    tr(
+                        "settings.active_token_limit_tpl",
+                        token=exc.token
+                    )
+                )
+                return
+            except workspace.LimiteTokenDestinazione as exc:
+                messagebox.showwarning(
+                    tr("settings.invalid_tokens"),
+                    tr(
+                        "settings.target_active_token_limit_tpl",
+                        token=exc.token
+                    )
+                )
+                return
+            except workspace.CambioDatabaseFallito as exc:
+                messagebox.showwarning(
+                    tr("settings.invalid_database"),
+                    tr(
+                        "settings.database_switch_failed_tpl",
+                        error=exc.dettaglio
+                    )
+                )
+                return
+            except workspace.SalvataggioConfigurazioneFallito as exc:
                 messagebox.showwarning(
                     tr("settings.save_failed"),
-                    tr("settings.save_failed_tpl", error=str(exc))
+                    tr("settings.save_failed_tpl", error=exc.dettaglio)
                 )
                 return
 
-            self.config = candidate
+            self.config = risultato.configurazione
             set_language(language)
             self.title(tr("app.title"))
 
@@ -5122,7 +5080,7 @@ class PrestitiApp(ttk.Window):
                 tr("settings.saved"),
                 tr(
                     "settings.saved_database_msg"
-                    if database_changed
+                    if risultato.database_cambiato
                     else "settings.saved_msg"
                 )
             )
@@ -5140,20 +5098,13 @@ class PrestitiApp(ttk.Window):
     # ========================================================
 
     def chiudi_app(self):
-        attivi = conta_documenti_attivi()
+        situazione = lending.situazione_chiusura()
+        attivi = situazione.documenti_attivi
 
         if attivi > 0:
-            with get_db() as db:
-                token = db.execute("""
-                    SELECT token
-                    FROM documenti
-                    WHERE uscita IS NULL
-                    ORDER BY token
-                """).fetchall()
-
             token_str = ", ".join(
-                str(row["token"])
-                for row in token
+                str(token)
+                for token in situazione.token
             )
 
             conferma = messagebox.askyesno(

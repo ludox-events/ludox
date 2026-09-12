@@ -114,12 +114,24 @@ def statistiche_periodo(riferimento, ore, minuti_bucket):
 
 def storico_prestiti():
     totale, attivi, righe = data.storico_prestiti()
-    return Storico(totale, attivi, [dict(row) for row in righe])
+    risultato = []
+    for row in righe:
+        voce = dict(row)
+        voce["uscita_testo"] = data.formatta_data_ora(row["uscita"])
+        voce["rientro_testo"] = data.formatta_data_ora(row["rientro"])
+        risultato.append(voce)
+    return Storico(totale, attivi, risultato)
 
 
 def storico_documenti():
     totale, attivi, righe = data.storico_documenti()
-    return Storico(totale, attivi, [dict(row) for row in righe])
+    risultato = []
+    for row in righe:
+        voce = dict(row)
+        voce["ingresso_testo"] = data.formatta_data_ora(row["ingresso"])
+        voce["uscita_testo"] = data.formatta_data_ora(row["uscita"])
+        risultato.append(voce)
+    return Storico(totale, attivi, risultato)
 
 
 def formatta_durata(secondi):

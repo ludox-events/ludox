@@ -49,6 +49,53 @@ class PrestitoCreato:
     gioco_nome: str
 
 
+@dataclass(frozen=True)
+class RiepilogoHome:
+    prestiti: int
+    documenti: int
+    documenti_attivi: int
+
+
+@dataclass(frozen=True)
+class SituazioneChiusura:
+    documenti_attivi: int
+    token: tuple[int, ...]
+
+
+def riepilogo_home() -> RiepilogoHome:
+    return RiepilogoHome(
+        prestiti=data.conta_prestiti(),
+        documenti=data.conta_documenti(),
+        documenti_attivi=data.conta_documenti_attivi(),
+    )
+
+
+def cerca_giochi_con_disponibilita(
+    testo="", gioco_da_escludere=None
+) -> list[dict]:
+    giochi = []
+    for row in data.cerca_giochi(testo):
+        gioco = dict(row)
+        if gioco["id"] == gioco_da_escludere:
+            continue
+        disponibili, totali = data.disponibilita_gioco(gioco["id"])
+        gioco["disponibili"] = disponibili
+        gioco["copie_totali"] = totali
+        giochi.append(gioco)
+    return giochi
+
+
+def disponibilita_gioco(gioco_id: int) -> tuple[int, int]:
+    return data.disponibilita_gioco(gioco_id)
+
+
+def situazione_chiusura() -> SituazioneChiusura:
+    return SituazioneChiusura(
+        documenti_attivi=data.conta_documenti_attivi(),
+        token=tuple(row["token"] for row in data.token_documenti_aperti()),
+    )
+
+
 def consulta_token(token: int) -> SituazionePrestito:
     documento = data.documento_aperto_da_token(token)
     if not documento:

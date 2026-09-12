@@ -132,6 +132,14 @@ filtri, rendering, grafici e finestre di dialogo. `tests/test_reporting.py`
 verifica intervalli temporali, aggregazioni, ordinamenti, filtri, durate e
 formato CSV senza importare Tkinter e usando esclusivamente database temporanei.
 
+La quarta fase completa la separazione di `ludox/ui.py` dal livello dati.
+`ludox/workspace.py` gestisce validazione e salvataggio delle impostazioni,
+cambio database e ripristino del percorso precedente in caso di errore. Le
+letture residue della home, del selettore giochi e della chiusura applicazione
+passano da `ludox/lending.py`; gli storici preparano in `ludox/reporting.py` le
+date da mostrare. `tests/test_workspace.py` verifica questi flussi usando solo
+database e configurazioni temporanei.
+
 Per preservare il comportamento attuale, l'apertura controlla disponibilità e
 token prima della transazione, mentre il cambio li ricontrolla sotto lock.
 La restituzione aggiorna gli identificativi ricevuti senza aggiungere un nuovo

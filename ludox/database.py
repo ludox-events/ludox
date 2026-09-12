@@ -156,6 +156,16 @@ def conta_documenti_attivi():
         """).fetchone()[0]
 
 
+def token_documenti_aperti():
+    with get_db() as db:
+        return db.execute("""
+            SELECT token
+            FROM documenti
+            WHERE uscita IS NULL
+            ORDER BY token
+        """).fetchall()
+
+
 def token_libero(max_tokens):
     with get_db() as db:
         occupati = {

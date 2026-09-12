@@ -90,6 +90,45 @@ def test_consultation_distinguishes_free_token_and_missing_loan(catalog):
     assert snapshot(catalog) == before
 
 
+def test_home_search_and_availability_use_lending_service(catalog, clock):
+    assert lending.riepilogo_home() == lending.RiepilogoHome(0, 0, 0)
+    assert [
+        (row["nome"], row["disponibili"], row["copie_totali"])
+        for row in lending.cerca_giochi_con_disponibilita()
+    ] == [("Azul", 3, 3), ("Cascadia", 1, 1)]
+
+    lending.nuovo_prestito(1, 10)
+
+    assert lending.riepilogo_home() == lending.RiepilogoHome(1, 1, 1)
+    assert lending.disponibilita_gioco(1) == (2, 3)
+    assert [
+        row["nome"] for row in lending.cerca_giochi_con_disponibilita("cas")
+    ] == ["Cascadia"]
+    assert [
+        row["nome"]
+        for row in lending.cerca_giochi_con_disponibilita(
+            gioco_da_escludere=1
+        )
+    ] == ["Cascadia"]
+
+
+def test_situazione_chiusura_restituisce_token_ordinati(catalog):
+    catalog.executemany(
+        "INSERT INTO documenti(token, ingresso, uscita) VALUES (?, ?, ?)",
+        [
+            (7, "2026-09-12T10:00:00", None),
+            (2, "2026-09-12T10:05:00", None),
+            (5, "2026-09-12T09:00:00", "2026-09-12T09:30:00"),
+        ],
+    )
+    catalog.commit()
+
+    assert lending.situazione_chiusura() == lending.SituazioneChiusura(
+        documenti_attivi=2,
+        token=(2, 7),
+    )
+
+
 @pytest.mark.parametrize("game", [4, 999], ids=["no-copies", "missing-game"])
 def test_open_unavailable_game_does_not_write(catalog, game):
     with pytest.raises(lending.GiocoNonDisponibile, match="Non ci sono copie disponibili"):

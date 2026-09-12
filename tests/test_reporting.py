@@ -86,9 +86,13 @@ def test_storici_restituiscono_totali_attivi_e_ordine(catalog):
 
     assert (prestiti.totale, prestiti.attivi) == (4, 1)
     assert [row["prestito_id"] for row in prestiti.righe] == [4, 3, 2, 1]
+    assert prestiti.righe[0]["uscita_testo"] == "11/09/2026 00:15:00"
+    assert prestiti.righe[1]["rientro_testo"] == "—"
     assert (documenti.totale, documenti.attivi) == (3, 1)
     assert [row["id"] for row in documenti.righe] == [3, 2, 1]
     assert [row["numero_prestiti"] for row in documenti.righe] == [1, 1, 2]
+    assert documenti.righe[0]["ingresso_testo"] == "11/09/2026 00:00:00"
+    assert documenti.righe[1]["uscita_testo"] == "—"
 
 
 def test_report_documenti_preserva_intervallo_inclusivo_e_metriche(catalog):
