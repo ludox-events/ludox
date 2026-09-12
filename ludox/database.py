@@ -6,6 +6,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from datetime import datetime
 
+from . import migrations
+
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = PROJECT_DIR / "ludox.db"
 
@@ -37,6 +39,7 @@ def get_db():
 
 
 def init_db(default_owner_name="Organizzazione"):
+    migrations.migrate_database(DB_PATH)
     with get_db() as db:
         db.execute("""
             CREATE TABLE IF NOT EXISTS proprietari (
