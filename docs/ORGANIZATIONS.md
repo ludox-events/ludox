@@ -2,7 +2,7 @@
 
 > **STATUS: APPROVED SPECIFICATION — READ ONLY**
 >
-> **IMPLEMENTATION: NOT IMPLEMENTED**
+> **IMPLEMENTATION: IMPLEMENTED**
 >
 > Questo documento è una specifica approvata di LudoX. Durante
 > l'implementazione non deve essere modificato, salvo richiesta esplicita
