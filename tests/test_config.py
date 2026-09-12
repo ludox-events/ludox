@@ -65,6 +65,24 @@ def test_save_load_round_trip_preserves_organization_reference(tmp_path):
     assert "active_organization_name = Ludoteca Centro" in saved
 
 
+def test_save_load_round_trip_preserves_event_reference(tmp_path):
+    path = tmp_path / "settings.ini"
+    original = config.AppConfig(
+        active_event_id=7,
+        active_event_slug=" amigo-2027 ",
+    )
+
+    config.save_config(original, path)
+
+    loaded = config.load_config(path)
+    assert loaded.active_event_id == 7
+    assert loaded.active_event_slug == "amigo-2027"
+    saved = path.read_text(encoding="utf-8")
+    assert "[event]" in saved
+    assert "active_event_id = 7" in saved
+    assert "active_event_slug = amigo-2027" in saved
+
+
 @pytest.mark.parametrize(
     "organization",
     [

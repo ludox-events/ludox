@@ -20,6 +20,8 @@ class AppConfig:
     database: str = DEFAULT_DATABASE
     active_organization_id: int | None = None
     active_organization_name: str | None = None
+    active_event_id: int | None = None
+    active_event_slug: str | None = None
 
 
 def resolve_database_path(database: str) -> Path:
@@ -85,17 +87,21 @@ def validate_config(config: AppConfig) -> bool:
 
     organization_id = config.active_organization_id
     organization_name = config.active_organization_name
-    if organization_id is None and organization_name is None:
-        return True
-    if not (
-        isinstance(organization_id, int)
-        and not isinstance(organization_id, bool)
-        and organization_id > 0
-        and isinstance(organization_name, str)
-        and bool(organization_name.strip())
-    ):
+    if not _valid_reference(organization_id, organization_name):
         return False
-    return True
+    return _valid_reference(config.active_event_id, config.active_event_slug)
+
+
+def _valid_reference(identifier, label):
+    if identifier is None and label is None:
+        return True
+    return (
+        isinstance(identifier, int)
+        and not isinstance(identifier, bool)
+        and identifier > 0
+        and isinstance(label, str)
+        and bool(label.strip())
+    )
 
 
 def _load_organization_reference(
@@ -118,6 +124,20 @@ def _load_organization_reference(
     return organization_id, name
 
 
+def _load_event_reference(parser):
+    raw_id = parser.get("event", "active_event_id", fallback="").strip()
+    slug = parser.get("event", "active_event_slug", fallback="").strip()
+    if not raw_id or not slug:
+        return None, None
+    try:
+        event_id = int(raw_id)
+    except ValueError:
+        return None, None
+    if event_id <= 0:
+        return None, None
+    return event_id, slug
+
+
 def load_config(path: Path = CONFIG_PATH) -> AppConfig | None:
     if not path.exists():
         return None
@@ -136,6 +156,7 @@ def load_config(path: Path = CONFIG_PATH) -> AppConfig | None:
         ).strip()
         database = normalize_database_setting(database)
         organization_id, organization_name = _load_organization_reference(parser)
+        event_id, event_slug = _load_event_reference(parser)
     except (configparser.Error, OSError, ValueError):
         return None
 
@@ -145,6 +166,8 @@ def load_config(path: Path = CONFIG_PATH) -> AppConfig | None:
         database=database,
         active_organization_id=organization_id,
         active_organization_name=organization_name,
+        active_event_id=event_id,
+        active_event_slug=event_slug,
     )
     return result if validate_config(result) else None
 
@@ -161,6 +184,12 @@ def save_config(config: AppConfig, path: Path = CONFIG_PATH) -> None:
             if isinstance(config.active_organization_name, str)
             else config.active_organization_name
         ),
+        active_event_id=config.active_event_id,
+        active_event_slug=(
+            config.active_event_slug.strip()
+            if isinstance(config.active_event_slug, str)
+            else config.active_event_slug
+        ),
     )
     if not validate_config(normalized):
         raise ValueError("Invalid LudoX configuration")
@@ -175,6 +204,11 @@ def save_config(config: AppConfig, path: Path = CONFIG_PATH) -> None:
         parser["organization"] = {
             "active_organization_id": str(normalized.active_organization_id),
             "active_organization_name": normalized.active_organization_name,
+        }
+    if normalized.active_event_id is not None:
+        parser["event"] = {
+            "active_event_id": str(normalized.active_event_id),
+            "active_event_slug": normalized.active_event_slug,
         }
     with path.open("w", encoding="utf-8") as handle:
         parser.write(handle)
