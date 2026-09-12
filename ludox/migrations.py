@@ -5,6 +5,7 @@
 
 import sqlite3
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Callable, Iterable
 
@@ -37,6 +38,19 @@ class BackupRequired(MigrationError):
     """A pending migration requires an explicit backup destination."""
 
 
+class DatabaseKind(Enum):
+    EMPTY_UNVERSIONED = "empty_unversioned"
+    LEGACY_UNVERSIONED = "legacy_unversioned"
+    VERSIONED_SUPPORTED = "versioned_supported"
+    FUTURE_UNSUPPORTED = "future_unsupported"
+
+
+@dataclass(frozen=True)
+class DatabaseState:
+    kind: DatabaseKind
+    version: int
+
+
 @dataclass(frozen=True)
 class Migration:
     version: int
@@ -59,6 +73,29 @@ MIGRATIONS: tuple[Migration, ...] = ()
 
 def schema_version(connection):
     return int(connection.execute("PRAGMA user_version").fetchone()[0])
+
+
+def inspect_database(connection, supported_version=CURRENT_SCHEMA_VERSION):
+    """Classify a database by schema version and application schema presence."""
+    version = schema_version(connection)
+    if version > supported_version:
+        return DatabaseState(DatabaseKind.FUTURE_UNSUPPORTED, version)
+    if version > LEGACY_SCHEMA_VERSION:
+        return DatabaseState(DatabaseKind.VERSIONED_SUPPORTED, version)
+
+    has_application_schema = connection.execute("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM sqlite_schema
+            WHERE name NOT LIKE 'sqlite_%'
+        )
+    """).fetchone()[0]
+    kind = (
+        DatabaseKind.LEGACY_UNVERSIONED
+        if has_application_schema
+        else DatabaseKind.EMPTY_UNVERSIONED
+    )
+    return DatabaseState(kind, version)
 
 
 def _pending_migrations(current_version, target_version, migration_steps):
@@ -105,8 +142,9 @@ def migrate_database(
     path = Path(database_path)
     connection = sqlite3.connect(path, isolation_level=None)
     try:
-        initial_version = schema_version(connection)
-        if initial_version > target_version:
+        initial_state = inspect_database(connection, target_version)
+        initial_version = initial_state.version
+        if initial_state.kind is DatabaseKind.FUTURE_UNSUPPORTED:
             raise UnsupportedSchemaVersion(initial_version, target_version)
 
         pending = _pending_migrations(
