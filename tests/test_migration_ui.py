@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 import app
-from ludox import bootstrap, migration_ui, migrations
+from ludox import bootstrap, config, migration_ui, migrations
 from ludox.i18n import set_language
 
 
@@ -137,3 +137,22 @@ def test_errore_migration_impedisce_avvio_operativo(monkeypatch):
 
     assert app.prepara_database_per_avvio("Organizzazione") is False
     assert shown == [error]
+
+
+def test_main_si_ferma_prima_dei_servizi_operativi_se_bootstrap_rifiutato(
+    monkeypatch,
+):
+    monkeypatch.setattr(app, "ensure_config", lambda: config.AppConfig())
+    monkeypatch.setattr(app, "set_db_path", lambda path: None)
+    monkeypatch.setattr(app, "prepara_database_per_avvio", lambda owner: False)
+
+    def accesso_operativo_inatteso(configuration):
+        pytest.fail("organization context accessed before compatible schema")
+
+    monkeypatch.setattr(
+        app.organizations,
+        "sincronizza_contesto",
+        accesso_operativo_inatteso,
+    )
+
+    assert app.main() is None
