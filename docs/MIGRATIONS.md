@@ -2,7 +2,7 @@
 
 > **STATUS: APPROVED SPECIFICATION — READ ONLY**
 >
-> **IMPLEMENTATION: PARTIALLY IMPLEMENTED**
+> **IMPLEMENTATION: IMPLEMENTED**
 >
 > Questo documento definisce il comportamento approvato delle migration del
 > database LudoX. Durante l'implementazione non deve essere modificato salvo
