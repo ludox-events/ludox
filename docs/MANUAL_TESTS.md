@@ -67,6 +67,17 @@ Prerequisito: eseguire almeno un prestito completo e, se possibile, un cambio gi
 - [ ] Modificare i dati di un gioco e verificare che la modifica sia visibile nelle schermate operative.
 - [ ] Modificare la quantità di copie e verificare che la disponibilità mostrata sia coerente.
 
+## Organizzazioni
+
+- [ ] Con nessuna Organization configurata, verificare che la Home segnali l'assenza di un contesto attivo senza creare automaticamente una Organization generica.
+- [ ] Dal Backoffice creare la prima Organization e verificare che diventi automaticamente quella attiva.
+- [ ] Creare una seconda Organization, selezionarla dal Backoffice e verificare che la Home mostri il nuovo contesto senza offrire controlli per cambiarlo.
+- [ ] Chiudere e riavviare LudoX e verificare che la coppia ID e nome dell'Organization attiva venga ripristinata.
+- [ ] Modificare il nome dell'Organization attiva e verificare che il contesto salvato venga aggiornato.
+- [ ] Disattivare l'Organization attiva e verificare che non sia più selezionabile; se ne resta una sola attiva, verificare che venga scelta automaticamente.
+- [ ] Verificare che la gestione permetta di disattivare una Organization ma non di eliminarla.
+- [ ] Verificare che i proprietari dei giochi restino separati dalle Organizations e non vengano convertiti durante la migration.
+
 ## Workspace e database
 
 Eseguire queste verifiche solo su database di test o copie dei database, mai sull'unica copia di dati importanti.
