@@ -63,22 +63,37 @@ Comprende almeno:
 Queste impostazioni possono essere differenti su postazioni diverse che
 utilizzano lo stesso database o, in futuro, lo stesso server.
 
-### config.ini
+### `config.ini`
 
-Nell'implementazione locale attuale `config.ini` rappresenta la
-configurazione della postazione.
+Nell'implementazione locale `config.ini` rappresenta la configurazione della
+postazione.
 
-Nel modello target può contenere riferimenti o preferenze come:
+Il formato target rimane semplice e leggibile:
 
-- lingua;
-- database/workspace selezionato;
-- ultimo contesto Organization/Event utilizzato.
+```ini
+[general]
+language = it
+database = ludox.db
 
-Non deve contenere configurazioni operative proprie di un Event o di un
-modulo.
+[organization]
+active_organization_id = 2
+active_organization_name = Ludoteca Altomilanese
+
+[event]
+active_event_id = 7
+active_event_slug = amigo-2027
+```
+
+Il file non deve contenere configurazioni operative proprie di un Event o di
+un modulo.
+
+Non devono essere introdotti mapping tra workspace, UUID, hash o file di
+configurazione aggiuntivi soltanto per ricordare i contesti selezionati.
+
+### Organization attiva
 
 Per l'Organization attiva, la configurazione locale memorizza sia
-l'identificativo interno sia il nome leggibile, per esempio:
+l'identificativo interno sia il nome leggibile:
 
 ```ini
 [organization]
@@ -99,13 +114,31 @@ All'apertura del database LudoX verifica che:
 Se ID e nome non corrispondono, la selezione locale non viene usata
 silenziosamente.
 
-La selezione memorizzata si riferisce sempre al database/workspace
-attualmente configurato. Dopo un cambio di database viene quindi validata
-contro il nuovo database; se non corrisponde a una Organization valida, viene
-ignorata e viene applicata la normale logica di selezione.
+### Event attivo
 
-Non è necessario introdurre mapping tra workspace, UUID o altri
-identificativi aggiuntivi per questo scopo.
+Per l'Event corrente, la configurazione locale memorizza identificativo
+interno e slug leggibile/stabile:
+
+```ini
+[event]
+active_event_id = 7
+active_event_slug = amigo-2027
+```
+
+Il riferimento è valido soltanto se l'Event:
+
+- esiste;
+- appartiene alla Organization corrente;
+- è operativamente selezionabile;
+- ha lo slug memorizzato nella configurazione.
+
+Dopo un cambio di Organization o database/workspace il riferimento all'Event
+viene rivalidato. Un Event di un'altra Organization o con ID/slug incoerenti
+non deve essere selezionato silenziosamente.
+
+La selezione memorizzata si riferisce sempre al database/workspace
+attualmente configurato. Non è richiesto mantenere uno storico dei contesti
+Organization/Event per ogni workspace.
 
 ## 2. Configurazione della Organization
 
@@ -128,6 +161,10 @@ Comprende, per esempio:
 La Organization non contiene la configurazione operativa della ludoteca
 di un singolo Event.
 
+La gestione e la selezione della Organization corrente appartengono alla
+schermata Organization del Backoffice, non alla pagina generale delle
+impostazioni della postazione.
+
 ## 3. Configurazione dell'Event
 
 L'Event contiene i dati e le impostazioni che descrivono l'evento nel suo
@@ -143,10 +180,16 @@ Comprende almeno:
 - timezone;
 - stato;
 - moduli abilitati;
-- dati descrittivi e di localizzazione.
+- eventuali dati descrittivi e di localizzazione.
 
 L'Event stabilisce quali moduli sono disponibili, ma le impostazioni
 specifiche di un modulo restano nel relativo modulo.
+
+La gestione dei dati dell'Event appartiene al Backoffice Event. La selezione
+dell'Event corrente è invece un'azione operativa disponibile dalla Home.
+
+Queste funzioni non devono essere duplicate nella pagina generale delle
+impostazioni della postazione.
 
 ## 4. Configurazione del modulo `game_library`
 
@@ -188,12 +231,16 @@ token N = slot N
 ma il concetto persistente è lo slot, cioè la posizione fisica in cui
 viene conservato il documento.
 
+La gestione di `max_slots` e delle altre impostazioni del modulo appartiene
+alle schermate del modulo `game_library`, non alla pagina generale delle
+impostazioni della postazione.
+
 ## 5. Configurazione del modulo `activities`
 
 Le future impostazioni del modulo Activities appartengono allo specifico
 Event e non alla postazione o alla Organization.
 
-La struttura esatta verrà definita insieme al modulo Activities.
+La struttura esatta viene definita insieme al modulo Activities.
 
 ## 6. Regola di scoping
 
@@ -226,19 +273,106 @@ Il Backoffice può offrire interfacce per modificare impostazioni appartenenti
 a scope differenti, ma la posizione nell'interfaccia non determina dove il
 dato viene salvato.
 
-La futura implementazione della gestione configurazione deve rispettare lo
-scope definito in questo documento.
+Le responsabilità UI sono separate:
 
-## 8. Compatibilità con l'implementazione corrente
+```text
+Backoffice → Impostazioni postazione
+├── lingua
+└── database/workspace
 
-L'implementazione attuale può ancora contenere parametri storici in
-`config.ini`, incluso `max_tokens`.
+Backoffice → Organization
+└── gestione/selezione Organization
 
-Questa situazione è considerata transitoria.
+Backoffice → Event
+└── dati Event e moduli abilitati
 
-La migrazione verso il modello target deve essere effettuata quando verranno
-implementati Event e configurazione event-specific del modulo
-`game_library`.
+Home
+└── selezione Event corrente
 
-Non è necessario modificare immediatamente il formato corrente soltanto per
-allinearlo a questa specifica.
+Backoffice/modulo → Prestiti Ludoteca
+└── configurazione game_library (es. max_slots)
+```
+
+La pagina generale **Impostazioni postazione** non deve duplicare controlli
+per selezionare Organization o Event e non deve contenere configurazioni dei
+moduli.
+
+Può mostrare Organization ed Event correnti come informazione contestuale,
+ma le modifiche avvengono nelle schermate responsabili indicate sopra.
+
+### Lingua
+
+La lingua viene scelta tramite valore leggibile e salvata nella configurazione
+locale. Dopo il salvataggio deve poter essere applicata immediatamente
+ricostruendo la schermata dell'interfaccia, senza richiedere modifica manuale
+di `config.ini`.
+
+### Database/workspace
+
+La gestione dal Backoffice deve riutilizzare il normale flusso workspace già
+previsto da LudoX:
+
+- visualizzazione del database corrente;
+- scelta/apertura di un database esistente;
+- scelta del percorso di un nuovo database;
+- validazione del percorso;
+- bootstrap/migration sicura del database;
+- rivalidazione dei contesti Organization ed Event;
+- ripristino del workspace precedente se l'operazione fallisce o viene
+  annullata.
+
+Non deve essere introdotto un secondo meccanismo parallelo di apertura o
+creazione dei database.
+
+## 8. Primo avvio della postazione
+
+Il setup iniziale deve chiedere soltanto configurazioni appartenenti alla
+postazione:
+
+- lingua;
+- database/workspace.
+
+Non deve creare automaticamente Organization o Event generici.
+
+Dopo l'apertura/creazione del database si applicano i normali bootstrap dei
+relativi livelli applicativi.
+
+Il setup iniziale non deve chiedere numero di token o slot, perché `max_slots`
+appartiene al modulo `game_library` dello specifico Event.
+
+## 9. Compatibilità con `max_tokens`
+
+`max_tokens` è un parametro storico della configurazione locale precedente al
+modello event-specific.
+
+Dopo l'implementazione della conversione prevista dalla #6:
+
+- `AppConfig` non deve più richiedere `max_tokens` come configurazione globale;
+- il primo avvio e il Backoffice generale non devono mostrarlo;
+- `save_config()` non deve scriverlo;
+- un vecchio `config.ini` che contiene ancora la chiave deve rimanere
+  leggibile e la chiave storica può essere ignorata.
+
+Il trasferimento del valore utile verso `max_slots` del modulo `game_library`
+appartiene alla conversione dei dati event-specific della #6 e non deve essere
+reinventato dalla #3.
+
+## 10. Validazione e salvataggio
+
+Prima di salvare una modifica della configurazione locale, tutti i nuovi
+valori devono essere validati.
+
+In caso di errore:
+
+- una configurazione valida precedente non deve essere sovrascritta con dati
+  parziali;
+- il workspace precedente deve rimanere utilizzabile;
+- i riferimenti Organization/Event devono rimanere coerenti con il workspace
+  effettivamente aperto.
+
+La semplice modifica del testo del percorso non deve creare un database: la
+creazione/apertura avviene soltanto attraverso il normale flusso workspace.
+
+I database interni al progetto possono essere mantenuti come percorsi
+relativi; i database esterni possono essere memorizzati con percorso assoluto
+secondo le regole già esistenti.
