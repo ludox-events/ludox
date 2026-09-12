@@ -935,6 +935,84 @@ def game_library_ha_aperti(event_id):
     return conta_sessioni_attive_evento(event_id) > 0
 
 
+def righe_export_ludoteca_evento(event_id):
+    with get_db() as db:
+        return db.execute("""
+            SELECT g.name AS game_name, o.name AS owner_label,
+                   COUNT(c.id) AS quantity
+            FROM game_library_game_copies c
+            JOIN game_library_games g
+              ON g.event_id = c.event_id AND g.id = c.game_id
+            JOIN game_library_owner_labels o
+              ON o.event_id = c.event_id AND o.id = c.owner_label_id
+            WHERE c.event_id = ? AND c.active = 1
+            GROUP BY g.id, g.name, o.id, o.name
+            HAVING COUNT(c.id) > 0
+            ORDER BY g.name COLLATE NOCASE, g.id,
+                     o.name COLLATE NOCASE, o.id
+        """, (event_id,)).fetchall()
+
+
+def applica_import_ludoteca(event_id, rows):
+    """Apply validated normalized rows atomically and return created counts."""
+    created_games = created_owners = created_copies = 0
+    with get_db() as db:
+        for row in rows:
+            game = db.execute("""
+                SELECT id FROM game_library_games
+                WHERE event_id = ? AND name_key = ?
+            """, (event_id, row["game_key"])).fetchone()
+            if game is None:
+                game_id = db.execute("""
+                    INSERT INTO game_library_games(event_id, name, name_key)
+                    VALUES (?, ?, ?)
+                """, (event_id, row["game_name"], row["game_key"])).lastrowid
+                created_games += 1
+            else:
+                game_id = game["id"]
+
+            owner = db.execute("""
+                SELECT id FROM game_library_owner_labels
+                WHERE event_id = ? AND name_key = ?
+            """, (event_id, row["owner_key"])).fetchone()
+            if owner is None:
+                owner_id = db.execute("""
+                    INSERT INTO game_library_owner_labels(event_id, name, name_key)
+                    VALUES (?, ?, ?)
+                """, (event_id, row["owner_label"], row["owner_key"])).lastrowid
+                created_owners += 1
+            else:
+                owner_id = owner["id"]
+
+            db.executemany("""
+                INSERT INTO game_library_game_copies(
+                    event_id, game_id, owner_label_id
+                ) VALUES (?, ?, ?)
+            """, [(event_id, game_id, owner_id)] * row["quantity"])
+            created_copies += row["quantity"]
+    return created_games, created_owners, created_copies
+
+
+def reset_ludoteca_evento(event_id):
+    with get_db() as db:
+        if db.execute("""
+            SELECT EXISTS(SELECT 1 FROM game_library_loans WHERE event_id = ?)
+        """, (event_id,)).fetchone()[0]:
+            return False
+        db.execute(
+            "DELETE FROM game_library_game_copies WHERE event_id = ?",
+            (event_id,),
+        )
+        db.execute(
+            "DELETE FROM game_library_games WHERE event_id = ?", (event_id,)
+        )
+        db.execute(
+            "DELETE FROM game_library_owner_labels WHERE event_id = ?",
+            (event_id,),
+        )
+    return True
+
+
 def massimo_token_aperto():
     """Return the highest token currently associated with an open document."""
     with get_db() as db:
