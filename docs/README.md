@@ -21,7 +21,8 @@ Le GitHub Issues conservano la roadmap, le discussioni e la storia delle decisio
 | [MODULES.md](MODULES.md) | Draft | Regole comuni dei moduli event-specific |
 | [CONFIGURATION.md](CONFIGURATION.md) | Specifica approvata | Scope delle impostazioni: client, Organization, Event e moduli |
 | [LENDING.md](LENDING.md) | Draft consolidato | Modello funzionale Prestiti Ludoteca / Game Library |
-| [DATABASE.md](DATABASE.md) | Draft iniziale | Principi del database e base per lo schema v1 |
+| [DATABASE.md](DATABASE.md) | Specifica approvata | Principi del database, versionamento dello schema e regole generali delle migration |
+| [MIGRATIONS.md](MIGRATIONS.md) | Specifica approvata | Flusso di migration, autorizzazione, backup, rollback e comportamento all'avvio |
 | [OPERATION.md](OPERATION.md) | Corrente | Procedura operativa della modalità token attualmente disponibile |
 | [MANUAL_TESTS.md](MANUAL_TESTS.md) | Corrente | Checklist dei test manuali da eseguire sulle funzionalità operative |
 
@@ -70,22 +71,34 @@ In particolare:
 - eventi → `EVENTS.md`;
 - comportamento comune dei moduli → `MODULES.md`;
 - prestiti → `LENDING.md`;
-- schema fisico e migrazioni → `DATABASE.md`;
+- schema fisico e versionamento → `DATABASE.md`;
+- comportamento operativo delle migration → `MIGRATIONS.md`;
 - procedura per chi opera al banco → `OPERATION.md`;
 - verifiche manuali del software → `MANUAL_TESTS.md`.
 
+## Migrazioni e sicurezza dei dati
+
+LudoX non deve usare operativamente un database con uno schema differente da quello richiesto dalla versione corrente del software.
+
+Per un database esistente che richiede una migration:
+
+- l'utente deve autorizzare esplicitamente l'aggiornamento;
+- LudoX crea automaticamente un backup completo prima di qualsiasi modifica;
+- se l'utente annulla, il backup fallisce o la migration fallisce, l'applicazione non prosegue con l'avvio operativo;
+- database con uno schema più nuovo di quello supportato vengono rifiutati senza tentare downgrade automatici.
+
+Il comportamento completo è definito in [MIGRATIONS.md](MIGRATIONS.md).
 
 ## Priorità di implementazione
 
 La documentazione architetturale descrive il modello target, ma non determina automaticamente l'ordine delle modifiche al software.
 
-Le funzionalità possono essere implementate in modo incrementale, privilegiando interventi utili e a basso rischio prima della migrazione allo schema database v1.
-
-Una priorità candidata è l'**export/backup del database corrente**, utile anche come base di sicurezza prima delle future migration.
+Le funzionalità vengono implementate in modo incrementale, mantenendo ogni versione dello schema esplicita e verificabile.
 
 Va mantenuta distinta la differenza tra:
 
-- **export/backup del database** — copia completa del workspace SQLite;
+- **backup di sicurezza per una migration** — copia completa obbligatoria del workspace SQLite creata automaticamente prima di aggiornare un database esistente;
+- **export/backup richiesto dall'utente** — copia completa del workspace effettuata come normale funzione operativa;
 - **export dei dati di un modulo** — per esempio esportazione della ludoteca in CSV/XLSX per riutilizzo o scambio.
 
 ## Specifiche approvate e Codex
@@ -145,8 +158,9 @@ In questo modo progettazione e implementazione restano due attività separate.
 
 ## Consolidamento delle specifiche architetturali
 
-Le decisioni progettuali relative a modello Event/Module, Organization e
-scope della configurazione sono ora consolidate nelle specifiche:
+Le decisioni progettuali relative a modello Event/Module, Organization,
+scope della configurazione e gestione delle migration sono consolidate nelle
+specifiche:
 
 - [ARCHITECTURE.md](ARCHITECTURE.md);
 - [ORGANIZATIONS.md](ORGANIZATIONS.md);
@@ -154,7 +168,8 @@ scope della configurazione sono ora consolidate nelle specifiche:
 - [MODULES.md](MODULES.md);
 - [CONFIGURATION.md](CONFIGURATION.md);
 - [LENDING.md](LENDING.md);
-- [DATABASE.md](DATABASE.md).
+- [DATABASE.md](DATABASE.md);
+- [MIGRATIONS.md](MIGRATIONS.md).
 
 Le relative issue di analisi possono essere chiuse separatamente quando si
 deciderà di aggiornare GitHub. La chiusura delle issue di design non implica
