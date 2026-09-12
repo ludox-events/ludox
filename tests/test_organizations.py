@@ -40,6 +40,8 @@ def test_validazioni_creazione_e_modifica(db):
 
 
 def test_nessuna_organizzazione_attiva_non_crea_un_default(db):
+    inattiva = organizations.crea_organizzazione("Ludoteca Chiusa")
+    organizations.imposta_stato(inattiva.id, attiva=False)
     configurazione = config.AppConfig(
         active_organization_id=99,
         active_organization_name="Precedente",
@@ -50,7 +52,9 @@ def test_nessuna_organizzazione_attiva_non_crea_un_default(db):
     assert contesto.organizzazione is None
     assert contesto.selezione_richiesta is False
     assert contesto.configurazione.active_organization_id is None
-    assert organizations.elenco_organizzazioni() == []
+    assert organizations.elenco_organizzazioni() == [
+        organizations.Organizzazione(inattiva.id, inattiva.nome, False)
+    ]
 
 
 def test_unica_organizzazione_attiva_viene_selezionata_e_salvata(db, tmp_path):

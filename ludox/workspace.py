@@ -9,6 +9,7 @@ from pathlib import Path
 
 from . import config
 from . import database as data
+from . import organizations
 
 
 class TokenNonValidi(Exception):
@@ -120,6 +121,13 @@ def salva_impostazioni(
         active_organization_id=organizzazione_attiva_id,
         active_organization_name=organizzazione_attiva_nome,
     )
+    try:
+        candidato = organizations.risolvi_contesto(candidato).configurazione
+    except sqlite3.Error as exc:
+        if cambiato:
+            data.set_db_path(percorso_precedente)
+        raise CambioDatabaseFallito(exc) from exc
+
     try:
         config.save_config(candidato, config.CONFIG_PATH)
     except (OSError, ValueError) as exc:

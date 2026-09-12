@@ -49,14 +49,63 @@ def test_salvataggio_sullo_stesso_database_non_cambia_workspace(db):
 
 
 def test_salvataggio_preserva_il_contesto_organizzazione(db):
+    organizzazione_id = db.execute(
+        "INSERT INTO organizations(name) VALUES ('Ludoteca Centro')"
+    ).lastrowid
+    db.commit()
     risultato = salva(
         "test.db",
-        organizzazione_attiva_id=3,
+        organizzazione_attiva_id=organizzazione_id,
         organizzazione_attiva_nome="Ludoteca Centro",
     )
 
-    assert risultato.configurazione.active_organization_id == 3
+    assert risultato.configurazione.active_organization_id == organizzazione_id
     assert risultato.configurazione.active_organization_name == "Ludoteca Centro"
+    assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
+
+
+def test_cambio_database_seleziona_automaticamente_l_unica_organizzazione(db):
+    destinazione = config.PROJECT_DIR / "destinazione.db"
+    precedente = data.get_db_path()
+    data.set_db_path(destinazione)
+    data.init_db()
+    with data.get_db() as destinazione_db:
+        destinazione_db.execute(
+            "INSERT INTO organizations(name) VALUES ('Ludoteca Nuova')"
+        )
+    data.set_db_path(precedente)
+
+    risultato = salva(
+        "destinazione.db",
+        organizzazione_attiva_id=1,
+        organizzazione_attiva_nome="Altro workspace",
+    )
+
+    assert risultato.configurazione.active_organization_id == 1
+    assert risultato.configurazione.active_organization_name == "Ludoteca Nuova"
+    assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
+
+
+def test_cambio_database_non_accetta_collisione_id_con_nome_diverso(db):
+    destinazione = config.PROJECT_DIR / "destinazione.db"
+    precedente = data.get_db_path()
+    data.set_db_path(destinazione)
+    data.init_db()
+    with data.get_db() as destinazione_db:
+        destinazione_db.executemany(
+            "INSERT INTO organizations(name) VALUES (?)",
+            [("Ludoteca Nuova",), ("Ludoteca Nord",)],
+        )
+    data.set_db_path(precedente)
+
+    risultato = salva(
+        "destinazione.db",
+        organizzazione_attiva_id=1,
+        organizzazione_attiva_nome="Altro workspace",
+    )
+
+    assert risultato.configurazione.active_organization_id is None
+    assert risultato.configurazione.active_organization_name is None
     assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
 
 

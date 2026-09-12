@@ -9,6 +9,8 @@ from pathlib import Path
 
 UI_PATH = Path(__file__).resolve().parents[1] / "ludox" / "ui.py"
 UI_TREE = ast.parse(UI_PATH.read_text(encoding="utf-8"))
+APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
+APP_TREE = ast.parse(APP_PATH.read_text(encoding="utf-8"))
 APP_CLASS = next(
     node
     for node in UI_TREE.body
@@ -68,6 +70,7 @@ def test_pulsanti_backoffice_aprono_le_sezioni_previste():
         {
             "self.show_gestione_giochi",
             "self.show_gestione_proprietari",
+            "self.show_gestione_organizzazioni",
             "self.show_tutti_prestiti",
             "self.show_tutti_documenti",
             "self.show_giochi_per_proprietario",
@@ -100,6 +103,7 @@ def test_pulsanti_indietro_tornano_alla_schermata_prevista():
         "show_aggiungi_gioco": "self.show_gestione_giochi",
         "show_modifica_gioco": "self.show_gestione_giochi",
         "show_impostazioni": "self.show_backoffice",
+        "show_gestione_organizzazioni": "self.show_backoffice",
     }
 
     for nome_metodo, destinazione in destinazioni.items():
@@ -154,3 +158,33 @@ def test_azioni_locali_importanti_hanno_il_command_previsto():
             nome_report,
             {"applica", "esporta_csv", "self.show_backoffice"},
         )
+
+    assert_command(
+        "show_gestione_organizzazioni",
+        {"nuova", "salva", "usa_selezionata"},
+    )
+
+
+def test_avvio_risolve_il_contesto_prima_di_creare_la_ui():
+    main = next(
+        node
+        for node in APP_TREE.body
+        if isinstance(node, ast.FunctionDef) and node.name == "main"
+    )
+    chiamate_main = [
+        ast.unparse(node.value.func)
+        for node in main.body
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+    ]
+    assegnazioni = [
+        ast.unparse(node.value.func)
+        for node in main.body
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)
+    ]
+
+    assert "organizations.sincronizza_contesto" in assegnazioni
+    assert "PrestitiApp" in assegnazioni
+    assert assegnazioni.index("organizations.sincronizza_contesto") < assegnazioni.index(
+        "PrestitiApp"
+    )
+    assert chiamate_main[-1] == "app.mainloop"

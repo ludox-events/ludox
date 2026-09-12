@@ -4,6 +4,7 @@
 from ludox.config import ensure_config
 from ludox.database import init_db, set_db_path
 from ludox.i18n import set_language, tr
+from ludox import organizations
 from ludox.ui import PrestitiApp
 
 
@@ -12,8 +13,12 @@ def main():
     set_language(config.language)
     set_db_path(config.database)
     init_db(default_owner_name=tr("owner.default"))
+    organization_context = organizations.sincronizza_contesto(config)
 
-    app = PrestitiApp(config)
+    app = PrestitiApp(
+        organization_context.configurazione,
+        organization_context,
+    )
     app.mainloop()
 
 

@@ -111,6 +111,8 @@ def test_owner_queries_include_inactive_copies(catalog):
     "INSERT INTO proprietari(nome) VALUES ('BIBLIOTECA')",
     "INSERT INTO giochi(nome, attivo) VALUES ('Invalid', 2)",
     "INSERT INTO proprietari(nome, attivo) VALUES ('Invalid', 2)",
+    "INSERT INTO organizations(name) VALUES ('')",
+    "INSERT INTO organizations(name, active) VALUES ('Invalid', 2)",
     "INSERT INTO copie_gioco(gioco_id, proprietario_id, quantita) VALUES (4, 2, -1)",
     "INSERT INTO copie_gioco(gioco_id, proprietario_id) VALUES (1, 2)",
     "INSERT INTO copie_gioco(gioco_id, proprietario_id) VALUES (999, 2)",
