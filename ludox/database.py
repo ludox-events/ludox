@@ -378,6 +378,28 @@ def riepilogo_proprietari_gioco(gioco_id):
     )
 
 
+def righe_export_ludoteca_legacy():
+    """Return positive legacy game/owner quantities in stable order."""
+    with get_db() as db:
+        return db.execute("""
+            SELECT
+                g.nome AS game_name,
+                p.nome AS owner_label,
+                cg.quantita AS quantity
+            FROM copie_gioco cg
+            JOIN giochi g ON g.id = cg.gioco_id
+            JOIN proprietari p ON p.id = cg.proprietario_id
+            WHERE cg.quantita > 0
+            ORDER BY
+                g.nome COLLATE NOCASE,
+                g.nome,
+                p.nome COLLATE NOCASE,
+                p.nome,
+                g.id,
+                p.id
+        """).fetchall()
+
+
 # ============================================================
 # FUNZIONI DATI - ORGANIZATIONS
 # ============================================================
