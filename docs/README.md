@@ -16,7 +16,7 @@ Le GitHub Issues conservano la roadmap, le discussioni e la storia delle decisio
 | Documento | Stato | Contenuto |
 | --- | --- | --- |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Draft consolidato | Architettura generale, contesti client, offline-first e futura evoluzione client/server |
-| [ORGANIZATIONS.md](ORGANIZATIONS.md) | Draft consolidato | Modello Organization e selezione dell'organizzazione attiva |
+| [ORGANIZATIONS.md](ORGANIZATIONS.md) | Specifica approvata | Modello Organization e selezione dell'organizzazione attiva |
 | [EVENTS.md](EVENTS.md) | Draft consolidato | Modello Event, stati, selezione e ciclo di vita |
 | [MODULES.md](MODULES.md) | Draft | Regole comuni dei moduli event-specific |
 | [CONFIGURATION.md](CONFIGURATION.md) | Specifica approvata | Scope delle impostazioni: client, Organization, Event e moduli |
