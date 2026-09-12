@@ -228,7 +228,7 @@ def test_cambio_verso_legacy_autorizzato_crea_backup(db):
 
     assert risultato.database_cambiato is True
     assert data.get_db_path() == destinazione
-    assert len(list(config.PROJECT_DIR.glob("legacy.backup-v0-to-v2-*.db"))) == 1
+    assert len(list(config.PROJECT_DIR.glob("legacy.backup-v0-to-v3-*.db"))) == 1
     assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
 
 

@@ -12,7 +12,7 @@ from typing import Callable, Iterable
 
 
 LEGACY_SCHEMA_VERSION = 0
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
 
 class MigrationError(sqlite3.DatabaseError):
@@ -135,9 +135,111 @@ def _migrate_to_version_2(connection):
         connection.execute(statement)
 
 
+def _migrate_to_version_3(connection):
+    statements = (
+        """CREATE TABLE game_library_settings (
+            event_id INTEGER PRIMARY KEY,
+            max_slots INTEGER NOT NULL DEFAULT 50 CHECK(max_slots > 0),
+            identification_mode TEXT NOT NULL DEFAULT 'token' CHECK(
+                identification_mode IN ('token', 'copy_identifier')
+            ),
+            FOREIGN KEY(event_id) REFERENCES events(id) ON DELETE CASCADE
+        )""",
+        """CREATE TABLE game_library_owner_labels (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER NOT NULL,
+            name TEXT NOT NULL CHECK(length(trim(name)) > 0),
+            name_key TEXT NOT NULL CHECK(length(name_key) > 0),
+            active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
+            FOREIGN KEY(event_id) REFERENCES events(id) ON DELETE CASCADE,
+            UNIQUE(event_id, name_key),
+            UNIQUE(event_id, id)
+        )""",
+        """CREATE TABLE game_library_games (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER NOT NULL,
+            name TEXT NOT NULL CHECK(length(trim(name)) > 0),
+            name_key TEXT NOT NULL CHECK(length(name_key) > 0),
+            active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
+            external_id TEXT,
+            difficulty REAL,
+            difficulty_source TEXT,
+            notes TEXT,
+            FOREIGN KEY(event_id) REFERENCES events(id) ON DELETE CASCADE,
+            UNIQUE(event_id, name_key),
+            UNIQUE(event_id, id)
+        )""",
+        """CREATE TABLE game_library_game_copies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER NOT NULL,
+            game_id INTEGER NOT NULL,
+            owner_label_id INTEGER NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
+            FOREIGN KEY(event_id, game_id)
+                REFERENCES game_library_games(event_id, id) ON DELETE CASCADE,
+            FOREIGN KEY(event_id, owner_label_id)
+                REFERENCES game_library_owner_labels(event_id, id),
+            UNIQUE(event_id, id)
+        )""",
+        """CREATE INDEX game_library_copies_event_game
+            ON game_library_game_copies(event_id, game_id)""",
+        """CREATE TABLE game_library_copy_identifiers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER NOT NULL,
+            copy_id INTEGER NOT NULL,
+            identifier_type TEXT NOT NULL CHECK(
+                identifier_type IN ('LUDOX_QR', 'EXTERNAL_BARCODE')
+            ),
+            value TEXT NOT NULL CHECK(length(trim(value)) > 0),
+            FOREIGN KEY(event_id, copy_id)
+                REFERENCES game_library_game_copies(event_id, id)
+                ON DELETE CASCADE
+        )""",
+        """CREATE TABLE game_library_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER NOT NULL,
+            slot INTEGER NOT NULL CHECK(slot > 0),
+            opened_at TEXT NOT NULL,
+            closed_at TEXT,
+            FOREIGN KEY(event_id) REFERENCES events(id) ON DELETE RESTRICT,
+            UNIQUE(event_id, id)
+        )""",
+        """CREATE UNIQUE INDEX game_library_open_session_slot
+            ON game_library_sessions(event_id, slot)
+            WHERE closed_at IS NULL""",
+        """CREATE TABLE game_library_loans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER NOT NULL,
+            session_id INTEGER NOT NULL,
+            game_id INTEGER NOT NULL,
+            copy_id INTEGER,
+            checked_out_at TEXT NOT NULL,
+            returned_at TEXT,
+            FOREIGN KEY(event_id, session_id)
+                REFERENCES game_library_sessions(event_id, id)
+                ON DELETE RESTRICT,
+            FOREIGN KEY(event_id, game_id)
+                REFERENCES game_library_games(event_id, id)
+                ON DELETE RESTRICT,
+            FOREIGN KEY(event_id, copy_id)
+                REFERENCES game_library_game_copies(event_id, id)
+                ON DELETE RESTRICT
+        )""",
+        """CREATE UNIQUE INDEX game_library_open_loan_session
+            ON game_library_loans(event_id, session_id)
+            WHERE returned_at IS NULL""",
+        """INSERT INTO game_library_settings(event_id)
+            SELECT event_id FROM event_modules
+            WHERE module_id = 'game_library' AND enabled = 1""",
+    )
+    for statement in statements:
+        connection.execute(statement)
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, _migrate_to_version_1),
     Migration(2, _migrate_to_version_2),
+    Migration(3, _migrate_to_version_3),
 )
 
 

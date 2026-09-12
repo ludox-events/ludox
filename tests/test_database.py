@@ -21,8 +21,16 @@ def test_initialization_creates_current_schema_and_default_owner(isolated_files)
     assert tables == {
         "organizations", "proprietari", "giochi", "copie_gioco",
         "documenti", "prestiti", "events", "event_modules",
+        "game_library_settings", "game_library_owner_labels",
+        "game_library_games", "game_library_game_copies",
+        "game_library_copy_identifiers", "game_library_sessions",
+        "game_library_loans",
     }
-    assert {"idx_token_aperto", "idx_prestito_aperto_documento"} <= indexes
+    assert {
+        "idx_token_aperto", "idx_prestito_aperto_documento",
+        "game_library_copies_event_game", "game_library_open_session_slot",
+        "game_library_open_loan_session",
+    } <= indexes
     assert [r["nome"] for r in data.elenco_proprietari()] == ["Organizzazione"]
 
 
