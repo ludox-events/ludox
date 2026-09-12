@@ -151,6 +151,18 @@ proprietario disattivato contribuiscono alla disponibilità; la ricerca include
 titoli con tutte le copie in prestito; un limite token booleano viene accettato
 da `validate_config` e salvato, ma non riletto da `load_config`.
 
+`tests/test_integration_workflows.py` completa i test unitari con scenari che
+attraversano più service e la persistenza SQLite reale. Il catalogo viene
+preparato tramite API pubbliche, quindi i test eseguono prestito, cambio,
+restituzione, storici e report sugli stessi dati. Un secondo scenario verifica
+che il cambio workspace isoli i dati e che il ritorno al database iniziale li
+renda nuovamente disponibili. Anche questi test usano soltanto file temporanei.
+
+`tests/test_ui_wiring.py` controlla tramite analisi strutturale che i pulsanti
+principali, la navigazione Indietro e le azioni locali siano collegati ai
+callback previsti. Non importa né avvia Tkinter e non verifica layout, stile o
+testi dell'interfaccia, quindi non richiede un display virtuale nella CI.
+
 ### Verifiche manuali
 
 Prima di proporre una modifica è consigliato verificare almeno:
