@@ -15,7 +15,6 @@ from ludox import bootstrap, config, database as data, events, organizations, wo
 
 def salva(
     database,
-    max_tokens="50",
     lingua="it",
     organizzazione_attiva_id=None,
     organizzazione_attiva_nome=None,
@@ -25,7 +24,6 @@ def salva(
 ):
     return workspace.salva_impostazioni(
         lingua=lingua,
-        max_tokens_testo=max_tokens,
         database_testo=database,
         nome_proprietario_predefinito="Biblioteca",
         organizzazione_attiva_id=organizzazione_attiva_id,
@@ -45,10 +43,10 @@ def inserisci_documento_aperto(db, token):
 
 
 def test_salvataggio_sullo_stesso_database_non_cambia_workspace(db):
-    risultato = salva("test.db", max_tokens="23", lingua="en")
+    risultato = salva("test.db", lingua="en")
 
     assert risultato == workspace.ImpostazioniSalvate(
-        config.AppConfig("en", 23, "test.db"), False
+        config.AppConfig("en", "test.db"), False
     )
     assert data.get_db_path() == config.PROJECT_DIR / "test.db"
     assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
@@ -144,17 +142,6 @@ def test_cambio_database_rivalida_organization_ed_event(db):
     assert result.configurazione.active_event_slug == event.slug
 
 
-@pytest.mark.parametrize("valore", ["", "abc", "0", "-1"])
-def test_token_non_validi_non_modificano_file_o_workspace(db, valore):
-    precedente = data.get_db_path()
-
-    with pytest.raises(workspace.TokenNonValidi):
-        salva("test.db", max_tokens=valore)
-
-    assert data.get_db_path() == precedente
-    assert not config.CONFIG_PATH.exists()
-
-
 def test_percorso_non_valido_non_modifica_file_o_workspace(db):
     precedente = data.get_db_path()
 
@@ -177,18 +164,49 @@ def test_documenti_aperti_impediscono_il_cambio_database(db):
     assert not config.CONFIG_PATH.exists()
 
 
-def test_limite_incompatibile_nel_database_corrente_non_viene_salvato(db):
-    inserisci_documento_aperto(db, 8)
+def test_sessioni_evento_aperte_impediscono_il_cambio_database(db, monkeypatch):
+    organization = organizations.crea_organizzazione("Ludoteca")
+    event = events.create_event(
+        organization.id,
+        name="Evento",
+        slug="evento",
+        start_datetime="2026-09-13T09:00:00",
+        end_datetime="2026-09-13T20:00:00",
+        timezone="UTC",
+        modules=("game_library",),
+    )
+    with data.get_db() as connection:
+        owner = connection.execute("""
+            INSERT INTO game_library_owner_labels(event_id, name, name_key)
+            VALUES (?, 'LAM', 'lam')
+        """, (event.id,)).lastrowid
+        game = connection.execute("""
+            INSERT INTO game_library_games(event_id, name, name_key)
+            VALUES (?, 'Azul', 'azul')
+        """, (event.id,)).lastrowid
+        connection.execute("""
+            INSERT INTO game_library_game_copies(event_id, game_id, owner_label_id)
+            VALUES (?, ?, ?)
+        """, (event.id, game, owner))
+    from ludox import lending
+    monkeypatch.setattr(data, "now_iso", lambda: "2026-09-13T10:00:00")
+    lending.nuovo_prestito(game, event_id=event.id)
 
-    with pytest.raises(workspace.LimiteTokenCorrente) as errore:
-        salva("test.db", max_tokens="7")
+    with pytest.raises(workspace.DatabaseInUso):
+        salva(
+            "nuovo.db",
+            organizzazione_attiva_id=organization.id,
+            organizzazione_attiva_nome=organization.nome,
+            evento_attivo_id=event.id,
+            evento_attivo_slug=event.slug,
+        )
 
-    assert errore.value.token == 8
-    assert not config.CONFIG_PATH.exists()
+    assert data.get_db_path() == config.PROJECT_DIR / "test.db"
+    assert not (config.PROJECT_DIR / "nuovo.db").exists()
 
 
 def test_cambio_inizializza_database_e_salva_configurazione(db):
-    risultato = salva("nuovo.db", max_tokens="17", lingua="en")
+    risultato = salva("nuovo.db", lingua="en")
     destinazione = config.PROJECT_DIR / "nuovo.db"
 
     assert risultato.database_cambiato is True
@@ -196,7 +214,7 @@ def test_cambio_inizializza_database_e_salva_configurazione(db):
     assert destinazione.exists()
     assert data.proprietario_per_id(1)["nome"] == "Biblioteca"
     assert config.load_config(config.CONFIG_PATH) == config.AppConfig(
-        "en", 17, "nuovo.db"
+        "en", "nuovo.db"
     )
 
 
@@ -230,23 +248,6 @@ def test_cambio_verso_legacy_autorizzato_crea_backup(db):
     assert data.get_db_path() == destinazione
     assert len(list(config.PROJECT_DIR.glob("legacy.backup-v0-to-v3-*.db"))) == 1
     assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
-
-
-def test_limite_incompatibile_nella_destinazione_ripristina_workspace(db):
-    precedente = data.get_db_path()
-    destinazione = config.PROJECT_DIR / "destinazione.db"
-    data.set_db_path(destinazione)
-    data.init_db()
-    with data.get_db() as destinazione_db:
-        inserisci_documento_aperto(destinazione_db, 9)
-    data.set_db_path(precedente)
-
-    with pytest.raises(workspace.LimiteTokenDestinazione) as errore:
-        salva("destinazione.db", max_tokens="8")
-
-    assert errore.value.token == 9
-    assert data.get_db_path() == precedente
-    assert not config.CONFIG_PATH.exists()
 
 
 def test_errore_apertura_destinazione_ripristina_workspace(db, monkeypatch):

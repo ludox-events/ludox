@@ -1,29 +1,36 @@
 """Configuration characterization using explicit temporary INI paths."""
 
 from pathlib import Path
+import inspect
 
 import pytest
 
 from ludox import config
 
 
+def test_app_config_and_first_run_contain_only_workstation_settings():
+    assert "max_tokens" not in config.AppConfig.__dataclass_fields__
+    source = inspect.getsource(config._first_run_dialog)
+    assert "max_tokens" not in source
+    assert "language_var" in source
+    assert "database_var" in source
+
+
 def test_missing_and_empty_configuration(tmp_path):
     path = tmp_path / "settings.ini"
     assert config.load_config(path) is None
     path.write_text("", encoding="utf-8")
-    assert config.load_config(path) == config.AppConfig("it", 50, "ludox.db")
+    assert config.load_config(path) == config.AppConfig("it", "ludox.db")
 
 
 def test_partial_configuration_normalizes_language(tmp_path):
     path = tmp_path / "settings.ini"
     path.write_text("[general]\nlanguage = EN\n", encoding="utf-8")
-    assert config.load_config(path) == config.AppConfig("en", 50, "ludox.db")
+    assert config.load_config(path) == config.AppConfig("en", "ludox.db")
 
 
 @pytest.mark.parametrize("content", [
     "not an INI file",
-    "[general]\nmax_tokens=abc",
-    "[general]\nmax_tokens=0",
     "[general]\nlanguage=fr",
     "[general]\ndatabase=",
     "[general]\ndatabase=missing/test.db",
@@ -37,9 +44,9 @@ def test_invalid_configuration_returns_none(tmp_path, content):
 
 def test_save_load_round_trip_does_not_create_database(tmp_path):
     path = tmp_path / "settings.ini"
-    original = config.AppConfig("en", 23, " Evento ")
+    original = config.AppConfig("en", " Evento ")
     config.save_config(original, path)
-    assert config.load_config(path) == config.AppConfig("en", 23, "Evento.db")
+    assert config.load_config(path) == config.AppConfig("en", "Evento.db")
     assert original.database == " Evento "
     assert not (tmp_path / "Evento.db").exists()
 
@@ -48,7 +55,6 @@ def test_save_load_round_trip_preserves_organization_reference(tmp_path):
     path = tmp_path / "settings.ini"
     original = config.AppConfig(
         "it",
-        50,
         "ludox.db",
         active_organization_id=7,
         active_organization_name=" Ludoteca Centro ",
@@ -57,7 +63,7 @@ def test_save_load_round_trip_preserves_organization_reference(tmp_path):
     config.save_config(original, path)
 
     assert config.load_config(path) == config.AppConfig(
-        "it", 50, "ludox.db", 7, "Ludoteca Centro"
+        "it", "ludox.db", 7, "Ludoteca Centro"
     )
     saved = path.read_text(encoding="utf-8")
     assert "[organization]" in saved
@@ -99,12 +105,11 @@ def test_invalid_organization_reference_is_ignored(tmp_path, organization):
         encoding="utf-8",
     )
 
-    assert config.load_config(path) == config.AppConfig("en", 50, "ludox.db")
+    assert config.load_config(path) == config.AppConfig("en", "ludox.db")
 
 
 @pytest.mark.parametrize("changes", [
-    {"language": "fr"}, {"max_tokens": 0}, {"max_tokens": -1},
-    {"max_tokens": "50"}, {"max_tokens": 1.5}, {"database": " "},
+    {"language": "fr"}, {"database": " "},
     {"active_organization_id": 1},
     {"active_organization_name": "Ludoteca"},
     {"active_organization_id": 0, "active_organization_name": "Ludoteca"},
@@ -120,13 +125,17 @@ def test_invalid_values_are_rejected_without_overwriting(tmp_path, changes):
     assert path.read_text(encoding="utf-8") == "keep existing content"
 
 
-def test_boolean_token_limit_is_accepted_but_not_loadable(tmp_path):
-    # Preserve the current bool-is-an-int behavior rather than fixing it.
-    candidate = config.AppConfig(max_tokens=True)
-    assert config.validate_config(candidate)
+def test_legacy_max_tokens_is_ignored_and_not_written(tmp_path):
+    path = tmp_path / "settings.ini"
+    path.write_text(
+        "[general]\nlanguage=it\ndatabase=ludox.db\nmax_tokens=invalid\n",
+        encoding="utf-8",
+    )
+    candidate = config.load_config(path)
+    assert candidate == config.AppConfig()
     path = tmp_path / "settings.ini"
     config.save_config(candidate, path)
-    assert config.load_config(path) is None
+    assert "max_tokens" not in path.read_text(encoding="utf-8")
 
 
 def test_relative_absolute_and_external_paths(tmp_path, monkeypatch):

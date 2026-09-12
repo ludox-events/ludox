@@ -27,7 +27,6 @@ def imposta_orologio(monkeypatch, *timestamp):
 def salva_workspace(database_testo):
     return workspace.salva_impostazioni(
         lingua="it",
-        max_tokens_testo="20",
         database_testo=database_testo,
         nome_proprietario_predefinito="Organizzazione",
     )

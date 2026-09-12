@@ -12,10 +12,6 @@ from . import database as data
 from . import events, migrations, organizations
 
 
-class TokenNonValidi(Exception):
-    """The configured token limit is not a positive integer."""
-
-
 class DatabaseNonValido(Exception):
     """The requested database setting cannot be normalized."""
 
@@ -26,18 +22,6 @@ class DatabaseNonValido(Exception):
 
 class DatabaseInUso(Exception):
     """The current workspace still contains deposited documents."""
-
-
-class LimiteTokenCorrente(Exception):
-    def __init__(self, token):
-        self.token = token
-        super().__init__(str(token))
-
-
-class LimiteTokenDestinazione(Exception):
-    def __init__(self, token):
-        self.token = token
-        super().__init__(str(token))
 
 
 class CambioDatabaseFallito(Exception):
@@ -65,7 +49,6 @@ def impostazione_database_da_percorso(percorso: str | Path) -> str:
 def salva_impostazioni(
     *,
     lingua: str,
-    max_tokens_testo: str,
     database_testo: str,
     nome_proprietario_predefinito: str,
     organizzazione_attiva_id: int | None = None,
@@ -75,13 +58,6 @@ def salva_impostazioni(
     migrazione_autorizzata: bool = False,
 ) -> ImpostazioniSalvate:
     try:
-        max_tokens = int(max_tokens_testo.strip())
-    except (AttributeError, ValueError):
-        max_tokens = 0
-    if max_tokens <= 0:
-        raise TokenNonValidi()
-
-    try:
         database = config.normalize_database_setting(database_testo)
         percorso_destinazione = config.resolve_database_path(database)
     except (OSError, ValueError) as exc:
@@ -90,13 +66,14 @@ def salva_impostazioni(
     percorso_corrente = data.get_db_path().resolve(strict=False)
     database_cambiato = percorso_destinazione != percorso_corrente
 
-    if database_cambiato and data.conta_documenti_attivi() > 0:
-        raise DatabaseInUso()
-
-    if not database_cambiato:
-        token_massimo = data.massimo_token_aperto()
-        if token_massimo > max_tokens:
-            raise LimiteTokenCorrente(token_massimo)
+    if database_cambiato:
+        sessioni_aperte = (
+            data.game_library_ha_aperti(evento_attivo_id)
+            if evento_attivo_id is not None
+            else data.conta_documenti_attivi() > 0
+        )
+        if sessioni_aperte:
+            raise DatabaseInUso()
 
     percorso_precedente = percorso_corrente
     cambiato = False
@@ -108,13 +85,6 @@ def salva_impostazioni(
                 default_owner_name=nome_proprietario_predefinito,
                 migration_authorized=migrazione_autorizzata,
             )
-            token_massimo = data.massimo_token_aperto()
-            if token_massimo > max_tokens:
-                data.set_db_path(percorso_precedente)
-                cambiato = False
-                raise LimiteTokenDestinazione(token_massimo)
-        except LimiteTokenDestinazione:
-            raise
         except (
             bootstrap.MigrationApprovalRequired,
             bootstrap.BackupCreationFailed,
@@ -131,7 +101,6 @@ def salva_impostazioni(
 
     candidato = config.AppConfig(
         language=lingua,
-        max_tokens=max_tokens,
         database=database,
         active_organization_id=organizzazione_attiva_id,
         active_organization_name=organizzazione_attiva_nome,
