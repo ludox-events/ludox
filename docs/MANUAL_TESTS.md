@@ -77,13 +77,35 @@ Eseguire queste verifiche solo su database di test o copie dei database, mai sul
 - [ ] Tornare al database iniziale e verificare che i dati precedenti siano nuovamente disponibili.
 - [ ] Chiudere e riavviare LudoX e verificare che venga riaperto il workspace previsto.
 
-### Compatibilità con database legacy
+### Database nuovo/vuoto
 
-Prerequisito: una copia di test di un database creato da una versione di
-LudoX precedente all'introduzione del versioning, contenente dati riconoscibili.
+Prerequisito: un percorso di test in cui non esiste ancora un database LudoX.
 
-- [ ] Selezionare la copia dal Backoffice e verificare che l'applicazione si apra e mostri i dati esistenti.
-- [ ] Chiudere e riavviare LudoX, quindi verificare che lo stesso database e i suoi dati siano ancora disponibili.
+- [ ] Selezionare o creare un nuovo database e verificare che venga inizializzato senza richiesta di migration.
+- [ ] Verificare che l'applicazione prosegua normalmente con lo schema corrente.
+
+### Migration di un database esistente
+
+Prerequisito: una copia di test di un database creato con uno schema precedente e contenente dati riconoscibili.
+
+- [ ] Aprire il database e verificare che LudoX segnali chiaramente la necessità di aggiornare lo schema prima di mostrare l'interfaccia operativa.
+- [ ] Verificare che il messaggio mostri in modo comprensibile versione corrente e versione richiesta.
+- [ ] Annullare la migration e verificare che LudoX si chiuda senza modificare il database.
+- [ ] Riavviare LudoX sullo stesso database e autorizzare la migration.
+- [ ] Verificare che venga creata automaticamente una copia di backup prima dell'aggiornamento.
+- [ ] Verificare che il nome del backup sia leggibile e che il file non sovrascriva backup preesistenti.
+- [ ] Verificare che, terminata la migration, LudoX si avvii normalmente.
+- [ ] Verificare che i dati riconoscibili presenti prima della migration siano ancora disponibili.
+- [ ] Chiudere e riavviare LudoX e verificare che il database aggiornato non richieda una nuova migration.
+
+### Errore o schema incompatibile
+
+Questi controlli vanno eseguiti soltanto con database e cartelle di test preparati appositamente.
+
+- [ ] Simulare l'impossibilità di creare il backup e verificare che la migration non parta e che LudoX non acceda operativamente al database.
+- [ ] Verificare che un errore di migration produca un messaggio comprensibile e non permetta l'avvio con uno schema parzialmente aggiornato.
+- [ ] Verificare che, dopo un errore di migration, il backup creato resti disponibile.
+- [ ] Aprire un database con `user_version` superiore a quello supportato e verificare che LudoX segnali l'incompatibilità e termini senza tentare downgrade.
 
 ## Regola per le nuove feature
 
