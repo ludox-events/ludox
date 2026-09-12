@@ -6,7 +6,7 @@ from pathlib import Path
 import csv
 import sqlite3
 import tkinter as tk
-from tkinter import messagebox, filedialog
+from tkinter import messagebox, filedialog, simpledialog
 
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
@@ -2017,7 +2017,7 @@ class PrestitiApp(ttk.Window):
             bootstyle="info-outline",
             state="normal" if game_library_attiva else "disabled",
         ).grid(
-            row=5,
+            row=6,
             column=0,
             columnspan=2,
             padx=15,
@@ -2028,12 +2028,28 @@ class PrestitiApp(ttk.Window):
 
         ttk.Button(
             area,
+            text=tr("library_transfer.import_event"),
+            command=self.importa_ludoteca_evento,
+            bootstyle="success-outline",
+            state="normal" if game_library_attiva else "disabled",
+        ).grid(row=5, column=0, padx=15, pady=15, ipady=22, sticky=EW)
+
+        ttk.Button(
+            area,
+            text=tr("library_transfer.export_event"),
+            command=self.esporta_ludoteca_evento,
+            bootstyle="primary-outline",
+            state="normal" if game_library_attiva else "disabled",
+        ).grid(row=5, column=1, padx=15, pady=15, ipady=22, sticky=EW)
+
+        ttk.Button(
+            area,
             text=tr("📊  REPORT UTILIZZO LUDOTECA"),
             command=self.show_report_utilizzo_ludoteca,
             bootstyle="primary-outline",
             state="normal" if game_library_attiva else "disabled",
         ).grid(
-            row=6,
+            row=7,
             column=0,
             columnspan=2,
             padx=15,
@@ -2049,7 +2065,7 @@ class PrestitiApp(ttk.Window):
             bootstyle="info-outline",
             state="normal" if game_library_attiva else "disabled",
         ).grid(
-            row=7,
+            row=8,
             column=0,
             columnspan=2,
             padx=15,
@@ -2096,6 +2112,27 @@ class PrestitiApp(ttk.Window):
             bootstyle="success",
         ).pack(ipadx=25, ipady=8)
 
+        def resetta():
+            if not messagebox.askyesno(
+                tr("library_transfer.reset"),
+                tr("library_transfer.reset_confirm"),
+            ):
+                return
+            try:
+                library_transfer.reset_event_library(event_id)
+            except library_transfer.LibraryResetBlocked:
+                messagebox.showwarning(
+                    tr("library_transfer.reset"),
+                    tr("library_transfer.reset_blocked"),
+                )
+                return
+            self.show_backoffice()
+
+        ttk.Button(
+            card, text=tr("library_transfer.reset"), command=resetta,
+            bootstyle="danger-outline",
+        ).pack(pady=(20, 0), ipadx=25, ipady=8)
+
     def esporta_ludoteca_legacy(self):
         percorso = filedialog.asksaveasfilename(
             parent=self,
@@ -2116,6 +2153,96 @@ class PrestitiApp(ttk.Window):
         messagebox.showinfo(
             tr("common.export_done"),
             tr("library_transfer.export_done_tpl", rows=righe),
+        )
+
+    def esporta_ludoteca_evento(self):
+        percorso = filedialog.asksaveasfilename(
+            parent=self,
+            title=tr("library_transfer.export_event"),
+            defaultextension=".csv",
+            filetypes=[
+                (tr("common.csv"), "*.csv"),
+                (tr("library_transfer.xlsx"), "*.xlsx"),
+            ],
+        )
+        if not percorso:
+            return
+        try:
+            righe = library_transfer.export_event_library(
+                percorso, self._game_library_event_id()
+            )
+        except (OSError, ValueError, csv.Error, sqlite3.Error) as exc:
+            messagebox.showerror(
+                tr("common.export_error"),
+                tr("common.export_fail_tpl", error=exc),
+            )
+            return
+        messagebox.showinfo(
+            tr("common.export_done"),
+            tr("library_transfer.export_done_tpl", rows=righe),
+        )
+
+    def importa_ludoteca_evento(self):
+        percorso = filedialog.askopenfilename(
+            parent=self,
+            title=tr("library_transfer.import_event"),
+            filetypes=[
+                (tr("library_transfer.supported_files"), "*.csv *.xlsx"),
+                (tr("common.csv"), "*.csv"),
+                (tr("library_transfer.xlsx"), "*.xlsx"),
+            ],
+        )
+        if not percorso:
+            return
+        owner_label = None
+        try:
+            if library_transfer.import_requires_owner(percorso):
+                owner_label = simpledialog.askstring(
+                    tr("library_transfer.owner_required"),
+                    tr("library_transfer.owner_prompt"),
+                    parent=self,
+                )
+                if owner_label is None:
+                    return
+            preview = library_transfer.preview_import(
+                percorso,
+                self._game_library_event_id(),
+                owner_label=owner_label,
+            )
+        except (OSError, ValueError, csv.Error) as exc:
+            messagebox.showerror(
+                tr("library_transfer.import_event"), str(exc)
+            )
+            return
+        dettagli = tr(
+            "library_transfer.preview_tpl",
+            valid=preview.valid_count,
+            invalid=preview.invalid_count,
+            existing=len(preview.existing_titles),
+            owners=len(preview.new_owner_labels),
+        )
+        if preview.problems:
+            dettagli += "\n\n" + "\n".join(
+                f"{problem.row_number}: {problem.message}"
+                for problem in preview.problems[:10]
+            )
+            messagebox.showwarning(tr("library_transfer.preview"), dettagli)
+            return
+        if not messagebox.askyesno(
+            tr("library_transfer.preview"),
+            dettagli + "\n\n" + tr("library_transfer.apply_confirm"),
+        ):
+            return
+        try:
+            result = library_transfer.apply_import(preview)
+        except (library_transfer.ImportNotValid, sqlite3.Error) as exc:
+            messagebox.showerror(
+                tr("library_transfer.import_event"), str(exc)
+            )
+            return
+        messagebox.showinfo(
+            tr("library_transfer.import_done"),
+            tr("library_transfer.import_done_tpl", copies=result.copies_created),
         )
 
     # ========================================================

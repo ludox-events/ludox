@@ -75,6 +75,8 @@ def test_pulsanti_backoffice_aprono_le_sezioni_previste():
             "self.show_gestione_eventi",
             "self.show_impostazioni_ludoteca",
             "self.esporta_ludoteca_legacy",
+            "self.importa_ludoteca_evento",
+            "self.esporta_ludoteca_evento",
             "self.show_tutti_prestiti",
             "self.show_tutti_documenti",
             "self.show_giochi_per_proprietario",
