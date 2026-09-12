@@ -161,3 +161,101 @@ def test_cambio_workspace_isola_e_ripristina_i_dati(db, monkeypatch):
     )
     assert (report.totale_titoli, report.totale_prestiti) == (1, 1)
     assert report.righe[0]["gioco"] == "Gioco A"
+
+
+def test_tre_sessioni_intercalate_restano_indipendenti(db, monkeypatch):
+    imposta_orologio(
+        monkeypatch,
+        "2026-09-12T10:00:00",
+        "2026-09-12T10:05:00",
+        "2026-09-12T10:10:00",
+        "2026-09-12T10:30:00",
+        "2026-09-12T11:00:00",
+    )
+    proprietario_id = catalog.aggiungi_proprietario("Biblioteca")
+    primo_gioco = catalog.aggiungi_gioco("Azul")
+    secondo_gioco = catalog.aggiungi_gioco("Cascadia")
+    terzo_gioco = catalog.aggiungi_gioco("Dorfromantik")
+    catalog.imposta_quantita(primo_gioco, proprietario_id, "2")
+    catalog.imposta_quantita(secondo_gioco, proprietario_id, "2")
+    catalog.imposta_quantita(terzo_gioco, proprietario_id, "1")
+
+    prima_sessione = lending.nuovo_prestito(primo_gioco, max_tokens=20)
+    seconda_sessione = lending.nuovo_prestito(secondo_gioco, max_tokens=20)
+    terza_sessione = lending.nuovo_prestito(terzo_gioco, max_tokens=20)
+
+    assert (
+        prima_sessione.token,
+        seconda_sessione.token,
+        terza_sessione.token,
+    ) == (1, 2, 3)
+    assert lending.riepilogo_home() == lending.RiepilogoHome(3, 3, 3)
+    assert lending.situazione_chiusura() == lending.SituazioneChiusura(
+        3, (1, 2, 3)
+    )
+    assert lending.disponibilita_gioco(primo_gioco) == (1, 2)
+    assert lending.disponibilita_gioco(secondo_gioco) == (1, 2)
+    assert lending.disponibilita_gioco(terzo_gioco) == (0, 1)
+
+    lending.cambia_gioco(
+        token=prima_sessione.token,
+        documento_id=prima_sessione.documento_id,
+        prestito_id=prima_sessione.prestito_id,
+        gioco_id_atteso=primo_gioco,
+        nuovo_gioco_id=secondo_gioco,
+    )
+    prima_dopo_cambio = lending.consulta_token(prima_sessione.token)
+    seconda_prima_del_rientro = lending.consulta_token(seconda_sessione.token)
+    terza_ancora_aperta = lending.consulta_token(terza_sessione.token)
+
+    assert prima_dopo_cambio.documento["id"] == prima_sessione.documento_id
+    assert prima_dopo_cambio.prestito["id"] != prima_sessione.prestito_id
+    assert prima_dopo_cambio.prestito["gioco_id"] == secondo_gioco
+    assert seconda_prima_del_rientro.prestito["id"] == seconda_sessione.prestito_id
+    assert terza_ancora_aperta.prestito["id"] == terza_sessione.prestito_id
+
+    lending.restituzione_finale(
+        documento_id=seconda_sessione.documento_id,
+        prestito_id=seconda_sessione.prestito_id,
+    )
+
+    prima_finale = lending.consulta_token(prima_sessione.token)
+    terza_finale = lending.consulta_token(terza_sessione.token)
+    with pytest.raises(lending.TokenLibero):
+        lending.consulta_token(seconda_sessione.token)
+
+    assert prima_finale.prestito["id"] == prima_dopo_cambio.prestito["id"]
+    assert terza_finale.prestito["id"] == terza_sessione.prestito_id
+    assert lending.riepilogo_home() == lending.RiepilogoHome(4, 3, 2)
+    assert lending.situazione_chiusura() == lending.SituazioneChiusura(2, (1, 3))
+    assert lending.disponibilita_gioco(primo_gioco) == (2, 2)
+    assert lending.disponibilita_gioco(secondo_gioco) == (1, 2)
+    assert lending.disponibilita_gioco(terzo_gioco) == (0, 1)
+
+    storico_prestiti = reporting.storico_prestiti()
+    assert (storico_prestiti.totale, storico_prestiti.attivi) == (4, 2)
+    prestiti_per_id = {
+        row["prestito_id"]: row
+        for row in storico_prestiti.righe
+    }
+    assert prestiti_per_id[prima_sessione.prestito_id]["rientro"] == (
+        "2026-09-12T10:30:00"
+    )
+    assert prestiti_per_id[prima_dopo_cambio.prestito["id"]]["rientro"] is None
+    assert prestiti_per_id[seconda_sessione.prestito_id]["rientro"] == (
+        "2026-09-12T11:00:00"
+    )
+    assert prestiti_per_id[terza_sessione.prestito_id]["rientro"] is None
+
+    storico_documenti = reporting.storico_documenti()
+    assert (storico_documenti.totale, storico_documenti.attivi) == (3, 2)
+    documenti_per_token = {
+        row["token"]: row
+        for row in storico_documenti.righe
+    }
+    assert documenti_per_token[1]["uscita"] is None
+    assert documenti_per_token[2]["uscita"] == "2026-09-12T11:00:00"
+    assert documenti_per_token[3]["uscita"] is None
+    assert documenti_per_token[1]["numero_prestiti"] == 2
+    assert documenti_per_token[2]["numero_prestiti"] == 1
+    assert documenti_per_token[3]["numero_prestiti"] == 1
