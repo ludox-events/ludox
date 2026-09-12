@@ -9,8 +9,6 @@
 > dell'utente. I marker `TBD` e `QUESTION` restano decisioni aperte e non
 > autorizzano Codex a scegliere autonomamente una soluzione.
 
-
-
 Questo documento descrive il modello concettuale del modulo con identificatore tecnico `game_library`.
 
 Nell'interfaccia italiana il modulo è denominato **Prestiti Ludoteca**. Nell'interfaccia inglese il termine di riferimento è **Game Library**.
@@ -147,11 +145,56 @@ Il suo scopo è permettere di sapere a chi o a quale gruppo devono tornare le co
 
 Esempio: l'etichetta `Biblioteca` può rappresentare più biblioteche reali se tutte le relative scatole vengono gestite insieme.
 
+## Formato di interoperabilità della ludoteca
+
+La composizione della ludoteca deve poter essere esportata e reimportata senza dipendere dagli identificativi interni del database.
+
+Il formato canonico minimo è un CSV UTF-8 con le colonne tecniche stabili:
+
+```text
+game_name,owner_label,quantity
+Azul,Biblioteca,3
+Azul,LAM,2
+Azul,Matteo,1
+```
+
+Una riga rappresenta una combinazione gioco + owner label con quantità maggiore di zero.
+
+Il formato canonico non contiene:
+
+- ID interni SQLite;
+- prestiti;
+- token;
+- documenti/sessioni;
+- timestamp operativi;
+- storico dei prestiti.
+
+I valori CSV devono usare il normale quoting quando contengono virgole, virgolette o altri caratteri che lo richiedono.
+
+CSV è il formato di interoperabilità di riferimento. XLSX è un formato di comodità e deve rappresentare le stesse colonne logiche.
+
+Campi ulteriori potranno essere aggiunti in futuro come colonne opzionali, senza rendere incompatibile il formato minimo a tre colonne.
+
+## Export legacy prima del modello event-specific
+
+Prima della conversione del modulo Prestiti al modello event-specific deve essere disponibile un export read-only della ludoteca legacy corrente.
+
+L'export legge le tabelle legacy `giochi`, `proprietari` e `copie_gioco` e produce il formato CSV canonico descritto sopra.
+
+Questa operazione:
+
+- non modifica il database;
+- non esegue migration;
+- non esporta lo storico dei prestiti;
+- serve a preservare in modo semplice la composizione della ludoteca da reimportare successivamente in un nuovo Event.
+
+La prima fase della issue #2 implementa questo export prima delle issue #5 e #6.
+
 ## Importazione della ludoteca
 
-L'importazione legge dati esterni e li aggiunge alla ludoteca dell'Event corrente.
+Dopo l'introduzione del modello event-specific, l'importazione legge dati esterni e li aggiunge alla ludoteca dell'Event corrente.
 
-Un formato aggregato deve poter rappresentare almeno:
+Il formato canonico deve poter rappresentare almeno:
 
 ```text
 Gioco | Proprietario | Quantità
@@ -179,20 +222,53 @@ La segnalazione dei nomi simili è una funzionalità del flusso di importazione 
 
 - TBD: Definire la UX della preview di importazione, la gestione dei conflitti e il criterio utilizzato per proporre nomi potenzialmente simili.
 
-## Esportazione della ludoteca
+## Esportazione della ludoteca event-specific
 
-L'esportazione destinata al riuso della ludoteca contiene i dati necessari a ricostruire la disponibilità, per esempio:
+L'esportazione del nuovo modello produce lo stesso formato logico usato dall'importazione.
 
-- titolo;
-- etichetta proprietario;
-- quantità;
-- eventuali identificativi esterni/codici quando opportuno.
+Le copie fisiche vengono aggregate per gioco + owner label e il risultato contiene almeno:
 
-Non contiene lo storico dei prestiti.
+- `game_name`;
+- `owner_label`;
+- `quantity`.
 
-Lo storico rimane legato all'Event originale.
+Non contiene lo storico dei prestiti. Lo storico rimane legato all'Event originale.
 
-- TBD: Definire il formato canonico di interoperabilità CSV/XLSX e quali campi opzionali devono essere esportati.
+L'obiettivo è consentire un vero round-trip:
+
+```text
+Event A
+→ export ludoteca
+→ file CSV/XLSX
+→ import in Event B
+```
+
+Gli Event restano dataset indipendenti dopo l'importazione.
+
+## Transizione dai dati Prestiti legacy
+
+La transizione al modello event-specific non richiede una conversione semantica automatica dei dati Prestiti esistenti verso un Event.
+
+Quando viene introdotto il nuovo schema `game_library`:
+
+- le tabelle e i dati legacy vengono preservati;
+- non viene creato automaticamente un Event generico o `Legacy Event`;
+- i dati legacy non vengono assegnati automaticamente a un Event;
+- ogni nuovo `game_library` event-specific parte vuoto;
+- i nuovi servizi operativi usano soltanto il nuovo modello event-specific.
+
+La composizione della ludoteca da conservare viene trasferita tramite:
+
+```text
+ludoteca legacy
+→ export CSV
+→ nuovo game_library event-specific
+→ import CSV
+```
+
+Lo storico dei prestiti legacy non viene convertito automaticamente. Rimane recuperabile nel database/backup precedente se serve come archivio.
+
+Questa scelta evita di introdurre un sistema di conversione complesso destinato principalmente alla transizione iniziale del progetto.
 
 ## Sessione anonima e documento
 
@@ -221,6 +297,8 @@ Il numero massimo di slot è una configurazione del modulo Prestiti del singolo 
 Gli slot ripartono da 1 in ogni Event.
 
 L'assegnazione automatica utilizza il **primo slot libero partendo dal numero più basso**. Non esiste un requisito database che richieda un'assegnazione casuale.
+
+Il valore predefinito iniziale di `max_slots` per un nuovo modulo `game_library` è `50`; può essere modificato successivamente nella configurazione del modulo.
 
 ## Modalità token
 
