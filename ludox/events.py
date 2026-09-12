@@ -55,6 +55,10 @@ class EventDeletionBlocked(EventError):
     pass
 
 
+class ModuleHasOpenSessions(EventError):
+    pass
+
+
 @dataclass(frozen=True)
 class Event:
     id: int
@@ -192,6 +196,8 @@ def create_event(
         )
         for module_id in module_ids:
             data.imposta_modulo_evento(event_id, module_id, True)
+            if module_id == "game_library":
+                data.inizializza_game_library(event_id)
     except sqlite3.IntegrityError as exc:
         if "events.organization_id, events.slug" in str(exc):
             raise DuplicateSlug() from exc
@@ -239,7 +245,15 @@ def set_module_enabled(event_id, module_id, enabled):
         raise UnknownModule()
     if get_event(event_id) is None:
         raise EventNotFound()
+    if (
+        module_id == "game_library"
+        and not enabled
+        and data.game_library_ha_aperti(event_id)
+    ):
+        raise ModuleHasOpenSessions()
     data.imposta_modulo_evento(event_id, module_id, bool(enabled))
+    if module_id == "game_library" and enabled:
+        data.inizializza_game_library(event_id)
     return get_event(event_id)
 
 

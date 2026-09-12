@@ -73,6 +73,7 @@ def test_pulsanti_backoffice_aprono_le_sezioni_previste():
             "self.show_gestione_proprietari",
             "self.show_gestione_organizzazioni",
             "self.show_gestione_eventi",
+            "self.show_impostazioni_ludoteca",
             "self.esporta_ludoteca_legacy",
             "self.show_tutti_prestiti",
             "self.show_tutti_documenti",
@@ -109,6 +110,7 @@ def test_pulsanti_indietro_tornano_alla_schermata_prevista():
         "show_impostazioni": "self.show_backoffice",
         "show_gestione_organizzazioni": "self.show_backoffice",
         "show_gestione_eventi": "self.show_backoffice",
+        "show_impostazioni_ludoteca": "self.show_backoffice",
     }
 
     for nome_metodo, destinazione in destinazioni.items():

@@ -83,12 +83,22 @@ def intervallo_statistiche(riferimento, ore, minuti_bucket):
     )
 
 
-def statistiche_periodo(riferimento, ore, minuti_bucket):
+def statistiche_periodo(riferimento, ore, minuti_bucket, *, event_id=None):
     inizio, fine = intervallo_statistiche(riferimento, ore, minuti_bucket)
     inizio_iso = inizio.isoformat(timespec="seconds")
     fine_iso = fine.isoformat(timespec="seconds")
-    prestiti, documenti = data.conta_attivita_periodo(inizio_iso, fine_iso)
-    righe_prestiti, righe_documenti = data.timestamp_attivita_periodo(inizio_iso, fine_iso)
+    if event_id is not None:
+        prestiti, documenti = data.conta_attivita_periodo_evento(
+            event_id, inizio_iso, fine_iso
+        )
+        righe_prestiti, righe_documenti = data.timestamp_attivita_periodo_evento(
+            event_id, inizio_iso, fine_iso
+        )
+    else:
+        prestiti, documenti = data.conta_attivita_periodo(inizio_iso, fine_iso)
+        righe_prestiti, righe_documenti = data.timestamp_attivita_periodo(
+            inizio_iso, fine_iso
+        )
     delta = timedelta(minutes=minuti_bucket)
     punti = []
     corrente = inizio
@@ -112,8 +122,11 @@ def statistiche_periodo(riferimento, ore, minuti_bucket):
     return StatistichePeriodo(inizio, fine, minuti_bucket, prestiti, documenti, punti)
 
 
-def storico_prestiti():
-    totale, attivi, righe = data.storico_prestiti()
+def storico_prestiti(*, event_id=None):
+    if event_id is not None:
+        totale, attivi, righe = data.storico_prestiti_evento(event_id)
+    else:
+        totale, attivi, righe = data.storico_prestiti()
     risultato = []
     for row in righe:
         voce = dict(row)
@@ -123,8 +136,11 @@ def storico_prestiti():
     return Storico(totale, attivi, risultato)
 
 
-def storico_documenti():
-    totale, attivi, righe = data.storico_documenti()
+def storico_documenti(*, event_id=None):
+    if event_id is not None:
+        totale, attivi, righe = data.storico_sessioni_evento(event_id)
+    else:
+        totale, attivi, righe = data.storico_documenti()
     risultato = []
     for row in righe:
         voce = dict(row)
@@ -150,13 +166,24 @@ def _periodo_giorni(data_inizio, data_fine):
 
 
 def report_documenti(data_inizio, data_fine, *, ordina_per="ingresso",
-                      ordine_desc=True, adesso=None):
+                      ordine_desc=True, adesso=None, event_id=None):
     inizio, fine = _periodo_giorni(data_inizio, data_fine)
-    documenti = data.documenti_ingressi_periodo(
-        inizio.isoformat(timespec="seconds"), fine.isoformat(timespec="seconds")
-    )
+    if event_id is not None:
+        documenti = data.sessioni_ingressi_periodo(
+            event_id, inizio.isoformat(timespec="seconds"),
+            fine.isoformat(timespec="seconds")
+        )
+    else:
+        documenti = data.documenti_ingressi_periodo(
+            inizio.isoformat(timespec="seconds"), fine.isoformat(timespec="seconds")
+        )
     prestiti_per_documento = {}
-    for row in data.prestiti_per_documenti([row["id"] for row in documenti]):
+    document_ids = [row["id"] for row in documenti]
+    loan_rows = (
+        data.prestiti_per_sessioni(event_id, document_ids)
+        if event_id is not None else data.prestiti_per_documenti(document_ids)
+    )
+    for row in loan_rows:
         prestiti_per_documento.setdefault(row["documento_id"], []).append(row)
     adesso = adesso or datetime.now()
     righe = []
@@ -220,19 +247,34 @@ def report_documenti(data_inizio, data_fine, *, ordina_per="ingresso",
 
 
 def report_utilizzo(data_inizio, data_fine, *, proprietario_id=None,
-                     escludi_tempo_zero=False, ordina_per="gioco", ordine_desc=False):
+                     escludi_tempo_zero=False, ordina_per="gioco", ordine_desc=False,
+                     event_id=None):
     inizio, fine = _periodo_giorni(data_inizio, data_fine)
-    giochi = data.giochi_con_copie()
+    giochi = (
+        data.giochi_con_copie_evento(event_id)
+        if event_id is not None else data.giochi_con_copie()
+    )
     proprietari = {}
-    for row in data.proprietari_dei_giochi():
+    owner_rows = (
+        data.owner_dei_giochi_evento(event_id)
+        if event_id is not None else data.proprietari_dei_giochi()
+    )
+    for row in owner_rows:
         proprietari.setdefault(row["gioco_id"], []).append({
             "id": row["proprietario_id"], "nome": row["proprietario_nome"],
             "quantita": row["quantita"],
         })
     prestiti = {}
-    for row in data.prestiti_usciti_periodo(
-        inizio.isoformat(timespec="seconds"), fine.isoformat(timespec="seconds")
-    ):
+    if event_id is not None:
+        loan_rows = data.prestiti_usciti_periodo_evento(
+            event_id, inizio.isoformat(timespec="seconds"),
+            fine.isoformat(timespec="seconds")
+        )
+    else:
+        loan_rows = data.prestiti_usciti_periodo(
+            inizio.isoformat(timespec="seconds"), fine.isoformat(timespec="seconds")
+        )
+    for row in loan_rows:
         prestiti.setdefault(row["gioco_id"], []).append(row)
     righe = []
     for gioco in giochi:

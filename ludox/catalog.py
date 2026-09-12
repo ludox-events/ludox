@@ -44,6 +44,10 @@ class CopieInsufficienti(Exception):
         )
 
 
+class ConfigurazioneNonValida(Exception):
+    pass
+
+
 def _nome_valido(nome):
     nome = nome.strip()
     if not nome:
@@ -51,32 +55,62 @@ def _nome_valido(nome):
     return nome
 
 
-def aggiungi_proprietario(nome: str) -> int:
-    return data.inserisci_proprietario(_nome_valido(nome))
+def _chiave_nome(nome):
+    return nome.casefold()
+
+
+def aggiungi_proprietario(nome: str, *, event_id=None) -> int:
+    nome = _nome_valido(nome)
+    if event_id is not None:
+        return data.inserisci_owner_label(event_id, nome, _chiave_nome(nome))
+    return data.inserisci_proprietario(nome)
 
 
 def modifica_proprietario(proprietario_id: int, nome: str, attivo: bool,
-                         *, conferma_disattivazione=False) -> None:
+                         *, conferma_disattivazione=False, event_id=None) -> None:
     nome = _nome_valido(nome)
     if not conferma_disattivazione and not attivo:
-        if data.totale_copie_proprietario(proprietario_id) > 0:
+        totale = (
+            data.totale_copie_owner_label(event_id, proprietario_id)
+            if event_id is not None
+            else data.totale_copie_proprietario(proprietario_id)
+        )
+        if totale > 0:
             raise ConfermaDisattivazione()
+    if event_id is not None:
+        data.aggiorna_owner_label(
+            event_id, proprietario_id, nome, _chiave_nome(nome),
+            1 if attivo else 0,
+        )
+        return
     data.aggiorna_proprietario(proprietario_id, nome, 1 if attivo else 0)
 
 
-def aggiungi_gioco(nome: str) -> int:
-    return data.inserisci_gioco(_nome_valido(nome))
-
-
-def modifica_gioco(gioco_id: int, nome: str, attivo: bool) -> None:
+def aggiungi_gioco(nome: str, *, event_id=None) -> int:
     nome = _nome_valido(nome)
-    fuori = data.copie_in_prestito(gioco_id)
+    if event_id is not None:
+        return data.inserisci_gioco_evento(event_id, nome, _chiave_nome(nome))
+    return data.inserisci_gioco(nome)
+
+
+def modifica_gioco(gioco_id: int, nome: str, attivo: bool, *, event_id=None) -> None:
+    nome = _nome_valido(nome)
+    fuori = (
+        data.copie_in_prestito_evento(event_id, gioco_id)
+        if event_id is not None else data.copie_in_prestito(gioco_id)
+    )
     if not attivo and fuori > 0:
         raise GiocoInPrestito()
+    if event_id is not None:
+        data.aggiorna_gioco_evento(
+            event_id, gioco_id, nome, _chiave_nome(nome), 1 if attivo else 0
+        )
+        return
     data.aggiorna_gioco(gioco_id, nome, 1 if attivo else 0)
 
 
-def imposta_quantita(gioco_id: int, proprietario_id: int | None, valore: str) -> None:
+def imposta_quantita(gioco_id: int, proprietario_id: int | None, valore: str,
+                     *, event_id=None) -> None:
     if proprietario_id is None:
         raise ProprietarioNonSelezionato()
     try:
@@ -85,11 +119,24 @@ def imposta_quantita(gioco_id: int, proprietario_id: int | None, valore: str) ->
             raise ValueError
     except ValueError as exc:
         raise QuantitaNonValida() from exc
-    nuovo_totale = data.copie_altri_proprietari(gioco_id, proprietario_id) + quantita
-    fuori = data.copie_in_prestito(gioco_id)
+    if event_id is not None:
+        nuovo_totale = data.copie_altri_owner(
+            event_id, gioco_id, proprietario_id
+        ) + quantita
+        fuori = data.copie_in_prestito_evento(event_id, gioco_id)
+    else:
+        nuovo_totale = data.copie_altri_proprietari(
+            gioco_id, proprietario_id
+        ) + quantita
+        fuori = data.copie_in_prestito(gioco_id)
     if nuovo_totale < fuori:
         raise CopieInsufficienti(fuori, nuovo_totale)
-    data.aggiorna_quantita_copie(gioco_id, proprietario_id, quantita)
+    if event_id is not None:
+        data.aggiorna_quantita_copie_evento(
+            event_id, gioco_id, proprietario_id, quantita
+        )
+    else:
+        data.aggiorna_quantita_copie(gioco_id, proprietario_id, quantita)
 
 
 @dataclass(frozen=True)
@@ -99,40 +146,93 @@ class InventarioProprietario:
     totale_copie: int
 
 
-def inventario_proprietario(proprietario_id: int) -> InventarioProprietario:
-    righe = [dict(row) for row in data.giochi_per_proprietario(proprietario_id)]
+def inventario_proprietario(proprietario_id: int, *, event_id=None) -> InventarioProprietario:
+    source = (
+        data.giochi_per_owner_evento(event_id, proprietario_id)
+        if event_id is not None else data.giochi_per_proprietario(proprietario_id)
+    )
+    righe = [dict(row) for row in source]
     return InventarioProprietario(righe, len(righe), sum(r["copie_proprietario"] for r in righe))
 
 
-def elenco_proprietari():
-    return [dict(row) for row in data.elenco_proprietari()]
+def elenco_proprietari(*, event_id=None):
+    source = (
+        data.elenco_owner_labels(event_id)
+        if event_id is not None else data.elenco_proprietari()
+    )
+    return [dict(row) for row in source]
 
 
-def proprietario_per_id(proprietario_id):
-    row = data.proprietario_per_id(proprietario_id)
+def proprietario_per_id(proprietario_id, *, event_id=None):
+    row = (
+        data.owner_label_per_id(event_id, proprietario_id)
+        if event_id is not None else data.proprietario_per_id(proprietario_id)
+    )
     return dict(row) if row is not None else None
 
 
-def totale_copie_proprietario(proprietario_id):
+def totale_copie_proprietario(proprietario_id, *, event_id=None):
+    if event_id is not None:
+        return data.totale_copie_owner_label(event_id, proprietario_id)
     return data.totale_copie_proprietario(proprietario_id)
 
 
-def elenco_giochi_backoffice():
-    return [dict(row) for row in data.elenco_giochi_backoffice()]
+def elenco_giochi_backoffice(*, event_id=None):
+    source = (
+        data.elenco_giochi_evento_backoffice(event_id)
+        if event_id is not None else data.elenco_giochi_backoffice()
+    )
+    return [dict(row) for row in source]
 
 
-def gioco_per_id(gioco_id):
-    row = data.gioco_per_id(gioco_id)
+def gioco_per_id(gioco_id, *, event_id=None):
+    row = (
+        data.gioco_evento_per_id(event_id, gioco_id)
+        if event_id is not None else data.gioco_per_id(gioco_id)
+    )
     return dict(row) if row is not None else None
 
 
-def copie_per_proprietario_del_gioco(gioco_id):
-    return [dict(row) for row in data.copie_per_proprietario_del_gioco(gioco_id)]
+def copie_per_proprietario_del_gioco(gioco_id, *, event_id=None):
+    source = (
+        data.copie_per_owner_del_gioco(event_id, gioco_id)
+        if event_id is not None
+        else data.copie_per_proprietario_del_gioco(gioco_id)
+    )
+    return [dict(row) for row in source]
 
 
-def riepilogo_proprietari_gioco(gioco_id):
+def riepilogo_proprietari_gioco(gioco_id, *, event_id=None):
+    if event_id is not None:
+        return data.riepilogo_owner_gioco(event_id, gioco_id)
     return data.riepilogo_proprietari_gioco(gioco_id)
 
 
-def copie_in_prestito(gioco_id):
+def copie_in_prestito(gioco_id, *, event_id=None):
+    if event_id is not None:
+        return data.copie_in_prestito_evento(event_id, gioco_id)
     return data.copie_in_prestito(gioco_id)
+
+
+def impostazioni_modulo(event_id):
+    row = data.impostazioni_game_library(event_id)
+    return dict(row) if row is not None else None
+
+
+def modifica_impostazioni_modulo(event_id, max_slots, identification_mode="token"):
+    try:
+        max_slots = int(max_slots)
+    except (TypeError, ValueError) as exc:
+        raise ConfigurazioneNonValida() from exc
+    if max_slots <= 0 or identification_mode not in ("token", "copy_identifier"):
+        raise ConfigurazioneNonValida()
+    if data.conta_sessioni_attive_evento(event_id):
+        massimo_occupato = max(
+            (row["token"] for row in data.slot_sessioni_aperte(event_id)),
+            default=0,
+        )
+        if max_slots < massimo_occupato:
+            raise ConfigurazioneNonValida()
+    data.aggiorna_impostazioni_game_library(
+        event_id, max_slots, identification_mode
+    )

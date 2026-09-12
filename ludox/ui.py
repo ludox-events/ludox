@@ -97,6 +97,14 @@ class PrestitiApp(ttk.Window):
         )
         self._applica_contesto_evento(context)
 
+    def _game_library_event_id(self):
+        if (
+            self.evento_attivo is None
+            or not self.evento_attivo.modules.get("game_library", False)
+        ):
+            raise events.EventError("Prestiti Ludoteca non disponibile")
+        return self.evento_attivo.id
+
     # ========================================================
     # HELPERS GRAFICI
     # ========================================================
@@ -175,7 +183,15 @@ class PrestitiApp(ttk.Window):
 
     def show_home(self):
         frame = self.clear()
-        riepilogo = lending.riepilogo_home()
+        game_library_attiva = bool(
+            self.evento_attivo is not None
+            and self.evento_attivo.modules.get("game_library", False)
+        )
+        riepilogo = (
+            lending.riepilogo_home(event_id=self.evento_attivo.id)
+            if game_library_attiva
+            else lending.RiepilogoHome(0, 0, 0)
+        )
 
         self.titolo_pagina(
             frame,
@@ -269,7 +285,8 @@ class PrestitiApp(ttk.Window):
             azioni,
             text=tr("＋  NUOVO PRESTITO"),
             command=self.show_nuovo_prestito,
-            bootstyle="success"
+            bootstyle="success",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
             row=0,
             column=0,
@@ -283,7 +300,8 @@ class PrestitiApp(ttk.Window):
             azioni,
             text=tr("↔  CAMBIO GIOCO"),
             command=self.show_cambio_token,
-            bootstyle="primary"
+            bootstyle="primary",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
             row=0,
             column=1,
@@ -297,7 +315,8 @@ class PrestitiApp(ttk.Window):
             azioni,
             text=tr("✓  RESTITUZIONE FINALE"),
             command=self.show_restituzione,
-            bootstyle="warning"
+            bootstyle="warning",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
             row=1,
             column=0,
@@ -311,7 +330,8 @@ class PrestitiApp(ttk.Window):
             azioni,
             text=tr("▥  STATISTICHE"),
             command=self.show_statistiche,
-            bootstyle="info"
+            bootstyle="info",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
             row=1,
             column=1,
@@ -428,7 +448,8 @@ class PrestitiApp(ttk.Window):
 
             giochi = lending.cerca_giochi_con_disponibilita(
                 ricerca_var.get(),
-                gioco_da_escludere
+                gioco_da_escludere,
+                event_id=self._game_library_event_id(),
             )
 
             for gioco in giochi:
@@ -460,7 +481,8 @@ class PrestitiApp(ttk.Window):
 
             gioco_id = int(selezione[0])
             disponibili, _ = lending.disponibilita_gioco(
-                gioco_id
+                gioco_id,
+                event_id=self._game_library_event_id(),
             )
 
             if disponibili <= 0:
@@ -563,7 +585,9 @@ class PrestitiApp(ttk.Window):
 
     def crea_nuovo_prestito(self, gioco_id):
         try:
-            risultato = lending.nuovo_prestito(gioco_id, self.config.max_tokens)
+            risultato = lending.nuovo_prestito(
+                gioco_id, event_id=self._game_library_event_id()
+            )
         except lending.GiocoNonDisponibile as e:
             messagebox.showwarning(
                 tr("Non disponibile"),
@@ -698,7 +722,9 @@ class PrestitiApp(ttk.Window):
                 return
 
             try:
-                situazione = lending.consulta_token(token)
+                situazione = lending.consulta_token(
+                    token, event_id=self._game_library_event_id()
+                )
             except lending.TokenLibero:
                 messagebox.showwarning(
                     tr("Token libero"),
@@ -789,6 +815,7 @@ class PrestitiApp(ttk.Window):
                     prestito_id=prestito["id"],
                     gioco_id_atteso=prestito["gioco_id"],
                     nuovo_gioco_id=nuovo_gioco_id,
+                    event_id=self._game_library_event_id(),
                 )
             except lending.GiocoNonDisponibile as e:
                 messagebox.showwarning(
@@ -945,7 +972,9 @@ class PrestitiApp(ttk.Window):
                 return
 
             try:
-                situazione = lending.consulta_token(token)
+                situazione = lending.consulta_token(
+                    token, event_id=self._game_library_event_id()
+                )
             except lending.TokenLibero:
                 messagebox.showwarning(
                     tr("Token libero"),
@@ -1075,6 +1104,7 @@ class PrestitiApp(ttk.Window):
                 lending.restituzione_finale(
                     documento_id=documento["id"],
                     prestito_id=prestito["id"],
+                    event_id=self._game_library_event_id(),
                 )
             except lending.ErrorePersistenza as e:
                 messagebox.showerror(
@@ -1553,7 +1583,8 @@ class PrestitiApp(ttk.Window):
         statistiche = reporting.statistiche_periodo(
             riferimento,
             ore,
-            minuti_bucket
+            minuti_bucket,
+            event_id=self._game_library_event_id(),
         )
         inizio = statistiche.inizio
         fine = statistiche.fine
@@ -1821,6 +1852,10 @@ class PrestitiApp(ttk.Window):
 
     def show_backoffice(self):
         frame = self.clear()
+        game_library_attiva = bool(
+            self.evento_attivo is not None
+            and self.evento_attivo.modules.get("game_library", False)
+        )
 
         self.pulsante_indietro(
             frame,
@@ -1847,7 +1882,8 @@ class PrestitiApp(ttk.Window):
             area,
             text=tr("🎲  GESTIONE GIOCHI"),
             command=self.show_gestione_giochi,
-            bootstyle="primary"
+            bootstyle="primary",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
             row=0,
             column=0,
@@ -1861,7 +1897,8 @@ class PrestitiApp(ttk.Window):
             area,
             text=tr("👤  GESTIONE PROPRIETARI"),
             command=self.show_gestione_proprietari,
-            bootstyle="info"
+            bootstyle="info",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
             row=0,
             column=1,
@@ -1875,7 +1912,8 @@ class PrestitiApp(ttk.Window):
             area,
             text=tr("📋  TUTTI I PRESTITI"),
             command=self.show_tutti_prestiti,
-            bootstyle="success"
+            bootstyle="success",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
             row=1,
             column=0,
@@ -1889,7 +1927,8 @@ class PrestitiApp(ttk.Window):
             area,
             text=tr("🪪  DOCUMENTI / PERSONE"),
             command=self.show_tutti_documenti,
-            bootstyle="warning"
+            bootstyle="warning",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
             row=1,
             column=1,
@@ -1903,7 +1942,8 @@ class PrestitiApp(ttk.Window):
             area,
             text=tr("📦  GIOCHI PER PROPRIETARIO"),
             command=self.show_giochi_per_proprietario,
-            bootstyle="secondary"
+            bootstyle="secondary",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
             row=2,
             column=0,
@@ -1972,11 +2012,28 @@ class PrestitiApp(ttk.Window):
 
         ttk.Button(
             area,
-            text=tr("📊  REPORT UTILIZZO LUDOTECA"),
-            command=self.show_report_utilizzo_ludoteca,
-            bootstyle="primary-outline"
+            text=tr("game_library.settings"),
+            command=self.show_impostazioni_ludoteca,
+            bootstyle="info-outline",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
             row=5,
+            column=0,
+            columnspan=2,
+            padx=15,
+            pady=15,
+            ipady=22,
+            sticky=EW,
+        )
+
+        ttk.Button(
+            area,
+            text=tr("📊  REPORT UTILIZZO LUDOTECA"),
+            command=self.show_report_utilizzo_ludoteca,
+            bootstyle="primary-outline",
+            state="normal" if game_library_attiva else "disabled",
+        ).grid(
+            row=6,
             column=0,
             columnspan=2,
             padx=15,
@@ -1989,9 +2046,10 @@ class PrestitiApp(ttk.Window):
             area,
             text=tr("🧑  REPORT PERSONE / DOCUMENTI"),
             command=self.show_report_documenti,
-            bootstyle="info-outline"
+            bootstyle="info-outline",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
-            row=6,
+            row=7,
             column=0,
             columnspan=2,
             padx=15,
@@ -1999,6 +2057,44 @@ class PrestitiApp(ttk.Window):
             ipady=22,
             sticky=EW
         )
+
+    def show_impostazioni_ludoteca(self):
+        event_id = self._game_library_event_id()
+        settings = catalog.impostazioni_modulo(event_id)
+        frame = self.clear()
+        self.pulsante_indietro(frame, self.show_backoffice)
+        self.titolo_pagina(
+            frame, "game_library.settings", "game_library.settings_subtitle"
+        )
+        max_slots_var = tk.StringVar(value=str(settings["max_slots"]))
+        card = ttk.Labelframe(frame, padding=30, bootstyle="info")
+        card.pack(padx=230, pady=35, fill=X)
+        ttk.Label(card, text=tr("game_library.max_slots")).pack(anchor=W)
+        ttk.Entry(card, textvariable=max_slots_var, width=12).pack(
+            anchor=W, pady=(5, 20)
+        )
+        ttk.Label(
+            card, text=tr("game_library.identification_token"),
+            bootstyle="secondary",
+        ).pack(anchor=W, pady=(0, 20))
+
+        def salva():
+            try:
+                catalog.modifica_impostazioni_modulo(
+                    event_id, max_slots_var.get(), "token"
+                )
+            except catalog.ConfigurazioneNonValida:
+                messagebox.showwarning(
+                    tr("game_library.settings"),
+                    tr("game_library.invalid_max_slots"),
+                )
+                return
+            self.show_backoffice()
+
+        ttk.Button(
+            card, text=tr("common.save"), command=salva,
+            bootstyle="success",
+        ).pack(ipadx=25, ipady=8)
 
     def esporta_ludoteca_legacy(self):
         percorso = filedialog.asksaveasfilename(
@@ -2425,7 +2521,9 @@ class PrestitiApp(ttk.Window):
             "Ogni cambio gioco genera un nuovo record di prestito"
         )
 
-        storico = reporting.storico_prestiti()
+        storico = reporting.storico_prestiti(
+            event_id=self._game_library_event_id()
+        )
         totale = storico.totale
         attivi = storico.attivi
         righe = storico.righe
@@ -2546,7 +2644,9 @@ class PrestitiApp(ttk.Window):
             "Registro anonimo: il software non memorizza dati personali"
         )
 
-        storico = reporting.storico_documenti()
+        storico = reporting.storico_documenti(
+            event_id=self._game_library_event_id()
+        )
         totale = storico.totale
         attivi = storico.attivi
         righe = storico.righe
@@ -2951,7 +3051,8 @@ class PrestitiApp(ttk.Window):
             data_fine,
             ordina_per=ordina_per,
             ordine_desc=ordine_desc,
-            adesso=datetime.now()
+            adesso=datetime.now(),
+            event_id=self._game_library_event_id(),
         )
         inizio = report.inizio
         righe_report = [
@@ -3591,7 +3692,9 @@ class PrestitiApp(ttk.Window):
             padx=(0, 18)
         )
 
-        proprietari = catalog.elenco_proprietari()
+        proprietari = catalog.elenco_proprietari(
+            event_id=self._game_library_event_id()
+        )
         proprietari_by_name = {
             row["nome"]: row["id"]
             for row in proprietari
@@ -3603,7 +3706,8 @@ class PrestitiApp(ttk.Window):
 
         if proprietario_id is not None:
             proprietario = catalog.proprietario_per_id(
-                proprietario_id
+                proprietario_id,
+                event_id=self._game_library_event_id(),
             )
             if proprietario:
                 proprietario_var.set(
@@ -3868,7 +3972,8 @@ class PrestitiApp(ttk.Window):
             proprietario_id=proprietario_id,
             escludi_tempo_zero=escludi_tempo_zero,
             ordina_per=ordina_per,
-            ordine_desc=ordine_desc
+            ordine_desc=ordine_desc,
+            event_id=self._game_library_event_id(),
         )
         inizio = report.inizio
         righe_report = report.righe
@@ -3878,7 +3983,8 @@ class PrestitiApp(ttk.Window):
             tr("common.all")
             if proprietario_id is None
             else catalog.proprietario_per_id(
-                proprietario_id
+                proprietario_id,
+                event_id=self._game_library_event_id(),
             )["nome"]
         )
 
@@ -4382,7 +4488,9 @@ class PrestitiApp(ttk.Window):
             "Inventario delle copie messe a disposizione da ciascun proprietario"
         )
 
-        proprietari = catalog.elenco_proprietari()
+        proprietari = catalog.elenco_proprietari(
+            event_id=self._game_library_event_id()
+        )
         proprietari_by_name = {
             row["nome"]: row["id"]
             for row in proprietari
@@ -4542,7 +4650,9 @@ class PrestitiApp(ttk.Window):
 
             proprietario_id = proprietari_by_name[nome]
 
-            inventario = catalog.inventario_proprietario(proprietario_id)
+            inventario = catalog.inventario_proprietario(
+                proprietario_id, event_id=self._game_library_event_id()
+            )
             righe = inventario.righe
             totale_titoli = inventario.totale_titoli
             totale_copie = inventario.totale_copie
@@ -4643,7 +4753,9 @@ class PrestitiApp(ttk.Window):
             expand=YES
         )
 
-        for proprietario in catalog.elenco_proprietari():
+        for proprietario in catalog.elenco_proprietari(
+            event_id=self._game_library_event_id()
+        ):
             tree.insert(
                 "",
                 END,
@@ -4651,7 +4763,8 @@ class PrestitiApp(ttk.Window):
                 values=(
                     proprietario["nome"],
                     catalog.totale_copie_proprietario(
-                        proprietario["id"]
+                        proprietario["id"],
+                        event_id=self._game_library_event_id(),
                     ),
                     tr("common.yes") if proprietario["attivo"] else tr("common.no")
                 )
@@ -4733,7 +4846,9 @@ class PrestitiApp(ttk.Window):
 
         def salva():
             try:
-                catalog.aggiungi_proprietario(nome_var.get())
+                catalog.aggiungi_proprietario(
+                    nome_var.get(), event_id=self._game_library_event_id()
+                )
             except catalog.NomeMancante:
                 messagebox.showwarning(
                     tr("Nome mancante"),
@@ -4768,7 +4883,8 @@ class PrestitiApp(ttk.Window):
 
     def show_modifica_proprietario(self, proprietario_id):
         proprietario = catalog.proprietario_per_id(
-            proprietario_id
+            proprietario_id,
+            event_id=self._game_library_event_id(),
         )
 
         if not proprietario:
@@ -4826,7 +4942,7 @@ class PrestitiApp(ttk.Window):
             card,
             text=(
                 tr(f"Copie associate: "
-                f"{catalog.totale_copie_proprietario(proprietario_id)}")
+                f"{catalog.totale_copie_proprietario(proprietario_id, event_id=self._game_library_event_id())}")
             ),
             font=("Arial", 12),
             bootstyle="secondary"
@@ -4850,7 +4966,10 @@ class PrestitiApp(ttk.Window):
             attivo = attivo_var.get()
             try:
                 try:
-                    catalog.modifica_proprietario(proprietario_id, nome, attivo)
+                    catalog.modifica_proprietario(
+                        proprietario_id, nome, attivo,
+                        event_id=self._game_library_event_id(),
+                    )
                 except catalog.ConfermaDisattivazione:
                     conferma = messagebox.askyesno(
                         tr("Proprietario con copie associate"),
@@ -4863,6 +4982,7 @@ class PrestitiApp(ttk.Window):
                     catalog.modifica_proprietario(
                         proprietario_id, nome, attivo_var.get(),
                         conferma_disattivazione=True,
+                        event_id=self._game_library_event_id(),
                     )
             except catalog.NomeMancante:
                 messagebox.showwarning(
@@ -4964,7 +5084,9 @@ class PrestitiApp(ttk.Window):
             expand=YES
         )
 
-        for gioco in catalog.elenco_giochi_backoffice():
+        for gioco in catalog.elenco_giochi_backoffice(
+            event_id=self._game_library_event_id()
+        ):
             tree.insert(
                 "",
                 END,
@@ -4972,11 +5094,11 @@ class PrestitiApp(ttk.Window):
                 values=(
                     gioco["nome"],
                     catalog.riepilogo_proprietari_gioco(
-                        gioco["id"]
+                        gioco["id"], event_id=self._game_library_event_id()
                     ),
                     gioco["copie_totali"],
                     catalog.copie_in_prestito(
-                        gioco["id"]
+                        gioco["id"], event_id=self._game_library_event_id()
                     ),
                     tr("common.yes") if gioco["attivo"] else tr("common.no")
                 )
@@ -5059,7 +5181,9 @@ class PrestitiApp(ttk.Window):
 
         def salva():
             try:
-                gioco_id = catalog.aggiungi_gioco(nome_var.get())
+                gioco_id = catalog.aggiungi_gioco(
+                    nome_var.get(), event_id=self._game_library_event_id()
+                )
             except catalog.NomeMancante:
                 messagebox.showwarning(
                     tr("Nome mancante"),
@@ -5096,7 +5220,7 @@ class PrestitiApp(ttk.Window):
 
     def show_modifica_gioco(self, gioco_id):
         gioco = catalog.gioco_per_id(
-            gioco_id
+            gioco_id, event_id=self._game_library_event_id()
         )
 
         if not gioco:
@@ -5247,7 +5371,7 @@ class PrestitiApp(ttk.Window):
                 tree.delete(item)
 
             righe = catalog.copie_per_proprietario_del_gioco(
-                gioco_id
+                gioco_id, event_id=self._game_library_event_id()
             )
 
             for row in righe:
@@ -5350,7 +5474,10 @@ class PrestitiApp(ttk.Window):
         def salva_quantita():
             proprietario_id = proprietario_selezionato["id"]
             try:
-                catalog.imposta_quantita(gioco_id, proprietario_id, quantita_var.get())
+                catalog.imposta_quantita(
+                    gioco_id, proprietario_id, quantita_var.get(),
+                    event_id=self._game_library_event_id(),
+                )
             except catalog.ProprietarioNonSelezionato:
                 messagebox.showwarning(
                     tr("Seleziona un proprietario"),
@@ -5396,7 +5523,10 @@ class PrestitiApp(ttk.Window):
 
         def salva_gioco():
             try:
-                catalog.modifica_gioco(gioco_id, nome_var.get(), attivo_var.get())
+                catalog.modifica_gioco(
+                    gioco_id, nome_var.get(), attivo_var.get(),
+                    event_id=self._game_library_event_id(),
+                )
             except catalog.NomeMancante:
                 messagebox.showwarning(
                     tr("Nome mancante"),
@@ -5740,7 +5870,12 @@ class PrestitiApp(ttk.Window):
     # ========================================================
 
     def chiudi_app(self):
-        situazione = lending.situazione_chiusura()
+        situazione = (
+            lending.situazione_chiusura(event_id=self.evento_attivo.id)
+            if self.evento_attivo is not None
+            and self.evento_attivo.modules.get("game_library", False)
+            else lending.SituazioneChiusura(0, ())
+        )
         attivi = situazione.documenti_attivi
 
         if attivi > 0:
