@@ -222,6 +222,9 @@ parametro generale di `config.ini`.
 Il numero massimo di slot appartiene alla configurazione del modulo
 `game_library` dello specifico Event.
 
+Il valore predefinito iniziale per un nuovo modulo `game_library` è `50`.
+Questo valore non viene ricavato automaticamente dal vecchio `max_tokens` globale.
+
 In modalità token:
 
 ```text
@@ -345,17 +348,18 @@ appartiene al modulo `game_library` dello specifico Event.
 `max_tokens` è un parametro storico della configurazione locale precedente al
 modello event-specific.
 
-Dopo l'implementazione della conversione prevista dalla #6:
+Non è richiesta una conversione automatica del suo valore verso `max_slots`.
 
+Dopo l'introduzione del nuovo `game_library` event-specific:
+
+- ogni modulo usa il proprio `max_slots`, con valore iniziale predefinito `50`;
 - `AppConfig` non deve più richiedere `max_tokens` come configurazione globale;
 - il primo avvio e il Backoffice generale non devono mostrarlo;
 - `save_config()` non deve scriverlo;
-- un vecchio `config.ini` che contiene ancora la chiave deve rimanere
-  leggibile e la chiave storica può essere ignorata.
+- un vecchio `config.ini` che contiene ancora la chiave deve rimanere leggibile;
+- la chiave storica viene semplicemente ignorata.
 
-Il trasferimento del valore utile verso `max_slots` del modulo `game_library`
-appartiene alla conversione dei dati event-specific della #6 e non deve essere
-reinventato dalla #3.
+La #3 completa la rimozione di `max_tokens` dalla configurazione locale. Non deve eseguire alcuna migrazione dei dati Prestiti legacy.
 
 ## 10. Validazione e salvataggio
 
