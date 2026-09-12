@@ -3,6 +3,8 @@
 
 from datetime import datetime, timedelta
 from pathlib import Path
+import csv
+import sqlite3
 import tkinter as tk
 from tkinter import messagebox, filedialog
 
@@ -20,6 +22,7 @@ from . import (
     bootstrap,
     catalog,
     lending,
+    library_transfer,
     migration_ui,
     migrations,
     organizations,
@@ -1842,11 +1845,26 @@ class PrestitiApp(ttk.Window):
 
         ttk.Button(
             area,
+            text=tr("library_transfer.export_legacy"),
+            command=self.esporta_ludoteca_legacy,
+            bootstyle="secondary-outline"
+        ).grid(
+            row=4,
+            column=0,
+            columnspan=2,
+            padx=15,
+            pady=15,
+            ipady=22,
+            sticky=EW
+        )
+
+        ttk.Button(
+            area,
             text=tr("📊  REPORT UTILIZZO LUDOTECA"),
             command=self.show_report_utilizzo_ludoteca,
             bootstyle="primary-outline"
         ).grid(
-            row=4,
+            row=5,
             column=0,
             columnspan=2,
             padx=15,
@@ -1861,13 +1879,35 @@ class PrestitiApp(ttk.Window):
             command=self.show_report_documenti,
             bootstyle="info-outline"
         ).grid(
-            row=5,
+            row=6,
             column=0,
             columnspan=2,
             padx=15,
             pady=15,
             ipady=22,
             sticky=EW
+        )
+
+    def esporta_ludoteca_legacy(self):
+        percorso = filedialog.asksaveasfilename(
+            parent=self,
+            title=tr("library_transfer.export_title"),
+            defaultextension=".csv",
+            filetypes=[(tr("common.csv"), "*.csv")],
+        )
+        if not percorso:
+            return
+        try:
+            righe = library_transfer.export_legacy_library_csv(percorso)
+        except (OSError, csv.Error, sqlite3.Error) as exc:
+            messagebox.showerror(
+                tr("common.export_error"),
+                tr("common.export_fail_tpl", error=exc),
+            )
+            return
+        messagebox.showinfo(
+            tr("common.export_done"),
+            tr("library_transfer.export_done_tpl", rows=righe),
         )
 
     # ========================================================

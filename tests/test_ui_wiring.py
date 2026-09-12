@@ -71,6 +71,7 @@ def test_pulsanti_backoffice_aprono_le_sezioni_previste():
             "self.show_gestione_giochi",
             "self.show_gestione_proprietari",
             "self.show_gestione_organizzazioni",
+            "self.esporta_ludoteca_legacy",
             "self.show_tutti_prestiti",
             "self.show_tutti_documenti",
             "self.show_giochi_per_proprietario",

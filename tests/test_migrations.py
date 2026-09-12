@@ -23,7 +23,7 @@ def test_new_empty_database_is_detected_without_creating_it(isolated_files):
         migrations.DatabaseKind.EMPTY_UNVERSIONED,
         0,
     )
-    assert plan.pending_versions == (1,)
+    assert plan.pending_versions == (1, 2)
     assert plan.migration_required is False
     assert not path.exists()
 
@@ -42,6 +42,31 @@ def test_initialized_database_is_current_and_contains_organizations(isolated_fil
         assert connection.execute(
             "SELECT name FROM sqlite_schema WHERE name = 'organizations'"
         ).fetchone() is not None
+        assert connection.execute(
+            "SELECT name FROM sqlite_schema WHERE name = 'events'"
+        ).fetchone() is not None
+
+
+def test_version_one_to_two_preserves_organizations(isolated_files):
+    path = database.get_db_path()
+    migrations.migrate_database(path, target_version=1)
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "INSERT INTO organizations(name) VALUES ('Ludoteca Centro')"
+        )
+    backup = path.with_name("before-v2.db")
+    migrations.create_backup(path, backup)
+
+    result = migrations.migrate_database(path, backup_path=backup)
+
+    assert result.applied_versions == (2,)
+    with sqlite3.connect(path) as connection:
+        assert connection.execute(
+            "SELECT name FROM organizations"
+        ).fetchone()[0] == "Ludoteca Centro"
+        assert connection.execute(
+            "SELECT name FROM sqlite_schema WHERE name = 'event_modules'"
+        ).fetchone() is not None
 
 
 def test_existing_legacy_database_keeps_data_after_approved_migration(
@@ -58,12 +83,12 @@ def test_existing_legacy_database_keeps_data_after_approved_migration(
     )
 
     with sqlite3.connect(path) as connection:
-        assert migrations.schema_version(connection) == 1
+        assert migrations.schema_version(connection) == 2
         assert connection.execute(
             "SELECT value FROM legacy_data"
         ).fetchone()[0] == "preserved"
     assert result.backup_path == path.with_name(
-        "test.backup-v0-to-v1-20260912-175900.db"
+        "test.backup-v0-to-v2-20260912-175900.db"
     )
     assert result.backup_path.exists()
 
@@ -77,8 +102,8 @@ def test_supported_versioned_database_needs_no_migration(isolated_files):
 
     assert plan.state.kind is migrations.DatabaseKind.VERSIONED_SUPPORTED
     assert plan.pending_versions == ()
-    assert first_result == migrations.MigrationResult(0, 1, (1,), None)
-    assert result == migrations.MigrationResult(1, 1, (), None)
+    assert first_result == migrations.MigrationResult(0, 2, (1, 2), None)
+    assert result == migrations.MigrationResult(2, 2, (), None)
 
 
 def test_no_migration_is_applied_when_database_is_current(isolated_files):
@@ -165,16 +190,16 @@ def test_future_database_version_is_rejected_without_changes(isolated_files):
     with sqlite3.connect(path) as connection:
         connection.execute("CREATE TABLE existing_data(value TEXT)")
         connection.execute("INSERT INTO existing_data VALUES ('preserved')")
-        connection.execute("PRAGMA user_version = 2")
+        connection.execute("PRAGMA user_version = 3")
 
     with pytest.raises(
         migrations.UnsupportedSchemaVersion,
-        match="newer than supported version 1",
+        match="newer than supported version 2",
     ):
         database.init_db()
 
     with sqlite3.connect(path) as connection:
-        assert migrations.schema_version(connection) == 2
+        assert migrations.schema_version(connection) == 3
         assert connection.execute(
             "SELECT value FROM existing_data"
         ).fetchone()[0] == "preserved"
@@ -246,10 +271,10 @@ def test_automatic_backup_name_never_overwrites_existing_file(isolated_files):
     second = migrations.automatic_backup_path(plan, moment)
 
     assert first == path.with_name(
-        "test.backup-v0-to-v1-20260912-175900.db"
+        "test.backup-v0-to-v2-20260912-175900.db"
     )
     assert second == path.with_name(
-        "test.backup-v0-to-v1-20260912-175900-2.db"
+        "test.backup-v0-to-v2-20260912-175900-2.db"
     )
 
 

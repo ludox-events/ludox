@@ -12,7 +12,7 @@ from typing import Callable, Iterable
 
 
 LEGACY_SCHEMA_VERSION = 0
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 
 class MigrationError(sqlite3.DatabaseError):
@@ -90,8 +90,54 @@ def _migrate_to_version_1(connection):
     """)
 
 
+def _migrate_to_version_2(connection):
+    statements = (
+        """CREATE TABLE events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL,
+            name TEXT NOT NULL CHECK(length(trim(name)) > 0),
+            slug TEXT NOT NULL CHECK(
+                length(slug) > 0
+                AND slug NOT GLOB '*[^a-z0-9_-]*'
+            ),
+            start_datetime TEXT NOT NULL,
+            end_datetime TEXT NOT NULL,
+            timezone TEXT NOT NULL CHECK(length(trim(timezone)) > 0),
+            status TEXT NOT NULL DEFAULT 'draft' CHECK(
+                status IN ('draft', 'active', 'archived', 'cancelled')
+            ),
+            FOREIGN KEY(organization_id) REFERENCES organizations(id),
+            UNIQUE(organization_id, slug)
+        )""",
+        """CREATE TRIGGER events_organization_immutable
+        BEFORE UPDATE OF organization_id ON events
+        WHEN NEW.organization_id <> OLD.organization_id
+        BEGIN
+            SELECT RAISE(ABORT, 'event organization is immutable');
+        END""",
+        """CREATE TRIGGER events_slug_immutable
+        BEFORE UPDATE OF slug ON events
+        WHEN NEW.slug <> OLD.slug
+        BEGIN
+            SELECT RAISE(ABORT, 'event slug is immutable');
+        END""",
+        """CREATE TABLE event_modules (
+            event_id INTEGER NOT NULL,
+            module_id TEXT NOT NULL CHECK(
+                module_id IN ('game_library', 'activities')
+            ),
+            enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
+            PRIMARY KEY(event_id, module_id),
+            FOREIGN KEY(event_id) REFERENCES events(id) ON DELETE CASCADE
+        )""",
+    )
+    for statement in statements:
+        connection.execute(statement)
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, _migrate_to_version_1),
+    Migration(2, _migrate_to_version_2),
 )
 
 
