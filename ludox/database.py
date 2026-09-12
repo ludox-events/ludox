@@ -447,6 +447,97 @@ def aggiorna_organizzazione(organizzazione_id, nome, attiva):
         """, (nome, attiva, organizzazione_id)).rowcount
 
 
+# ============================================================
+# FUNZIONI DATI - EVENTS E MODULI
+# ============================================================
+
+def elenco_eventi(organization_id, solo_selezionabili=False):
+    with get_db() as db:
+        query = """
+            SELECT id, organization_id, name, slug, start_datetime,
+                   end_datetime, timezone, status
+            FROM events
+            WHERE organization_id = ?
+        """
+        parameters = [organization_id]
+        if solo_selezionabili:
+            query += " AND status IN ('draft', 'active')"
+        query += " ORDER BY start_datetime, name COLLATE NOCASE, id"
+        return db.execute(query, parameters).fetchall()
+
+
+def evento_per_id(event_id):
+    with get_db() as db:
+        return db.execute("""
+            SELECT id, organization_id, name, slug, start_datetime,
+                   end_datetime, timezone, status
+            FROM events
+            WHERE id = ?
+        """, (event_id,)).fetchone()
+
+
+def inserisci_evento(
+    organization_id,
+    nome,
+    slug,
+    inizio,
+    fine,
+    timezone,
+):
+    with get_db() as db:
+        return db.execute("""
+            INSERT INTO events(
+                organization_id, name, slug, start_datetime,
+                end_datetime, timezone, status
+            ) VALUES (?, ?, ?, ?, ?, ?, 'draft')
+        """, (
+            organization_id, nome, slug, inizio, fine, timezone,
+        )).lastrowid
+
+
+def aggiorna_evento(event_id, nome, inizio, fine, timezone, stato):
+    with get_db() as db:
+        return db.execute("""
+            UPDATE events
+            SET name = ?, start_datetime = ?, end_datetime = ?,
+                timezone = ?, status = ?
+            WHERE id = ?
+        """, (nome, inizio, fine, timezone, stato, event_id)).rowcount
+
+
+def elimina_evento(event_id):
+    with get_db() as db:
+        return db.execute(
+            "DELETE FROM events WHERE id = ?",
+            (event_id,),
+        ).rowcount
+
+
+def moduli_evento(event_id):
+    with get_db() as db:
+        return db.execute("""
+            SELECT module_id, enabled
+            FROM event_modules
+            WHERE event_id = ?
+            ORDER BY module_id
+        """, (event_id,)).fetchall()
+
+
+def imposta_modulo_evento(event_id, module_id, abilitato):
+    with get_db() as db:
+        db.execute("""
+            INSERT INTO event_modules(event_id, module_id, enabled)
+            VALUES (?, ?, ?)
+            ON CONFLICT(event_id, module_id) DO UPDATE
+            SET enabled = excluded.enabled
+        """, (event_id, module_id, 1 if abilitato else 0))
+
+
+def evento_ha_storico(event_id):
+    """No v2 module owns operational history yet."""
+    return False
+
+
 def massimo_token_aperto():
     """Return the highest token currently associated with an open document."""
     with get_db() as db:
