@@ -38,8 +38,23 @@ def get_db():
     return db
 
 
-def init_db(default_owner_name="Organizzazione"):
-    migrations.migrate_database(DB_PATH)
+def init_db(
+    default_owner_name="Organizzazione",
+    *,
+    migration_authorized=False,
+    now=None,
+):
+    from . import bootstrap
+
+    return bootstrap.prepare_database(
+        DB_PATH,
+        migration_authorized=migration_authorized,
+        initialize_schema=lambda: initialize_current_schema(default_owner_name),
+        now=now,
+    )
+
+
+def initialize_current_schema(default_owner_name="Organizzazione"):
     with get_db() as db:
         db.execute("""
             CREATE TABLE IF NOT EXISTS proprietari (
@@ -361,6 +376,53 @@ def riepilogo_proprietari_gioco(gioco_id):
         f"{row['nome']}: {row['quantita']}"
         for row in righe
     )
+
+
+# ============================================================
+# FUNZIONI DATI - ORGANIZATIONS
+# ============================================================
+
+def elenco_organizzazioni(solo_attive=False):
+    with get_db() as db:
+        if solo_attive:
+            return db.execute("""
+                SELECT id, name, active
+                FROM organizations
+                WHERE active = 1
+                ORDER BY name COLLATE NOCASE, id
+            """).fetchall()
+
+        return db.execute("""
+            SELECT id, name, active
+            FROM organizations
+            ORDER BY name COLLATE NOCASE, id
+        """).fetchall()
+
+
+def organizzazione_per_id(organizzazione_id):
+    with get_db() as db:
+        return db.execute("""
+            SELECT id, name, active
+            FROM organizations
+            WHERE id = ?
+        """, (organizzazione_id,)).fetchone()
+
+
+def inserisci_organizzazione(nome):
+    with get_db() as db:
+        return db.execute(
+            "INSERT INTO organizations (name, active) VALUES (?, 1)",
+            (nome,),
+        ).lastrowid
+
+
+def aggiorna_organizzazione(organizzazione_id, nome, attiva):
+    with get_db() as db:
+        return db.execute("""
+            UPDATE organizations
+            SET name = ?, active = ?
+            WHERE id = ?
+        """, (nome, attiva, organizzazione_id)).rowcount
 
 
 def massimo_token_aperto():

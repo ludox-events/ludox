@@ -18,6 +18,8 @@ class AppConfig:
     language: str = DEFAULT_LANGUAGE
     max_tokens: int = DEFAULT_MAX_TOKENS
     database: str = DEFAULT_DATABASE
+    active_organization_id: int | None = None
+    active_organization_name: str | None = None
 
 
 def resolve_database_path(database: str) -> Path:
@@ -80,7 +82,40 @@ def validate_config(config: AppConfig) -> bool:
         normalize_database_setting(config.database)
     except (OSError, ValueError):
         return False
+
+    organization_id = config.active_organization_id
+    organization_name = config.active_organization_name
+    if organization_id is None and organization_name is None:
+        return True
+    if not (
+        isinstance(organization_id, int)
+        and not isinstance(organization_id, bool)
+        and organization_id > 0
+        and isinstance(organization_name, str)
+        and bool(organization_name.strip())
+    ):
+        return False
     return True
+
+
+def _load_organization_reference(
+    parser: configparser.ConfigParser,
+) -> tuple[int | None, str | None]:
+    raw_id = parser.get(
+        "organization", "active_organization_id", fallback=""
+    ).strip()
+    name = parser.get(
+        "organization", "active_organization_name", fallback=""
+    ).strip()
+    if not raw_id or not name:
+        return None, None
+    try:
+        organization_id = int(raw_id)
+    except ValueError:
+        return None, None
+    if organization_id <= 0:
+        return None, None
+    return organization_id, name
 
 
 def load_config(path: Path = CONFIG_PATH) -> AppConfig | None:
@@ -100,6 +135,7 @@ def load_config(path: Path = CONFIG_PATH) -> AppConfig | None:
             "general", "database", fallback=DEFAULT_DATABASE
         ).strip()
         database = normalize_database_setting(database)
+        organization_id, organization_name = _load_organization_reference(parser)
     except (configparser.Error, OSError, ValueError):
         return None
 
@@ -107,6 +143,8 @@ def load_config(path: Path = CONFIG_PATH) -> AppConfig | None:
         language=language,
         max_tokens=max_tokens,
         database=database,
+        active_organization_id=organization_id,
+        active_organization_name=organization_name,
     )
     return result if validate_config(result) else None
 
@@ -117,6 +155,12 @@ def save_config(config: AppConfig, path: Path = CONFIG_PATH) -> None:
         language=config.language,
         max_tokens=config.max_tokens,
         database=database,
+        active_organization_id=config.active_organization_id,
+        active_organization_name=(
+            config.active_organization_name.strip()
+            if isinstance(config.active_organization_name, str)
+            else config.active_organization_name
+        ),
     )
     if not validate_config(normalized):
         raise ValueError("Invalid LudoX configuration")
@@ -127,6 +171,11 @@ def save_config(config: AppConfig, path: Path = CONFIG_PATH) -> None:
         "max_tokens": str(normalized.max_tokens),
         "database": normalized.database,
     }
+    if normalized.active_organization_id is not None:
+        parser["organization"] = {
+            "active_organization_id": str(normalized.active_organization_id),
+            "active_organization_name": normalized.active_organization_name,
+        }
     with path.open("w", encoding="utf-8") as handle:
         parser.write(handle)
 

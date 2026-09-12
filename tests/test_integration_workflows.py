@@ -7,7 +7,16 @@ from datetime import datetime
 
 import pytest
 
-from ludox import catalog, config, database, lending, reporting, workspace
+from ludox import (
+    catalog,
+    config,
+    database,
+    lending,
+    migrations,
+    organizations,
+    reporting,
+    workspace,
+)
 
 
 def imposta_orologio(monkeypatch, *timestamp):
@@ -22,6 +31,61 @@ def salva_workspace(database_testo):
         database_testo=database_testo,
         nome_proprietario_predefinito="Organizzazione",
     )
+
+
+def test_migration_legacy_preserva_catalogo_e_avvia_contesto_organizzazione(
+    isolated_files,
+    tmp_path,
+):
+    database.initialize_current_schema("Proprietario legacy")
+    proprietario_id = catalog.elenco_proprietari()[0]["id"]
+    gioco_id = catalog.aggiungi_gioco("Gioco legacy")
+    catalog.imposta_quantita(gioco_id, proprietario_id, "2")
+
+    with database.get_db() as connection:
+        assert migrations.schema_version(connection) == 0
+        assert connection.execute(
+            "SELECT name FROM sqlite_schema WHERE name = 'organizations'"
+        ).fetchone() is None
+
+    risultato = database.init_db(
+        migration_authorized=True,
+        now=datetime(2026, 9, 12, 18, 30),
+    )
+
+    assert risultato.migration_result.applied_versions == (1,)
+    assert risultato.backup_path.is_file()
+    assert organizations.elenco_organizzazioni() == []
+    assert [row["nome"] for row in catalog.elenco_proprietari()] == [
+        "Proprietario legacy"
+    ]
+    assert catalog.gioco_per_id(gioco_id)["nome"] == "Gioco legacy"
+    assert catalog.totale_copie_proprietario(proprietario_id) == 2
+
+    percorso_configurazione = tmp_path / "config.ini"
+    prima = organizations.crea_organizzazione("Ludoteca Centro")
+    contesto = organizations.sincronizza_contesto(
+        config.AppConfig(),
+        percorso_configurazione,
+    )
+    assert contesto.organizzazione == prima
+    assert config.load_config(percorso_configurazione) == contesto.configurazione
+
+    seconda = organizations.crea_organizzazione("Ludoteca Nord")
+    contesto = organizations.seleziona_organizzazione(
+        seconda.id,
+        contesto.configurazione,
+        percorso_configurazione,
+    )
+    assert contesto.organizzazione == seconda
+
+    organizations.imposta_stato(seconda.id, attiva=False)
+    contesto = organizations.sincronizza_contesto(
+        contesto.configurazione,
+        percorso_configurazione,
+    )
+    assert contesto.organizzazione == prima
+    assert config.load_config(percorso_configurazione) == contesto.configurazione
 
 
 def test_flusso_completo_alimenta_storici_statistiche_e_report(db, monkeypatch):

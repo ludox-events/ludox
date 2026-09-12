@@ -16,7 +16,16 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from .config import (
     AppConfig, PROJECT_DIR,
 )
-from . import catalog, lending, reporting, workspace
+from . import (
+    bootstrap,
+    catalog,
+    lending,
+    migration_ui,
+    migrations,
+    organizations,
+    reporting,
+    workspace,
+)
 from .i18n import tr, set_language, get_language, language_display_names
 
 APP_THEME = "flatly"
@@ -24,8 +33,18 @@ BACKOFFICE_PASSWORD = "ludox"
 
 class PrestitiApp(ttk.Window):
 
-    def __init__(self, config: AppConfig):
+    def __init__(
+        self,
+        config: AppConfig,
+        organization_context: organizations.ContestoOrganizzazione | None = None,
+    ):
         self.config = config
+        organization_context = (
+            organization_context
+            if organization_context is not None
+            else organizations.risolvi_contesto(config)
+        )
+        self._applica_contesto_organizzazione(organization_context)
         super().__init__(
             title=tr("app.title"),
             themename=APP_THEME
@@ -42,6 +61,11 @@ class PrestitiApp(ttk.Window):
         )
 
         self.show_home()
+
+    def _applica_contesto_organizzazione(self, context):
+        self.config = context.configurazione
+        self.organizzazione_attiva = context.organizzazione
+        self.selezione_organizzazione_richiesta = context.selezione_richiesta
 
     # ========================================================
     # HELPERS GRAFICI
@@ -128,6 +152,23 @@ class PrestitiApp(ttk.Window):
             "PRESTITI LUDOTECA",
             "Gestione prestiti e documenti"
         )
+
+        if self.organizzazione_attiva is not None:
+            testo_organizzazione = tr(
+                "organizations.current_tpl",
+                name=self.organizzazione_attiva.nome,
+            )
+        elif self.selezione_organizzazione_richiesta:
+            testo_organizzazione = tr("organizations.selection_required")
+        else:
+            testo_organizzazione = tr("organizations.none_active")
+
+        ttk.Label(
+            frame,
+            text=testo_organizzazione,
+            font=("Arial", 11, "bold"),
+            bootstyle="secondary",
+        ).pack(pady=(0, 5))
 
         cards = ttk.Frame(frame)
         cards.pack(
@@ -1786,11 +1827,26 @@ class PrestitiApp(ttk.Window):
 
         ttk.Button(
             area,
+            text=tr("organizations.manage"),
+            command=self.show_gestione_organizzazioni,
+            bootstyle="success-outline"
+        ).grid(
+            row=3,
+            column=0,
+            columnspan=2,
+            padx=15,
+            pady=15,
+            ipady=22,
+            sticky=EW
+        )
+
+        ttk.Button(
+            area,
             text=tr("📊  REPORT UTILIZZO LUDOTECA"),
             command=self.show_report_utilizzo_ludoteca,
             bootstyle="primary-outline"
         ).grid(
-            row=3,
+            row=4,
             column=0,
             columnspan=2,
             padx=15,
@@ -1805,7 +1861,7 @@ class PrestitiApp(ttk.Window):
             command=self.show_report_documenti,
             bootstyle="info-outline"
         ).grid(
-            row=4,
+            row=5,
             column=0,
             columnspan=2,
             padx=15,
@@ -1813,6 +1869,217 @@ class PrestitiApp(ttk.Window):
             ipady=22,
             sticky=EW
         )
+
+    # ========================================================
+    # BACKOFFICE - ORGANIZZAZIONI
+    # ========================================================
+
+    def show_gestione_organizzazioni(self):
+        frame = self.clear()
+
+        self.pulsante_indietro(
+            frame,
+            self.show_backoffice
+        )
+
+        self.titolo_pagina(
+            frame,
+            "organizations.title",
+            "organizations.subtitle"
+        )
+
+        if self.organizzazione_attiva is not None:
+            stato_contesto = tr(
+                "organizations.current_tpl",
+                name=self.organizzazione_attiva.nome,
+            )
+        elif self.selezione_organizzazione_richiesta:
+            stato_contesto = tr("organizations.selection_required")
+        else:
+            stato_contesto = tr("organizations.none_active")
+
+        ttk.Label(
+            frame,
+            text=stato_contesto,
+            font=("Arial", 12, "bold"),
+            bootstyle="secondary",
+        ).pack(pady=(0, 12))
+
+        tree = ttk.Treeview(
+            frame,
+            columns=("nome", "attiva", "corrente"),
+            show="headings",
+            height=10,
+            bootstyle="success",
+        )
+        tree.heading("nome", text=tr("organizations.name"))
+        tree.heading("attiva", text=tr("organizations.active"))
+        tree.heading("corrente", text=tr("organizations.current"))
+        tree.column("nome", width=620)
+        tree.column("attiva", width=130, anchor=CENTER)
+        tree.column("corrente", width=130, anchor=CENTER)
+        tree.pack(fill=BOTH, expand=YES)
+
+        for organizzazione in organizations.elenco_organizzazioni():
+            tree.insert(
+                "",
+                END,
+                iid=str(organizzazione.id),
+                values=(
+                    organizzazione.nome,
+                    tr("common.yes") if organizzazione.attiva else tr("common.no"),
+                    (
+                        tr("common.yes")
+                        if self.organizzazione_attiva is not None
+                        and organizzazione.id == self.organizzazione_attiva.id
+                        else tr("common.no")
+                    ),
+                ),
+            )
+
+        form = ttk.Labelframe(
+            frame,
+            text=tr("organizations.details"),
+            padding=18,
+            bootstyle="secondary",
+        )
+        form.pack(fill=X, pady=(16, 8))
+
+        nome_var = tk.StringVar()
+        attiva_var = tk.BooleanVar(value=True)
+        organizzazione_id = None
+
+        ttk.Label(
+            form,
+            text=tr("organizations.name"),
+            font=("Arial", 11, "bold"),
+        ).grid(row=0, column=0, sticky=W, padx=(0, 10))
+        nome_entry = ttk.Entry(form, textvariable=nome_var, width=52)
+        nome_entry.grid(row=0, column=1, sticky=EW, ipady=3)
+        ttk.Checkbutton(
+            form,
+            text=tr("organizations.active"),
+            variable=attiva_var,
+            bootstyle="success-round-toggle",
+        ).grid(row=0, column=2, sticky=W, padx=(18, 0))
+        form.columnconfigure(1, weight=1)
+
+        def nuova():
+            nonlocal organizzazione_id
+            organizzazione_id = None
+            tree.selection_remove(tree.selection())
+            nome_var.set("")
+            attiva_var.set(True)
+            nome_entry.focus_set()
+
+        def carica_selezione(event=None):
+            nonlocal organizzazione_id
+            selezione = tree.selection()
+            if not selezione:
+                return
+            organizzazione_id = int(selezione[0])
+            organizzazione = organizations.organizzazione_per_id(
+                organizzazione_id
+            )
+            if organizzazione is None:
+                return
+            nome_var.set(organizzazione.nome)
+            attiva_var.set(organizzazione.attiva)
+
+        def salva():
+            try:
+                if organizzazione_id is None:
+                    salvata = organizations.crea_organizzazione(nome_var.get())
+                else:
+                    salvata = organizations.modifica_organizzazione(
+                        organizzazione_id,
+                        nome=nome_var.get(),
+                        attiva=attiva_var.get(),
+                    )
+
+                if (
+                    self.organizzazione_attiva is not None
+                    and self.organizzazione_attiva.id == salvata.id
+                    and salvata.attiva
+                ):
+                    contesto = organizations.seleziona_organizzazione(
+                        salvata.id,
+                        self.config,
+                    )
+                else:
+                    contesto = organizations.sincronizza_contesto(self.config)
+                self._applica_contesto_organizzazione(contesto)
+            except organizations.NomeOrganizzazioneMancante:
+                messagebox.showwarning(
+                    tr("organizations.missing_name"),
+                    tr("organizations.missing_name_msg"),
+                )
+                return
+            except (OSError, ValueError) as exc:
+                messagebox.showerror(
+                    tr("settings.save_failed"),
+                    tr("settings.save_failed_tpl", error=exc),
+                )
+                return
+
+            self.show_gestione_organizzazioni()
+
+        def usa_selezionata():
+            selezione = tree.selection()
+            if not selezione:
+                messagebox.showwarning(
+                    tr("organizations.select_first"),
+                    tr("organizations.select_first_msg"),
+                )
+                return
+            try:
+                contesto = organizations.seleziona_organizzazione(
+                    int(selezione[0]),
+                    self.config,
+                )
+            except organizations.OrganizzazioneNonAttiva:
+                messagebox.showwarning(
+                    tr("organizations.inactive"),
+                    tr("organizations.inactive_msg"),
+                )
+                return
+            except organizations.OrganizzazioneNonTrovata:
+                self.show_gestione_organizzazioni()
+                return
+            except (OSError, ValueError) as exc:
+                messagebox.showerror(
+                    tr("settings.save_failed"),
+                    tr("settings.save_failed_tpl", error=exc),
+                )
+                return
+
+            self._applica_contesto_organizzazione(contesto)
+            self.show_gestione_organizzazioni()
+
+        azioni = ttk.Frame(frame)
+        azioni.pack(pady=(8, 0))
+
+        ttk.Button(
+            azioni,
+            text=tr("organizations.new"),
+            command=nuova,
+            bootstyle="secondary-outline",
+        ).pack(side=LEFT, padx=5, ipadx=14, ipady=6)
+        ttk.Button(
+            azioni,
+            text=tr("organizations.save"),
+            command=salva,
+            bootstyle="success",
+        ).pack(side=LEFT, padx=5, ipadx=14, ipady=6)
+        ttk.Button(
+            azioni,
+            text=tr("organizations.use_selected"),
+            command=usa_selezionata,
+            bootstyle="primary",
+        ).pack(side=LEFT, padx=5, ipadx=14, ipady=6)
+
+        tree.bind("<<TreeviewSelect>>", carica_selezione)
+        nome_entry.bind("<Return>", lambda event: salva())
 
     # ========================================================
     # BACKOFFICE - TUTTI I PRESTITI
@@ -5007,6 +5274,25 @@ class PrestitiApp(ttk.Window):
             justify=LEFT
         ).pack(anchor=W, pady=(0, 20))
 
+        def esegui_salvataggio(language, migrazione_autorizzata=False):
+            return workspace.salva_impostazioni(
+                lingua=language,
+                max_tokens_testo=tokens_var.get(),
+                database_testo=database_var.get(),
+                nome_proprietario_predefinito=tr("owner.default"),
+                organizzazione_attiva_id=(
+                    self.organizzazione_attiva.id
+                    if self.organizzazione_attiva is not None
+                    else None
+                ),
+                organizzazione_attiva_nome=(
+                    self.organizzazione_attiva.nome
+                    if self.organizzazione_attiva is not None
+                    else None
+                ),
+                migrazione_autorizzata=migrazione_autorizzata,
+            )
+
         def salva():
             language = display_to_code.get(
                 language_var.get(),
@@ -5014,12 +5300,28 @@ class PrestitiApp(ttk.Window):
             )
 
             try:
-                risultato = workspace.salva_impostazioni(
-                    lingua=language,
-                    max_tokens_testo=tokens_var.get(),
-                    database_testo=database_var.get(),
-                    nome_proprietario_predefinito=tr("owner.default")
-                )
+                try:
+                    risultato = esegui_salvataggio(language)
+                except bootstrap.MigrationApprovalRequired as request:
+                    autorizzata = migration_ui.chiedi_autorizzazione(
+                        request.plan,
+                        parent=self,
+                    )
+                    if not autorizzata:
+                        self.destroy()
+                        return
+                    risultato = esegui_salvataggio(
+                        language,
+                        migrazione_autorizzata=True,
+                    )
+            except (
+                bootstrap.BackupCreationFailed,
+                bootstrap.MigrationExecutionFailed,
+                migrations.MigrationError,
+            ) as error:
+                migration_ui.mostra_errore(error, parent=self)
+                self.destroy()
+                return
             except workspace.TokenNonValidi:
                 messagebox.showwarning(
                     tr("settings.invalid_tokens"),
@@ -5073,6 +5375,9 @@ class PrestitiApp(ttk.Window):
                 return
 
             self.config = risultato.configurazione
+            self._applica_contesto_organizzazione(
+                organizations.risolvi_contesto(self.config)
+            )
             set_language(language)
             self.title(tr("app.title"))
 

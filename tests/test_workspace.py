@@ -10,15 +10,25 @@ from pathlib import Path
 
 import pytest
 
-from ludox import config, database as data, workspace
+from ludox import bootstrap, config, database as data, workspace
 
 
-def salva(database, max_tokens="50", lingua="it"):
+def salva(
+    database,
+    max_tokens="50",
+    lingua="it",
+    organizzazione_attiva_id=None,
+    organizzazione_attiva_nome=None,
+    migrazione_autorizzata=False,
+):
     return workspace.salva_impostazioni(
         lingua=lingua,
         max_tokens_testo=max_tokens,
         database_testo=database,
         nome_proprietario_predefinito="Biblioteca",
+        organizzazione_attiva_id=organizzazione_attiva_id,
+        organizzazione_attiva_nome=organizzazione_attiva_nome,
+        migrazione_autorizzata=migrazione_autorizzata,
     )
 
 
@@ -37,6 +47,67 @@ def test_salvataggio_sullo_stesso_database_non_cambia_workspace(db):
         config.AppConfig("en", 23, "test.db"), False
     )
     assert data.get_db_path() == config.PROJECT_DIR / "test.db"
+    assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
+
+
+def test_salvataggio_preserva_il_contesto_organizzazione(db):
+    organizzazione_id = db.execute(
+        "INSERT INTO organizations(name) VALUES ('Ludoteca Centro')"
+    ).lastrowid
+    db.commit()
+    risultato = salva(
+        "test.db",
+        organizzazione_attiva_id=organizzazione_id,
+        organizzazione_attiva_nome="Ludoteca Centro",
+    )
+
+    assert risultato.configurazione.active_organization_id == organizzazione_id
+    assert risultato.configurazione.active_organization_name == "Ludoteca Centro"
+    assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
+
+
+def test_cambio_database_seleziona_automaticamente_l_unica_organizzazione(db):
+    destinazione = config.PROJECT_DIR / "destinazione.db"
+    precedente = data.get_db_path()
+    data.set_db_path(destinazione)
+    data.init_db()
+    with data.get_db() as destinazione_db:
+        destinazione_db.execute(
+            "INSERT INTO organizations(name) VALUES ('Ludoteca Nuova')"
+        )
+    data.set_db_path(precedente)
+
+    risultato = salva(
+        "destinazione.db",
+        organizzazione_attiva_id=1,
+        organizzazione_attiva_nome="Altro workspace",
+    )
+
+    assert risultato.configurazione.active_organization_id == 1
+    assert risultato.configurazione.active_organization_name == "Ludoteca Nuova"
+    assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
+
+
+def test_cambio_database_non_accetta_collisione_id_con_nome_diverso(db):
+    destinazione = config.PROJECT_DIR / "destinazione.db"
+    precedente = data.get_db_path()
+    data.set_db_path(destinazione)
+    data.init_db()
+    with data.get_db() as destinazione_db:
+        destinazione_db.executemany(
+            "INSERT INTO organizations(name) VALUES (?)",
+            [("Ludoteca Nuova",), ("Ludoteca Nord",)],
+        )
+    data.set_db_path(precedente)
+
+    risultato = salva(
+        "destinazione.db",
+        organizzazione_attiva_id=1,
+        organizzazione_attiva_nome="Altro workspace",
+    )
+
+    assert risultato.configurazione.active_organization_id is None
+    assert risultato.configurazione.active_organization_name is None
     assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
 
 
@@ -96,6 +167,38 @@ def test_cambio_inizializza_database_e_salva_configurazione(db):
     )
 
 
+def test_cambio_verso_legacy_richiede_consenso_e_ripristina_workspace(db):
+    precedente = data.get_db_path()
+    destinazione = config.PROJECT_DIR / "legacy.db"
+    with sqlite3.connect(destinazione) as legacy:
+        legacy.execute("CREATE TABLE legacy_data(value TEXT)")
+        legacy.execute("INSERT INTO legacy_data VALUES ('preserved')")
+
+    with pytest.raises(bootstrap.MigrationApprovalRequired):
+        salva("legacy.db")
+
+    assert data.get_db_path() == precedente
+    assert not config.CONFIG_PATH.exists()
+    with sqlite3.connect(destinazione) as legacy:
+        assert legacy.execute("PRAGMA user_version").fetchone()[0] == 0
+        assert legacy.execute(
+            "SELECT name FROM sqlite_schema WHERE name = 'organizations'"
+        ).fetchone() is None
+
+
+def test_cambio_verso_legacy_autorizzato_crea_backup(db):
+    destinazione = config.PROJECT_DIR / "legacy.db"
+    with sqlite3.connect(destinazione) as legacy:
+        legacy.execute("CREATE TABLE legacy_data(value TEXT)")
+
+    risultato = salva("legacy.db", migrazione_autorizzata=True)
+
+    assert risultato.database_cambiato is True
+    assert data.get_db_path() == destinazione
+    assert len(list(config.PROJECT_DIR.glob("legacy.backup-v0-to-v1-*.db"))) == 1
+    assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
+
+
 def test_limite_incompatibile_nella_destinazione_ripristina_workspace(db):
     precedente = data.get_db_path()
     destinazione = config.PROJECT_DIR / "destinazione.db"
@@ -116,7 +219,7 @@ def test_limite_incompatibile_nella_destinazione_ripristina_workspace(db):
 def test_errore_apertura_destinazione_ripristina_workspace(db, monkeypatch):
     precedente = data.get_db_path()
 
-    def init_fallita(default_owner_name):
+    def init_fallita(default_owner_name, **kwargs):
         raise sqlite3.DatabaseError("database non leggibile")
 
     monkeypatch.setattr(data, "init_db", init_fallita)

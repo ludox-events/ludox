@@ -2,7 +2,7 @@
 
 > **STATUS: APPROVED SPECIFICATION — READ ONLY**
 >
-> **IMPLEMENTATION: NOT IMPLEMENTED**
+> **IMPLEMENTATION: PARTIALLY IMPLEMENTED**
 >
 > Questo documento è una specifica approvata di LudoX. Durante
 > l'implementazione non deve essere modificato, salvo richiesta esplicita
@@ -140,18 +140,83 @@ Ogni numero di versione identifica uno schema completo e determinato: una
 versione non deve essere costruita progressivamente da più modifiche
 strutturali indipendenti senza incremento di `user_version`.
 
-All'apertura del database, l'applicazione confronta la versione presente con quella richiesta dal software ed esegue in sequenza le migrazioni necessarie.
+Ogni modifica strutturale da `v0` in avanti deve prevedere una migration
+esplicita. Le versioni dello schema usano numeri interi progressivi,
+indipendenti dalla versione applicativa di LudoX.
 
-Ogni modifica strutturale da `v0` in avanti deve prevedere una migrazione
-esplicita.
+### Compatibilità richiesta all'avvio
 
-Le versioni dello schema usano numeri interi progressivi, indipendenti dalla
-versione applicativa di LudoX.
+LudoX può operare soltanto su un database con lo schema richiesto dalla
+versione corrente dell'applicazione.
 
-Le migration vengono applicate in ordine crescente. Prima di una migration non banale, distruttiva o non reversibile deve essere creato un backup del database.
+All'apertura del database l'applicazione deve quindi ispezionare lo schema
+**prima** di inizializzare i servizi operativi.
 
-Il meccanismo concreto di detection, esecuzione, rollback e backup delle
-migration è implementato dall'infrastruttura introdotta con la issue #12.
+Il comportamento dipende dallo stato rilevato:
+
+- database nuovo o realmente vuoto → inizializzazione diretta allo schema corrente;
+- schema già corrente → avvio normale;
+- schema precedente su database esistente → migration necessaria;
+- schema futuro/non supportato → errore e chiusura dell'applicazione.
+
+Un database esistente con schema precedente **non deve essere migrato
+silenziosamente**.
+
+Prima della migration LudoX deve:
+
+1. informare l'utente della versione attuale e di quella richiesta;
+2. chiedere autorizzazione esplicita;
+3. creare automaticamente una copia completa di backup;
+4. eseguire le migration necessarie soltanto dopo il completamento del backup.
+
+Se l'utente rifiuta la migration, LudoX termina l'avvio senza modificare il
+database.
+
+Se il backup fallisce, nessuna migration viene eseguita e LudoX termina
+l'avvio.
+
+Se la migration fallisce, l'operazione viene annullata tramite rollback, il
+backup viene conservato e LudoX termina l'avvio.
+
+L'applicazione non deve proseguire utilizzando uno schema precedente,
+parzialmente aggiornato o più recente di quello supportato.
+
+### Backup delle migration
+
+Il backup è obbligatorio prima di **qualsiasi** migration di un database
+esistente, anche se la modifica è semplice o puramente additiva.
+
+Per una sequenza composta da più migration pendenti viene creato un unico
+backup prima dell'intera sequenza.
+
+Il backup deve essere automatico, leggibile e non deve sovrascrivere file
+esistenti. Per impostazione predefinita viene salvato accanto al database
+originale con un nome che renda riconoscibili versione di partenza,
+versione di destinazione e momento della creazione.
+
+Esempio:
+
+```text
+ludox.backup-v0-to-v1-20260912-175900.db
+```
+
+### Esecuzione e rollback
+
+Le migration vengono applicate in ordine crescente e senza saltare versioni.
+La sequenza viene eseguita in transazione.
+
+`PRAGMA user_version` viene aggiornato insieme alle modifiche dello schema e
+non deve rimanere avanzato se la migration fallisce.
+
+Se manca una migration intermedia, l'aggiornamento deve fallire prima di
+modificare il database.
+
+Il meccanismo tecnico di detection, sequenza, transazione e rollback è stato
+introdotto con la issue #12. Il flusso di autorizzazione e backup obbligatorio
+è tracciato nella issue #19.
+
+Il comportamento completo e le regole per aggiungere future migration sono
+definiti in [MIGRATIONS.md](MIGRATIONS.md).
 
 ## Service layer
 
