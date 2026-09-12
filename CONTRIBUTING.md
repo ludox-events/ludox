@@ -125,6 +125,13 @@ I controlli delle quantità precedono la transazione di scrittura, come prima.
 La quantità zero rimuove l'associazione gioco/proprietario; le copie restano
 aggregate e i prestiti dell'inventario sono conteggiati per titolo.
 
+La terza fase della issue #11 estrae in `ludox/reporting.py` statistiche,
+storici, report persone/documenti, report utilizzo e preparazione degli export
+CSV. Le query corrispondenti sono in `ludox/database.py`; la UI conserva solo
+filtri, rendering, grafici e finestre di dialogo. `tests/test_reporting.py`
+verifica intervalli temporali, aggregazioni, ordinamenti, filtri, durate e
+formato CSV senza importare Tkinter e usando esclusivamente database temporanei.
+
 Per preservare il comportamento attuale, l'apertura controlla disponibilità e
 token prima della transazione, mentre il cambio li ricontrolla sotto lock.
 La restituzione aggiorna gli identificativi ricevuti senza aggiungere un nuovo

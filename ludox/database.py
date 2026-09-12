@@ -521,3 +521,125 @@ def giochi_per_proprietario(proprietario_id):
             WHERE cg.proprietario_id = ? AND cg.quantita > 0
             ORDER BY g.nome
         """, (proprietario_id,)).fetchall()
+
+
+# ============================================================
+# FUNZIONI DATI - STATISTICHE E REPORT
+# ============================================================
+
+def conta_attivita_periodo(inizio, fine):
+    with get_db() as db:
+        prestiti = db.execute("""
+            SELECT COUNT(*) FROM prestiti
+            WHERE uscita >= ? AND uscita < ?
+        """, (inizio, fine)).fetchone()[0]
+        documenti = db.execute("""
+            SELECT COUNT(*) FROM documenti
+            WHERE ingresso >= ? AND ingresso < ?
+        """, (inizio, fine)).fetchone()[0]
+    return prestiti, documenti
+
+
+def timestamp_attivita_periodo(inizio, fine):
+    with get_db() as db:
+        prestiti = db.execute("""
+            SELECT uscita FROM prestiti
+            WHERE uscita >= ? AND uscita < ?
+        """, (inizio, fine)).fetchall()
+        documenti = db.execute("""
+            SELECT ingresso FROM documenti
+            WHERE ingresso >= ? AND ingresso < ?
+        """, (inizio, fine)).fetchall()
+    return prestiti, documenti
+
+
+def storico_prestiti():
+    with get_db() as db:
+        totale = db.execute("SELECT COUNT(*) FROM prestiti").fetchone()[0]
+        attivi = db.execute(
+            "SELECT COUNT(*) FROM prestiti WHERE rientro IS NULL"
+        ).fetchone()[0]
+        righe = db.execute("""
+            SELECT p.id AS prestito_id, d.id AS documento_id, d.token,
+                   g.nome AS gioco, p.uscita, p.rientro
+            FROM prestiti p
+            JOIN documenti d ON d.id = p.documento_id
+            JOIN giochi g ON g.id = p.gioco_id
+            ORDER BY p.uscita DESC, p.id DESC
+        """).fetchall()
+    return totale, attivi, righe
+
+
+def storico_documenti():
+    with get_db() as db:
+        totale = db.execute("SELECT COUNT(*) FROM documenti").fetchone()[0]
+        attivi = db.execute(
+            "SELECT COUNT(*) FROM documenti WHERE uscita IS NULL"
+        ).fetchone()[0]
+        righe = db.execute("""
+            SELECT d.id, d.token, d.ingresso, d.uscita,
+                   COUNT(p.id) AS numero_prestiti
+            FROM documenti d
+            LEFT JOIN prestiti p ON p.documento_id = d.id
+            GROUP BY d.id, d.token, d.ingresso, d.uscita
+            ORDER BY d.ingresso DESC, d.id DESC
+        """).fetchall()
+    return totale, attivi, righe
+
+
+def documenti_ingressi_periodo(inizio, fine):
+    with get_db() as db:
+        return db.execute("""
+            SELECT id, token, ingresso, uscita
+            FROM documenti
+            WHERE ingresso >= ? AND ingresso < ?
+            ORDER BY ingresso
+        """, (inizio, fine)).fetchall()
+
+
+def prestiti_per_documenti(documenti_ids):
+    if not documenti_ids:
+        return []
+    placeholders = ",".join("?" for _ in documenti_ids)
+    with get_db() as db:
+        return db.execute(f"""
+            SELECT documento_id, uscita, rientro
+            FROM prestiti
+            WHERE documento_id IN ({placeholders})
+            ORDER BY documento_id, uscita
+        """, documenti_ids).fetchall()
+
+
+def giochi_con_copie():
+    with get_db() as db:
+        return db.execute("""
+            SELECT g.id, g.nome, g.attivo,
+                   COALESCE(SUM(cg.quantita), 0) AS copie_totali
+            FROM giochi g
+            LEFT JOIN copie_gioco cg ON cg.gioco_id = g.id
+            GROUP BY g.id, g.nome, g.attivo
+            HAVING COALESCE(SUM(cg.quantita), 0) > 0
+            ORDER BY g.nome
+        """).fetchall()
+
+
+def proprietari_dei_giochi():
+    with get_db() as db:
+        return db.execute("""
+            SELECT cg.gioco_id, p.id AS proprietario_id,
+                   p.nome AS proprietario_nome, cg.quantita
+            FROM copie_gioco cg
+            JOIN proprietari p ON p.id = cg.proprietario_id
+            WHERE cg.quantita > 0
+            ORDER BY cg.gioco_id, p.nome
+        """).fetchall()
+
+
+def prestiti_usciti_periodo(inizio, fine):
+    with get_db() as db:
+        return db.execute("""
+            SELECT gioco_id, uscita, rientro
+            FROM prestiti
+            WHERE uscita >= ? AND uscita < ?
+            ORDER BY uscita
+        """, (inizio, fine)).fetchall()

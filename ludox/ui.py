@@ -1,10 +1,8 @@
 # Copyright (C) 2026 Matteo Sassi
 # SPDX-License-Identifier: AGPL-3.0-only
 
-import csv
 import sqlite3
 from datetime import datetime, timedelta
-from statistics import median, pstdev
 from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox, filedialog
@@ -27,7 +25,7 @@ from .database import (
     proprietario_per_id, massimo_token_aperto, init_db,
     set_db_path, get_db_path,
 )
-from . import catalog, lending
+from . import catalog, lending, reporting
 from .i18n import tr, set_language, get_language, language_display_names
 
 APP_THEME = "flatly"
@@ -1035,41 +1033,12 @@ class PrestitiApp(ttk.Window):
     @staticmethod
     def arrotonda_giu_bucket(dt, minuti_bucket):
         """Arrotonda un datetime verso il basso al confine del bucket."""
-        mezzanotte = dt.replace(
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0
-        )
-
-        secondi_trascorsi = int(
-            (dt - mezzanotte).total_seconds()
-        )
-        secondi_bucket = minuti_bucket * 60
-        secondi_allineati = (
-            secondi_trascorsi
-            // secondi_bucket
-            * secondi_bucket
-        )
-
-        return mezzanotte + timedelta(
-            seconds=secondi_allineati
-        )
+        return reporting.arrotonda_giu_bucket(dt, minuti_bucket)
 
     @classmethod
     def arrotonda_su_bucket(cls, dt, minuti_bucket):
         """Arrotonda un datetime verso l'alto al confine del bucket."""
-        arrotondato = cls.arrotonda_giu_bucket(
-            dt,
-            minuti_bucket
-        )
-
-        if dt == arrotondato:
-            return arrotondato
-
-        return arrotondato + timedelta(
-            minutes=minuti_bucket
-        )
+        return reporting.arrotonda_su_bucket(dt, minuti_bucket)
 
     @classmethod
     def intervallo_statistiche(
@@ -1084,20 +1053,7 @@ class PrestitiApp(ttk.Window):
         L'inizio viene arrotondato verso il basso e la fine verso l'alto
         in modo da utilizzare sempre bucket temporali completi.
         """
-        inizio_nominale = riferimento - timedelta(
-            hours=ore
-        )
-
-        inizio = cls.arrotonda_giu_bucket(
-            inizio_nominale,
-            minuti_bucket
-        )
-        fine = cls.arrotonda_su_bucket(
-            riferimento,
-            minuti_bucket
-        )
-
-        return inizio, fine
+        return reporting.intervallo_statistiche(riferimento, ore, minuti_bucket)
 
     def show_statistiche(
         self,
@@ -1465,39 +1421,15 @@ class PrestitiApp(ttk.Window):
         # INTERVALLO E CONTATORI
         # ----------------------------------------------------
 
-        inizio, fine = self.intervallo_statistiche(
+        statistiche = reporting.statistiche_periodo(
             riferimento,
             ore,
             minuti_bucket
         )
-
-        inizio_iso = inizio.isoformat(
-            timespec="seconds"
-        )
-        fine_iso = fine.isoformat(
-            timespec="seconds"
-        )
-
-        with get_db() as db:
-            prestiti_periodo = db.execute("""
-                SELECT COUNT(*)
-                FROM prestiti
-                WHERE uscita >= ?
-                  AND uscita < ?
-            """, (
-                inizio_iso,
-                fine_iso
-            )).fetchone()[0]
-
-            persone_periodo = db.execute("""
-                SELECT COUNT(*)
-                FROM documenti
-                WHERE ingresso >= ?
-                  AND ingresso < ?
-            """, (
-                inizio_iso,
-                fine_iso
-            )).fetchone()[0]
+        inizio = statistiche.inizio
+        fine = statistiche.fine
+        prestiti_periodo = statistiche.prestiti
+        persone_periodo = statistiche.documenti
 
         intervallo_testo = (
             f"Periodo visualizzato: "
@@ -1546,93 +1478,18 @@ class PrestitiApp(ttk.Window):
 
         self.crea_grafico(
             frame,
-            inizio,
-            fine,
-            minuti_bucket
+            statistiche
         )
 
     def crea_grafico(
         self,
         parent,
-        inizio,
-        fine,
-        minuti_bucket
+        statistiche
     ):
-        delta = timedelta(
-            minutes=minuti_bucket
-        )
-
-        punti = []
-        t = inizio
-
-        while t < fine:
-            punti.append({
-                "inizio": t,
-                "fine": t + delta,
-                "prestiti": 0,
-                "documenti": 0
-            })
-            t += delta
-
-        inizio_iso = inizio.isoformat(
-            timespec="seconds"
-        )
-        fine_iso = fine.isoformat(
-            timespec="seconds"
-        )
-
-        with get_db() as db:
-            righe_prestiti = db.execute("""
-                SELECT uscita
-                FROM prestiti
-                WHERE uscita >= ?
-                  AND uscita < ?
-            """, (
-                inizio_iso,
-                fine_iso
-            )).fetchall()
-
-            righe_documenti = db.execute("""
-                SELECT ingresso
-                FROM documenti
-                WHERE ingresso >= ?
-                  AND ingresso < ?
-            """, (
-                inizio_iso,
-                fine_iso
-            )).fetchall()
-
-        secondi_bucket = delta.total_seconds()
-
-        for row in righe_prestiti:
-            try:
-                dt = datetime.fromisoformat(
-                    row["uscita"]
-                )
-                indice = int(
-                    (dt - inizio).total_seconds()
-                    // secondi_bucket
-                )
-
-                if 0 <= indice < len(punti):
-                    punti[indice]["prestiti"] += 1
-            except (ValueError, TypeError):
-                continue
-
-        for row in righe_documenti:
-            try:
-                dt = datetime.fromisoformat(
-                    row["ingresso"]
-                )
-                indice = int(
-                    (dt - inizio).total_seconds()
-                    // secondi_bucket
-                )
-
-                if 0 <= indice < len(punti):
-                    punti[indice]["documenti"] += 1
-            except (ValueError, TypeError):
-                continue
+        inizio = statistiche.inizio
+        fine = statistiche.fine
+        minuti_bucket = statistiche.minuti_bucket
+        punti = statistiche.punti
 
         giochi_consegnati = [
             p["prestiti"]
@@ -1989,33 +1846,10 @@ class PrestitiApp(ttk.Window):
             "Ogni cambio gioco genera un nuovo record di prestito"
         )
 
-        with get_db() as db:
-            totale = db.execute("""
-                SELECT COUNT(*)
-                FROM prestiti
-            """).fetchone()[0]
-
-            attivi = db.execute("""
-                SELECT COUNT(*)
-                FROM prestiti
-                WHERE rientro IS NULL
-            """).fetchone()[0]
-
-            righe = db.execute("""
-                SELECT
-                    p.id AS prestito_id,
-                    d.id AS documento_id,
-                    d.token,
-                    g.nome AS gioco,
-                    p.uscita,
-                    p.rientro
-                FROM prestiti p
-                JOIN documenti d
-                  ON d.id = p.documento_id
-                JOIN giochi g
-                  ON g.id = p.gioco_id
-                ORDER BY p.uscita DESC, p.id DESC
-            """).fetchall()
+        storico = reporting.storico_prestiti()
+        totale = storico.totale
+        attivi = storico.attivi
+        righe = storico.righe
 
         riepilogo = ttk.Frame(frame)
         riepilogo.pack(
@@ -2133,35 +1967,10 @@ class PrestitiApp(ttk.Window):
             "Registro anonimo: il software non memorizza dati personali"
         )
 
-        with get_db() as db:
-            totale = db.execute("""
-                SELECT COUNT(*)
-                FROM documenti
-            """).fetchone()[0]
-
-            attivi = db.execute("""
-                SELECT COUNT(*)
-                FROM documenti
-                WHERE uscita IS NULL
-            """).fetchone()[0]
-
-            righe = db.execute("""
-                SELECT
-                    d.id,
-                    d.token,
-                    d.ingresso,
-                    d.uscita,
-                    COUNT(p.id) AS numero_prestiti
-                FROM documenti d
-                LEFT JOIN prestiti p
-                  ON p.documento_id = d.id
-                GROUP BY
-                    d.id,
-                    d.token,
-                    d.ingresso,
-                    d.uscita
-                ORDER BY d.ingresso DESC, d.id DESC
-            """).fetchall()
+        storico = reporting.storico_documenti()
+        totale = storico.totale
+        attivi = storico.attivi
+        righe = storico.righe
 
         riepilogo = ttk.Frame(frame)
         riepilogo.pack(
@@ -2558,228 +2367,26 @@ class PrestitiApp(ttk.Window):
         # DATI DEL REPORT
         # ----------------------------------------------------
 
-        inizio = data_inizio.replace(
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0
+        report = reporting.report_documenti(
+            data_inizio,
+            data_fine,
+            ordina_per=ordina_per,
+            ordine_desc=ordine_desc,
+            adesso=datetime.now()
         )
-
-        fine_esclusiva = (
-            data_fine.replace(
-                hour=0,
-                minute=0,
-                second=0,
-                microsecond=0
-            )
-            + timedelta(days=1)
-        )
-
-        inizio_iso = inizio.isoformat(
-            timespec="seconds"
-        )
-        fine_iso = fine_esclusiva.isoformat(
-            timespec="seconds"
-        )
-
-        with get_db() as db:
-            documenti = db.execute("""
-                SELECT
-                    id,
-                    token,
-                    ingresso,
-                    uscita
-                FROM documenti
-                WHERE ingresso >= ?
-                  AND ingresso < ?
-                ORDER BY ingresso
-            """, (
-                inizio_iso,
-                fine_iso
-            )).fetchall()
-
-            documenti_ids = [
-                row["id"]
-                for row in documenti
-            ]
-
-            prestiti_per_documento = {}
-
-            if documenti_ids:
-                placeholders = ",".join(
-                    "?"
-                    for _ in documenti_ids
-                )
-
-                prestiti = db.execute(
-                    f"""
-                    SELECT
-                        documento_id,
-                        uscita,
-                        rientro
-                    FROM prestiti
-                    WHERE documento_id IN ({placeholders})
-                    ORDER BY documento_id, uscita
-                    """,
-                    documenti_ids
-                ).fetchall()
-
-                for row in prestiti:
-                    prestiti_per_documento.setdefault(
-                        row["documento_id"],
-                        []
-                    ).append(row)
-
-        def formatta_durata(secondi):
-            if secondi is None:
-                return "—"
-
-            secondi = max(
-                0,
-                int(round(secondi))
-            )
-
-            ore_totali, resto = divmod(
-                secondi,
-                3600
-            )
-            minuti, _ = divmod(
-                resto,
-                60
-            )
-
-            if ore_totali > 0:
-                return f"{ore_totali}h {minuti:02d}m"
-
-            return f"{minuti}m"
-
-        adesso = datetime.now()
-
-        righe_report = []
-        tutte_durate_prestiti = []
-
-        for documento in documenti:
-            try:
-                ingresso_dt = datetime.fromisoformat(
-                    documento["ingresso"]
-                )
-            except (ValueError, TypeError):
-                continue
-
-            if documento["uscita"]:
-                try:
-                    uscita_dt = datetime.fromisoformat(
-                        documento["uscita"]
-                    )
-                except (ValueError, TypeError):
-                    uscita_dt = None
-            else:
-                uscita_dt = None
-
-            fine_documento = (
-                uscita_dt
-                if uscita_dt is not None
-                else adesso
-            )
-
-            tempo_documento_secondi = max(
-                0,
-                (
-                    fine_documento
-                    - ingresso_dt
-                ).total_seconds()
-            )
-
-            prestiti_documento = prestiti_per_documento.get(
-                documento["id"],
-                []
-            )
-
-            durate_partite = []
-
-            for prestito in prestiti_documento:
-                if not prestito["rientro"]:
-                    continue
-
-                try:
-                    uscita_prestito = datetime.fromisoformat(
-                        prestito["uscita"]
-                    )
-                    rientro_prestito = datetime.fromisoformat(
-                        prestito["rientro"]
-                    )
-
-                    durata = (
-                        rientro_prestito
-                        - uscita_prestito
-                    ).total_seconds()
-
-                    if durata >= 0:
-                        durate_partite.append(
-                            durata
-                        )
-
-                except (ValueError, TypeError):
-                    continue
-
-            numero_prestiti = len(
-                prestiti_documento
-            )
-
-            tutte_durate_prestiti.extend(
-                durate_partite
-            )
-
-            media_partita_secondi = (
-                sum(durate_partite)
-                / len(durate_partite)
-                if durate_partite
-                else None
-            )
-
-            righe_report.append({
-                "documento_id": documento["id"],
-                "token": documento["token"],
-                "ingresso_dt": ingresso_dt,
-                "ingresso": formatta_data_ora(
-                    documento["ingresso"]
-                ),
-                "uscita": formatta_data_ora(
-                    documento["uscita"]
-                ),
-                "prestiti": numero_prestiti,
-                "tempo_documento_secondi": tempo_documento_secondi,
-                "tempo_documento": formatta_durata(
-                    tempo_documento_secondi
-                ),
-                "media_partita_secondi": media_partita_secondi,
-                "media_partita": formatta_durata(
-                    media_partita_secondi
-                ),
+        inizio = report.inizio
+        righe_report = [
+            {
+                **row,
                 "stato": (
                     tr("common.in_progress")
-                    if documento["uscita"] is None
+                    if row["aperto"]
                     else tr("common.closed")
                 )
-            })
-
-        def chiave_ordinamento(row):
-            if ordina_per == "prestiti":
-                return row["prestiti"]
-
-            if ordina_per == "tempo_documento_secondi":
-                return row["tempo_documento_secondi"]
-
-            if ordina_per == "media_partita_secondi":
-                valore = row["media_partita_secondi"]
-                return -1 if valore is None else valore
-
-            return row["ingresso_dt"]
-
-        righe_report.sort(
-            key=chiave_ordinamento,
-            reverse=ordine_desc
-        )
+            }
+            for row in report.righe
+        ]
+        formatta_durata = reporting.formatta_durata
 
         criterio_testo = {
             "ingresso": tr("people_report.sort_entry"),
@@ -2791,82 +2398,17 @@ class PrestitiApp(ttk.Window):
             tr("people_report.sort_entry")
         )
 
-        # ----------------------------------------------------
-        # RIEPILOGO E STATISTICHE DESCRITTIVE
-        # ----------------------------------------------------
-
-        totale_documenti = len(
-            righe_report
-        )
-
-        totale_prestiti = sum(
-            row["prestiti"]
-            for row in righe_report
-        )
-
-        prestiti_per_persona = [
-            row["prestiti"]
-            for row in righe_report
-        ]
-
-        media_prestiti_persona = (
-            totale_prestiti / totale_documenti
-            if totale_documenti
-            else 0
-        )
-
-        mediana_prestiti_persona = (
-            median(prestiti_per_persona)
-            if prestiti_per_persona
-            else 0
-        )
-
-        dev_std_prestiti_persona = (
-            pstdev(prestiti_per_persona)
-            if prestiti_per_persona
-            else 0
-        )
-
-        persone_almeno_2 = sum(
-            1
-            for valore in prestiti_per_persona
-            if valore >= 2
-        )
-
-        persone_almeno_3 = sum(
-            1
-            for valore in prestiti_per_persona
-            if valore >= 3
-        )
-
-        percentuale_almeno_2 = (
-            persone_almeno_2 / totale_documenti * 100
-            if totale_documenti
-            else 0
-        )
-
-        percentuale_almeno_3 = (
-            persone_almeno_3 / totale_documenti * 100
-            if totale_documenti
-            else 0
-        )
-
-        permanenze = [
-            row["tempo_documento_secondi"]
-            for row in righe_report
-        ]
-
-        permanenza_mediana_secondi = (
-            median(permanenze)
-            if permanenze
-            else None
-        )
-
-        durata_mediana_prestito_secondi = (
-            median(tutte_durate_prestiti)
-            if tutte_durate_prestiti
-            else None
-        )
+        totale_documenti = report.totale_documenti
+        totale_prestiti = report.totale_prestiti
+        prestiti_per_persona = report.prestiti_per_persona
+        media_prestiti_persona = report.media_prestiti_persona
+        mediana_prestiti_persona = report.mediana_prestiti_persona
+        dev_std_prestiti_persona = report.dev_std_prestiti_persona
+        persone_almeno_3 = report.persone_almeno_3
+        percentuale_almeno_2 = report.percentuale_almeno_2
+        percentuale_almeno_3 = report.percentuale_almeno_3
+        permanenza_mediana_secondi = report.permanenza_mediana_secondi
+        durata_mediana_prestito_secondi = report.durata_mediana_prestito_secondi
 
         ttk.Label(
             frame,
@@ -3242,15 +2784,6 @@ class PrestitiApp(ttk.Window):
         # ESPORTAZIONE CSV
         # ----------------------------------------------------
 
-        def minuti_csv(secondi):
-            if secondi is None:
-                return ""
-
-            return (
-                f"{secondi / 60:.2f}"
-                .replace(".", ",")
-            )
-
         def esporta_csv():
             if not righe_report:
                 messagebox.showinfo(
@@ -3278,48 +2811,26 @@ class PrestitiApp(ttk.Window):
             if not percorso:
                 return
 
+            intestazioni = [
+                tr("people_report.csv_document"),
+                tr("people_report.csv_token"),
+                tr("people_report.csv_entry"),
+                tr("people_report.csv_exit"),
+                tr("people_report.csv_num_loans"),
+                tr("people_report.csv_stay"),
+                tr("people_report.csv_stay_minutes"),
+                tr("people_report.csv_avg"),
+                tr("people_report.csv_avg_minutes"),
+                tr("people_report.csv_status")
+            ]
+            righe_csv = reporting.righe_csv_documenti(
+                report,
+                tr("common.in_progress"),
+                tr("common.closed")
+            )
+
             try:
-                with open(
-                    percorso,
-                    "w",
-                    newline="",
-                    encoding="utf-8-sig"
-                ) as csvfile:
-                    writer = csv.writer(
-                        csvfile,
-                        delimiter=";"
-                    )
-
-                    writer.writerow([
-                        tr("people_report.csv_document"),
-                        tr("people_report.csv_token"),
-                        tr("people_report.csv_entry"),
-                        tr("people_report.csv_exit"),
-                        tr("people_report.csv_num_loans"),
-                        tr("people_report.csv_stay"),
-                        tr("people_report.csv_stay_minutes"),
-                        tr("people_report.csv_avg"),
-                        tr("people_report.csv_avg_minutes"),
-                        tr("people_report.csv_status")
-                    ])
-
-                    for row in righe_report:
-                        writer.writerow([
-                            row["documento_id"],
-                            row["token"],
-                            row["ingresso"],
-                            row["uscita"],
-                            row["prestiti"],
-                            row["tempo_documento"],
-                            minuti_csv(
-                                row["tempo_documento_secondi"]
-                            ),
-                            row["media_partita"],
-                            minuti_csv(
-                                row["media_partita_secondi"]
-                            ),
-                            row["stato"]
-                        ])
+                reporting.esporta_csv(percorso, intestazioni, righe_csv)
 
             except OSError as e:
                 messagebox.showerror(
@@ -3772,251 +3283,17 @@ class PrestitiApp(ttk.Window):
         # COSTRUZIONE DATI REPORT
         # ----------------------------------------------------
 
-        # La data finale è inclusiva:
-        # "dal 05/09 al 06/09" significa
-        # 05/09 00:00 <= uscita < 07/09 00:00.
-        inizio = data_inizio.replace(
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0
+        report = reporting.report_utilizzo(
+            data_inizio,
+            data_fine,
+            proprietario_id=proprietario_id,
+            escludi_tempo_zero=escludi_tempo_zero,
+            ordina_per=ordina_per,
+            ordine_desc=ordine_desc
         )
-        fine_esclusiva = (
-            data_fine.replace(
-                hour=0,
-                minute=0,
-                second=0,
-                microsecond=0
-            )
-            + timedelta(days=1)
-        )
-
-        inizio_iso = inizio.isoformat(
-            timespec="seconds"
-        )
-        fine_iso = fine_esclusiva.isoformat(
-            timespec="seconds"
-        )
-
-        with get_db() as db:
-            giochi = db.execute("""
-                SELECT
-                    g.id,
-                    g.nome,
-                    g.attivo,
-                    COALESCE(SUM(cg.quantita), 0) AS copie_totali
-                FROM giochi g
-                LEFT JOIN copie_gioco cg
-                  ON cg.gioco_id = g.id
-                GROUP BY
-                    g.id,
-                    g.nome,
-                    g.attivo
-                HAVING COALESCE(SUM(cg.quantita), 0) > 0
-                ORDER BY g.nome
-            """).fetchall()
-
-            proprietari_giochi = db.execute("""
-                SELECT
-                    cg.gioco_id,
-                    p.id AS proprietario_id,
-                    p.nome AS proprietario_nome,
-                    cg.quantita
-                FROM copie_gioco cg
-                JOIN proprietari p
-                  ON p.id = cg.proprietario_id
-                WHERE cg.quantita > 0
-                ORDER BY
-                    cg.gioco_id,
-                    p.nome
-            """).fetchall()
-
-            prestiti_periodo = db.execute("""
-                SELECT
-                    gioco_id,
-                    uscita,
-                    rientro
-                FROM prestiti
-                WHERE uscita >= ?
-                  AND uscita < ?
-                ORDER BY uscita
-            """, (
-                inizio_iso,
-                fine_iso
-            )).fetchall()
-
-        proprietari_per_gioco = {}
-
-        for row in proprietari_giochi:
-            proprietari_per_gioco.setdefault(
-                row["gioco_id"],
-                []
-            ).append({
-                "id": row["proprietario_id"],
-                "nome": row["proprietario_nome"],
-                "quantita": row["quantita"]
-            })
-
-        prestiti_per_gioco = {}
-
-        for row in prestiti_periodo:
-            prestiti_per_gioco.setdefault(
-                row["gioco_id"],
-                []
-            ).append(row)
-
-        def formatta_durata(secondi):
-            if secondi is None:
-                return "—"
-
-            secondi = max(
-                0,
-                int(round(secondi))
-            )
-
-            ore_totali, resto = divmod(
-                secondi,
-                3600
-            )
-            minuti, _ = divmod(
-                resto,
-                60
-            )
-
-            if ore_totali > 0:
-                return f"{ore_totali}h {minuti:02d}m"
-
-            return f"{minuti}m"
-
-        righe_report = []
-
-        for gioco in giochi:
-            proprietari_del_gioco = proprietari_per_gioco.get(
-                gioco["id"],
-                []
-            )
-
-            if proprietario_id is not None:
-                if not any(
-                    p["id"] == proprietario_id
-                    for p in proprietari_del_gioco
-                ):
-                    continue
-
-            proprietari_testo = ", ".join(
-                f'{p["nome"]} ({p["quantita"]})'
-                for p in proprietari_del_gioco
-            )
-
-            prestiti_gioco = prestiti_per_gioco.get(
-                gioco["id"],
-                []
-            )
-
-            durate = []
-
-            for prestito in prestiti_gioco:
-                # Le metriche di durata vengono calcolate sui soli prestiti
-                # conclusi. I prestiti ancora aperti restano comunque inclusi
-                # nel conteggio "Prestiti".
-                if not prestito["rientro"]:
-                    continue
-
-                try:
-                    uscita = datetime.fromisoformat(
-                        prestito["uscita"]
-                    )
-                    rientro = datetime.fromisoformat(
-                        prestito["rientro"]
-                    )
-
-                    durata = (
-                        rientro
-                        - uscita
-                    ).total_seconds()
-
-                    if durata >= 0:
-                        durate.append(
-                            durata
-                        )
-
-                except (ValueError, TypeError):
-                    continue
-
-            numero_prestiti = len(
-                prestiti_gioco
-            )
-
-            totale_secondi = sum(
-                durate
-            )
-
-            media_secondi = (
-                totale_secondi / len(durate)
-                if durate
-                else None
-            )
-
-            deviazione_secondi = (
-                pstdev(durate)
-                if durate
-                else None
-            )
-
-            righe_report.append({
-                "gioco": gioco["nome"],
-                "proprietari": proprietari_testo or "—",
-                "copie_totali": gioco["copie_totali"],
-                "prestiti": numero_prestiti,
-                "tempo_totale_secondi": totale_secondi,
-                "tempo_totale": formatta_durata(
-                    totale_secondi
-                ),
-                "media_secondi": media_secondi,
-                "media": formatta_durata(
-                    media_secondi
-                ),
-                "deviazione_secondi": deviazione_secondi,
-                "deviazione": formatta_durata(
-                    deviazione_secondi
-                ),
-                "durate_prestiti": durate
-            })
-
-        # Filtro opzionale: nasconde i giochi che, nell'intervallo,
-        # non hanno accumulato alcun tempo di prestito concluso.
-        if escludi_tempo_zero:
-            righe_report = [
-                row
-                for row in righe_report
-                if row["tempo_totale_secondi"] > 0
-            ]
-
-        # Ordinamento numerico reale per prestiti/durate.
-        # Per valori non disponibili (es. media senza prestiti conclusi)
-        # usiamo -1, così restano in fondo in ordine crescente e
-        # in testa in ordine decrescente solo se esplicitamente richiesto.
-        def chiave_ordinamento(row):
-            if ordina_per == "prestiti":
-                return row["prestiti"]
-
-            if ordina_per == "tempo_totale_secondi":
-                return row["tempo_totale_secondi"]
-
-            if ordina_per == "media_secondi":
-                valore = row["media_secondi"]
-                return -1 if valore is None else valore
-
-            return row["gioco"].casefold()
-
-        righe_report.sort(
-            key=chiave_ordinamento,
-            reverse=ordine_desc
-        )
-
-        # ----------------------------------------------------
-        # RIEPILOGO E STATISTICHE DESCRITTIVE
-        # ----------------------------------------------------
+        inizio = report.inizio
+        righe_report = report.righe
+        formatta_durata = reporting.formatta_durata
 
         proprietario_testo = (
             tr("common.all")
@@ -4036,66 +3313,16 @@ class PrestitiApp(ttk.Window):
             tr("usage.sort_game")
         )
 
-        totale_titoli = len(
-            righe_report
-        )
-
-        totale_prestiti = sum(
-            row["prestiti"]
-            for row in righe_report
-        )
-
-        prestiti_per_titolo = [
-            row["prestiti"]
-            for row in righe_report
-        ]
-
-        media_prestiti_titolo = (
-            totale_prestiti / totale_titoli
-            if totale_titoli
-            else 0
-        )
-
-        mediana_prestiti_titolo = (
-            median(prestiti_per_titolo)
-            if prestiti_per_titolo
-            else 0
-        )
-
-        dev_std_prestiti_titolo = (
-            pstdev(prestiti_per_titolo)
-            if prestiti_per_titolo
-            else 0
-        )
-
-        titoli_utilizzati = sum(
-            1
-            for valore in prestiti_per_titolo
-            if valore > 0
-        )
-
-        percentuale_titoli_utilizzati = (
-            titoli_utilizzati / totale_titoli * 100
-            if totale_titoli
-            else 0
-        )
-
-        tutte_durate_prestiti = [
-            durata
-            for row in righe_report
-            for durata in row["durate_prestiti"]
-        ]
-
-        durata_mediana_prestito_secondi = (
-            median(tutte_durate_prestiti)
-            if tutte_durate_prestiti
-            else None
-        )
-
-        tempo_totale_fuori_secondi = sum(
-            row["tempo_totale_secondi"]
-            for row in righe_report
-        )
+        totale_titoli = report.totale_titoli
+        totale_prestiti = report.totale_prestiti
+        prestiti_per_titolo = report.prestiti_per_titolo
+        media_prestiti_titolo = report.media_prestiti_titolo
+        mediana_prestiti_titolo = report.mediana_prestiti_titolo
+        dev_std_prestiti_titolo = report.dev_std_prestiti_titolo
+        titoli_utilizzati = report.titoli_utilizzati
+        percentuale_titoli_utilizzati = report.percentuale_titoli_utilizzati
+        durata_mediana_prestito_secondi = report.durata_mediana_prestito_secondi
+        tempo_totale_fuori_secondi = report.tempo_totale_fuori_secondi
 
         ttk.Label(
             frame,
@@ -4461,15 +3688,6 @@ class PrestitiApp(ttk.Window):
         # ESPORTAZIONE CSV
         # ----------------------------------------------------
 
-        def minuti_csv(secondi):
-            if secondi is None:
-                return ""
-
-            return (
-                f"{secondi / 60:.2f}"
-                .replace(".", ",")
-            )
-
         def esporta_csv():
             if not righe_report:
                 messagebox.showinfo(
@@ -4497,50 +3715,22 @@ class PrestitiApp(ttk.Window):
             if not percorso:
                 return
 
+            intestazioni = [
+                tr("usage.sort_game"),
+                tr("usage.csv_owners"),
+                tr("usage.csv_total_copies"),
+                tr("usage.csv_loans"),
+                tr("usage.csv_total_time"),
+                tr("usage.csv_total_minutes"),
+                tr("usage.csv_avg"),
+                tr("usage.csv_avg_minutes"),
+                tr("usage.csv_std"),
+                tr("usage.csv_std_minutes")
+            ]
+            righe_csv = reporting.righe_csv_utilizzo(report)
+
             try:
-                with open(
-                    percorso,
-                    "w",
-                    newline="",
-                    encoding="utf-8-sig"
-                ) as csvfile:
-                    writer = csv.writer(
-                        csvfile,
-                        delimiter=";"
-                    )
-
-                    writer.writerow([
-                        tr("usage.sort_game"),
-                        tr("usage.csv_owners"),
-                        tr("usage.csv_total_copies"),
-                        tr("usage.csv_loans"),
-                        tr("usage.csv_total_time"),
-                        tr("usage.csv_total_minutes"),
-                        tr("usage.csv_avg"),
-                        tr("usage.csv_avg_minutes"),
-                        tr("usage.csv_std"),
-                        tr("usage.csv_std_minutes")
-                    ])
-
-                    for row in righe_report:
-                        writer.writerow([
-                            row["gioco"],
-                            row["proprietari"],
-                            row["copie_totali"],
-                            row["prestiti"],
-                            row["tempo_totale"],
-                            minuti_csv(
-                                row["tempo_totale_secondi"]
-                            ),
-                            row["media"],
-                            minuti_csv(
-                                row["media_secondi"]
-                            ),
-                            row["deviazione"],
-                            minuti_csv(
-                                row["deviazione_secondi"]
-                            )
-                        ])
+                reporting.esporta_csv(percorso, intestazioni, righe_csv)
 
             except OSError as e:
                 messagebox.showerror(
