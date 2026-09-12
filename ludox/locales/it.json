@@ -343,5 +343,16 @@
   "organizations.select_first": "Nessuna organizzazione selezionata",
   "organizations.select_first_msg": "Seleziona prima un'organizzazione nella tabella.",
   "organizations.inactive": "Organizzazione non attiva",
-  "organizations.inactive_msg": "Puoi selezionare soltanto un'organizzazione attiva."
+  "organizations.inactive_msg": "Puoi selezionare soltanto un'organizzazione attiva.",
+  "migration.required_title": "Aggiornamento database necessario",
+  "migration.required_message_tpl": "Il database usa lo schema v{current}, mentre questa versione di LudoX richiede lo schema v{required}.\n\nPrima dell'aggiornamento verrà creato automaticamente un backup completo accanto al database.\n\nVuoi autorizzare backup e aggiornamento?",
+  "migration.future_title": "Database non compatibile",
+  "migration.future_message_tpl": "Il database usa lo schema v{current}, più recente dello schema v{supported} supportato da questa versione di LudoX.\n\nNon verrà eseguito alcun downgrade. LudoX verrà chiuso.",
+  "migration.backup_failed_title": "Backup del database non riuscito",
+  "migration.backup_failed_message_tpl": "Non è stato possibile creare il backup richiesto:\n{path}\n\nNessuna migration è stata eseguita. LudoX verrà chiuso.\n\nDettaglio: {error}",
+  "migration.failed_title": "Aggiornamento database non riuscito",
+  "migration.failed_message_tpl": "La migration è stata annullata e il database non è stato aggiornato. Il backup resta disponibile in:\n{path}\n\nLudoX verrà chiuso.\n\nDettaglio: {error}",
+  "migration.failed_no_backup_message_tpl": "Non è stato possibile inizializzare il database. LudoX verrà chiuso.\n\nDettaglio: {error}",
+  "migration.invalid_title": "Database non utilizzabile",
+  "migration.invalid_message_tpl": "Non è stato possibile verificare o preparare il database. LudoX verrà chiuso.\n\nDettaglio: {error}"
 }

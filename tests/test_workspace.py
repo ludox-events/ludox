@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from ludox import config, database as data, workspace
+from ludox import bootstrap, config, database as data, workspace
 
 
 def salva(
@@ -19,6 +19,7 @@ def salva(
     lingua="it",
     organizzazione_attiva_id=None,
     organizzazione_attiva_nome=None,
+    migrazione_autorizzata=False,
 ):
     return workspace.salva_impostazioni(
         lingua=lingua,
@@ -27,6 +28,7 @@ def salva(
         nome_proprietario_predefinito="Biblioteca",
         organizzazione_attiva_id=organizzazione_attiva_id,
         organizzazione_attiva_nome=organizzazione_attiva_nome,
+        migrazione_autorizzata=migrazione_autorizzata,
     )
 
 
@@ -165,6 +167,38 @@ def test_cambio_inizializza_database_e_salva_configurazione(db):
     )
 
 
+def test_cambio_verso_legacy_richiede_consenso_e_ripristina_workspace(db):
+    precedente = data.get_db_path()
+    destinazione = config.PROJECT_DIR / "legacy.db"
+    with sqlite3.connect(destinazione) as legacy:
+        legacy.execute("CREATE TABLE legacy_data(value TEXT)")
+        legacy.execute("INSERT INTO legacy_data VALUES ('preserved')")
+
+    with pytest.raises(bootstrap.MigrationApprovalRequired):
+        salva("legacy.db")
+
+    assert data.get_db_path() == precedente
+    assert not config.CONFIG_PATH.exists()
+    with sqlite3.connect(destinazione) as legacy:
+        assert legacy.execute("PRAGMA user_version").fetchone()[0] == 0
+        assert legacy.execute(
+            "SELECT name FROM sqlite_schema WHERE name = 'organizations'"
+        ).fetchone() is None
+
+
+def test_cambio_verso_legacy_autorizzato_crea_backup(db):
+    destinazione = config.PROJECT_DIR / "legacy.db"
+    with sqlite3.connect(destinazione) as legacy:
+        legacy.execute("CREATE TABLE legacy_data(value TEXT)")
+
+    risultato = salva("legacy.db", migrazione_autorizzata=True)
+
+    assert risultato.database_cambiato is True
+    assert data.get_db_path() == destinazione
+    assert len(list(config.PROJECT_DIR.glob("legacy.backup-v0-to-v1-*.db"))) == 1
+    assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
+
+
 def test_limite_incompatibile_nella_destinazione_ripristina_workspace(db):
     precedente = data.get_db_path()
     destinazione = config.PROJECT_DIR / "destinazione.db"
@@ -185,7 +219,7 @@ def test_limite_incompatibile_nella_destinazione_ripristina_workspace(db):
 def test_errore_apertura_destinazione_ripristina_workspace(db, monkeypatch):
     precedente = data.get_db_path()
 
-    def init_fallita(default_owner_name):
+    def init_fallita(default_owner_name, **kwargs):
         raise sqlite3.DatabaseError("database non leggibile")
 
     monkeypatch.setattr(data, "init_db", init_fallita)

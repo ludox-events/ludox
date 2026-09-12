@@ -7,9 +7,9 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import config
+from . import bootstrap, config
 from . import database as data
-from . import organizations
+from . import migrations, organizations
 
 
 class TokenNonValidi(Exception):
@@ -70,6 +70,7 @@ def salva_impostazioni(
     nome_proprietario_predefinito: str,
     organizzazione_attiva_id: int | None = None,
     organizzazione_attiva_nome: str | None = None,
+    migrazione_autorizzata: bool = False,
 ) -> ImpostazioniSalvate:
     try:
         max_tokens = int(max_tokens_testo.strip())
@@ -101,13 +102,25 @@ def salva_impostazioni(
         try:
             data.set_db_path(percorso_destinazione)
             cambiato = True
-            data.init_db(default_owner_name=nome_proprietario_predefinito)
+            data.init_db(
+                default_owner_name=nome_proprietario_predefinito,
+                migration_authorized=migrazione_autorizzata,
+            )
             token_massimo = data.massimo_token_aperto()
             if token_massimo > max_tokens:
                 data.set_db_path(percorso_precedente)
                 cambiato = False
                 raise LimiteTokenDestinazione(token_massimo)
         except LimiteTokenDestinazione:
+            raise
+        except (
+            bootstrap.MigrationApprovalRequired,
+            bootstrap.BackupCreationFailed,
+            bootstrap.MigrationExecutionFailed,
+            migrations.MigrationError,
+        ):
+            data.set_db_path(percorso_precedente)
+            cambiato = False
             raise
         except (sqlite3.Error, OSError, ValueError) as exc:
             data.set_db_path(percorso_precedente)

@@ -16,7 +16,16 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from .config import (
     AppConfig, PROJECT_DIR,
 )
-from . import catalog, lending, organizations, reporting, workspace
+from . import (
+    bootstrap,
+    catalog,
+    lending,
+    migration_ui,
+    migrations,
+    organizations,
+    reporting,
+    workspace,
+)
 from .i18n import tr, set_language, get_language, language_display_names
 
 APP_THEME = "flatly"
@@ -5265,6 +5274,25 @@ class PrestitiApp(ttk.Window):
             justify=LEFT
         ).pack(anchor=W, pady=(0, 20))
 
+        def esegui_salvataggio(language, migrazione_autorizzata=False):
+            return workspace.salva_impostazioni(
+                lingua=language,
+                max_tokens_testo=tokens_var.get(),
+                database_testo=database_var.get(),
+                nome_proprietario_predefinito=tr("owner.default"),
+                organizzazione_attiva_id=(
+                    self.organizzazione_attiva.id
+                    if self.organizzazione_attiva is not None
+                    else None
+                ),
+                organizzazione_attiva_nome=(
+                    self.organizzazione_attiva.nome
+                    if self.organizzazione_attiva is not None
+                    else None
+                ),
+                migrazione_autorizzata=migrazione_autorizzata,
+            )
+
         def salva():
             language = display_to_code.get(
                 language_var.get(),
@@ -5272,22 +5300,28 @@ class PrestitiApp(ttk.Window):
             )
 
             try:
-                risultato = workspace.salva_impostazioni(
-                    lingua=language,
-                    max_tokens_testo=tokens_var.get(),
-                    database_testo=database_var.get(),
-                    nome_proprietario_predefinito=tr("owner.default"),
-                    organizzazione_attiva_id=(
-                        self.organizzazione_attiva.id
-                        if self.organizzazione_attiva is not None
-                        else None
-                    ),
-                    organizzazione_attiva_nome=(
-                        self.organizzazione_attiva.nome
-                        if self.organizzazione_attiva is not None
-                        else None
-                    ),
-                )
+                try:
+                    risultato = esegui_salvataggio(language)
+                except bootstrap.MigrationApprovalRequired as request:
+                    autorizzata = migration_ui.chiedi_autorizzazione(
+                        request.plan,
+                        parent=self,
+                    )
+                    if not autorizzata:
+                        self.destroy()
+                        return
+                    risultato = esegui_salvataggio(
+                        language,
+                        migrazione_autorizzata=True,
+                    )
+            except (
+                bootstrap.BackupCreationFailed,
+                bootstrap.MigrationExecutionFailed,
+                migrations.MigrationError,
+            ) as error:
+                migration_ui.mostra_errore(error, parent=self)
+                self.destroy()
+                return
             except workspace.TokenNonValidi:
                 messagebox.showwarning(
                     tr("settings.invalid_tokens"),

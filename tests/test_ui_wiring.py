@@ -188,3 +188,14 @@ def test_avvio_risolve_il_contesto_prima_di_creare_la_ui():
         "PrestitiApp"
     )
     assert chiamate_main[-1] == "app.mainloop"
+
+
+def test_impostazioni_collegano_conferma_migration_e_chiusura():
+    conferme = chiamate(
+        "show_impostazioni",
+        "migration_ui.chiedi_autorizzazione",
+    )
+    chiusure = chiamate("show_impostazioni", "self.destroy")
+
+    assert len(conferme) == 1
+    assert len(chiusure) == 2
