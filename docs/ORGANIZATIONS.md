@@ -9,8 +9,6 @@
 > dell'utente. I marker `TBD` e `QUESTION` restano decisioni aperte e non
 > autorizzano Codex a scegliere autonomamente una soluzione.
 
-
-
 ## Definizione
 
 Una `Organization` è il contenitore logico superiore degli eventi gestiti da LudoX.
@@ -73,7 +71,43 @@ Ogni postazione/client lavora nel contesto di una Organization attiva.
 - la selezione può essere modificata dal Backoffice/impostazioni;
 - il cambio Organization non deve essere un'azione ordinaria della Home operativa.
 
-La scelta corrente può essere ricordata nel `config.ini` locale della postazione.
+La scelta corrente viene ricordata nel `config.ini` locale della postazione
+in forma semplice e leggibile, memorizzando sia l'ID tecnico sia il nome
+dell'Organization.
+
+Esempio:
+
+```ini
+[organization]
+active_organization_id = 2
+active_organization_name = Ludoteca Altomilanese
+```
+
+All'apertura del database LudoX verifica che l'ID configurato identifichi una
+Organization attiva e che il nome memorizzato corrisponda al nome presente nel
+database.
+
+Se ID e nome non corrispondono, la selezione viene considerata non valida e
+non deve portare alla selezione silenziosa di un'altra Organization.
+
+La logica di selezione è quindi:
+
+```text
+0 Organization attive
+→ nessuna Organization selezionata
+
+1 Organization attiva
+→ selezione automatica e aggiornamento della configurazione locale
+
+2+ Organization attive
+→ usa la selezione locale se ID e nome sono coerenti
+→ altrimenti richiede una selezione dal Backoffice/impostazioni
+```
+
+La selezione locale si riferisce al database/workspace correntemente aperto.
+Dopo un cambio di database viene semplicemente verificata contro il nuovo
+database. Non è richiesto mantenere uno storico delle Organization selezionate
+per ogni workspace.
 
 In una futura architettura client/server, client differenti potranno selezionare Organization differenti contemporaneamente.
 

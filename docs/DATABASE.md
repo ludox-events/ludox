@@ -9,8 +9,6 @@
 > dell'utente. I marker `TBD` e `QUESTION` restano decisioni aperte e non
 > autorizzano Codex a scegliere autonomamente una soluzione.
 
-
-
 Questo documento raccoglie i principi che devono guidare lo schema dati. Le tabelle e i vincoli definitivi verranno formalizzati nel passaggio successivo.
 
 ## Motore locale
@@ -55,7 +53,7 @@ I dati del modulo `game_library` appartengono all'Event e non a un catalogo glob
 
 ## Tabelle candidate
 
-I seguenti nomi sono **provvisori** e servono soltanto come traccia per la progettazione dello schema v1:
+I seguenti nomi sono **provvisori** e servono soltanto come traccia per la progettazione dello schema target:
 
 ```text
 organizations
@@ -71,13 +69,13 @@ game_library_loans
 game_library_settings
 ```
 
-- TBD: Definire lo schema SQL v1 effettivo, i nomi definitivi delle tabelle e le foreign key.
+- TBD: Definire lo schema SQL effettivo delle successive versioni, i nomi definitivi delle tabelle e le foreign key.
 
 - TBD: Decidere in quali tabelle event-specific mantenere un `event_id` diretto anche quando l'appartenenza all'Event potrebbe essere ricavata tramite altre relazioni. La priorità è evitare query ambigue e preservare l'integrità dei dati senza duplicazioni inutili.
 
 ## Copie fisiche
 
-Lo schema v1 deve rappresentare le copie fisiche come record individuali.
+Lo schema target del modulo `game_library` deve rappresentare le copie fisiche come record individuali.
 
 La quantità mostrata all'utente è quindi derivabile dal numero di copie che appartengono a un titolo e soddisfano le condizioni di disponibilità.
 
@@ -115,29 +113,45 @@ Sono già stabiliti i seguenti principi:
 
 ## Versione dello schema
 
-La nuova architettura Organization → Event → Module costituisce la prima struttura che LudoX intende mantenere nel tempo.
+LudoX utilizza `PRAGMA user_version` per registrare la versione dello schema SQLite.
 
-Lo schema utilizzerà `PRAGMA user_version` per registrare la propria versione.
-
-Esempio concettuale:
+Le versioni identificano stati precisi e riproducibili dello schema:
 
 ```text
-user_version = 1   schema iniziale Organization/Event/Modules
-user_version = 2   modifica futura
-user_version = 3   modifica successiva
+user_version = 0   schema legacy / sperimentale
+user_version = 1   Organizations
+user_version = 2   Events + Event Modules
+user_version = 3+  successive modifiche strutturali
 ```
 
-All'apertura del database, l'applicazione può confrontare la versione presente con quella richiesta dal software ed eseguire in sequenza le migrazioni necessarie.
+La versione `0` identifica lo schema precedente all'introduzione della nuova
+architettura versionata.
 
-Non è richiesta compatibilità automatica con i database sperimentali precedenti allo schema v1.
+La migration `0 → 1` introduce `Organizations`.
 
-A partire dallo schema v1, ogni modifica strutturale deve prevedere una migrazione esplicita.
+La migration `1 → 2` introduce `Events` e `Event Modules`.
 
-Le versioni dello schema usano numeri interi progressivi (`1`, `2`, `3`, ...), indipendenti dalla versione applicativa di LudoX.
+Le strutture dei moduli, compreso `game_library`, vengono introdotte o
+evolute attraverso successive versioni quando le relative feature vengono
+implementate. Il numero esatto delle versioni successive non viene riservato
+in anticipo.
+
+Ogni numero di versione identifica uno schema completo e determinato: una
+versione non deve essere costruita progressivamente da più modifiche
+strutturali indipendenti senza incremento di `user_version`.
+
+All'apertura del database, l'applicazione confronta la versione presente con quella richiesta dal software ed esegue in sequenza le migrazioni necessarie.
+
+Ogni modifica strutturale da `v0` in avanti deve prevedere una migrazione
+esplicita.
+
+Le versioni dello schema usano numeri interi progressivi, indipendenti dalla
+versione applicativa di LudoX.
 
 Le migration vengono applicate in ordine crescente. Prima di una migration non banale, distruttiva o non reversibile deve essere creato un backup del database.
 
-- TBD: Definire il meccanismo concreto di registrazione/esecuzione delle migration e il formato/posizione dei backup.
+Il meccanismo concreto di detection, esecuzione, rollback e backup delle
+migration è implementato dall'infrastruttura introdotta con la issue #12.
 
 ## Service layer
 
@@ -183,11 +197,9 @@ Giochi e copie possono avere identificativi esterni opzionali. Gli identificativ
 
 - TBD: Definire le regole di unicità degli identificativi esterni dei giochi e dei codici `LUDOX_QR` / `EXTERNAL_BARCODE`.
 
+## Schema logico target
 
-
-## Schema logico target v1
-
-> **Stato:** design approvato a livello concettuale. Questa sezione descrive il modello dati target e **non implica che lo schema sia già implementato nel codice corrente**. L'implementazione verrà affrontata separatamente, quando sarà deciso di intervenire sul database.
+> **Stato:** design approvato a livello concettuale. Questa sezione descrive il modello dati target e **non implica che tutte le strutture siano già implementate nella stessa versione dello schema**. L'implementazione avviene progressivamente attraverso migration versionate.
 
 Il database LudoX rappresenta un workspace che può contenere più Organization e più Event. Ogni Event appartiene a una sola Organization e abilita i moduli necessari.
 
@@ -429,17 +441,15 @@ Questa scelta introduce una ridondanza controllata, ma semplifica:
 
 ### Implementazione separata
 
-La struttura sopra è una specifica di progetto. Prima dell'implementazione devono essere definiti in dettaglio:
+La struttura sopra è una specifica di progetto. Prima dell'implementazione delle relative parti devono essere definiti in dettaglio:
 
 - chiavi primarie e foreign key;
 - vincoli `UNIQUE`;
 - comportamento `ON DELETE`;
 - indici;
-- migration dallo schema sperimentale corrente;
+- migration necessarie dalla versione precedente;
 - test di integrità;
 - strategia di backup.
-
-Lo schema SQL non viene definito in questa fase.
 
 ## Scope della configurazione
 

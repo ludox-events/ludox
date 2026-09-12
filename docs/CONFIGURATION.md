@@ -29,6 +29,27 @@ MODULE
 Ogni impostazione deve essere salvata nel livello più vicino al dato o al
 comportamento che controlla.
 
+## Principio di semplicità e leggibilità
+
+La configurazione di LudoX deve rimanere comprensibile e gestibile anche da
+una persona non esperta di sistemi.
+
+Quando esistono più soluzioni equivalenti, va preferita quella che mantiene:
+
+- pochi parametri;
+- nomi espliciti;
+- valori leggibili;
+- file di configurazione ispezionabili manualmente;
+- comportamento prevedibile e facilmente recuperabile.
+
+Identificativi opachi, UUID, hash, mapping indiretti o strutture aggiuntive
+non devono essere introdotti soltanto per anticipare possibili esigenze
+future.
+
+Se una configurazione contiene un identificativo tecnico, quando utile deve
+essere affiancato da un valore leggibile che aiuti l'utente a comprenderne il
+significato e permetta controlli di coerenza.
+
 ## 1. Configurazione della postazione / client
 
 Comprende almeno:
@@ -55,6 +76,36 @@ Nel modello target può contenere riferimenti o preferenze come:
 
 Non deve contenere configurazioni operative proprie di un Event o di un
 modulo.
+
+Per l'Organization attiva, la configurazione locale memorizza sia
+l'identificativo interno sia il nome leggibile, per esempio:
+
+```ini
+[organization]
+active_organization_id = 2
+active_organization_name = Ludoteca Altomilanese
+```
+
+L'ID resta l'identificativo tecnico dell'Organization nel database. Il nome
+salvato nella configurazione rende il riferimento leggibile e costituisce un
+controllo aggiuntivo di coerenza.
+
+All'apertura del database LudoX verifica che:
+
+- l'Organization con l'ID configurato esista;
+- sia attiva;
+- il suo nome corrisponda al nome memorizzato nella configurazione.
+
+Se ID e nome non corrispondono, la selezione locale non viene usata
+silenziosamente.
+
+La selezione memorizzata si riferisce sempre al database/workspace
+attualmente configurato. Dopo un cambio di database viene quindi validata
+contro il nuovo database; se non corrisponde a una Organization valida, viene
+ignorata e viene applicata la normale logica di selezione.
+
+Non è necessario introdurre mapping tra workspace, UUID o altri
+identificativi aggiuntivi per questo scopo.
 
 ## 2. Configurazione della Organization
 

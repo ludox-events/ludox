@@ -60,7 +60,31 @@ read-only during implementation:
 The header inside each file is the authoritative protection signal. Future
 specification files should use the same header.
 
-## 4. Keep implementation scope narrow
+## 4. Prefer simple and readable solutions
+
+LudoX is intended to be installable and configurable by people who are not
+system administrators or software developers.
+
+When multiple solutions satisfy the same approved requirements, prefer the
+one that is:
+
+- easier to understand;
+- easier to configure from the UI;
+- easier to inspect in plain-text configuration files;
+- easier to diagnose and recover manually;
+- based on familiar identifiers and concepts.
+
+Do not introduce UUIDs, hashes, opaque generated identifiers, hidden mapping
+layers, additional configuration files, registries, or speculative
+abstractions only to prepare for hypothetical future requirements.
+
+Such mechanisms are acceptable only when an approved requirement or a
+concrete technical constraint makes the simpler solution insufficient.
+
+Human-readable configuration is a project feature, not an implementation
+detail.
+
+## 5. Keep implementation scope narrow
 
 Implement only the requested feature.
 
@@ -77,7 +101,7 @@ In particular:
 Example: implementing database export/backup must not trigger implementation
 of the future database schema described in `docs/DATABASE.md`.
 
-## 5. Database changes require explicit scope
+## 6. Database changes require explicit scope
 
 Before changing database tables, relationships, migrations, or schema
 versioning, verify that the current task explicitly requires a schema change.
@@ -87,7 +111,7 @@ If it does not, leave the schema unchanged.
 When a task only needs to read, back up, export, or inspect the current
 database, prefer an implementation that works with the existing schema.
 
-## 6. Documentation during implementation
+## 7. Documentation during implementation
 
 Implementation tasks may update ordinary implementation documentation when
 needed, but protected specifications must not be changed unless explicitly
@@ -96,7 +120,7 @@ requested.
 If implementation reveals a possible specification improvement, report it
 separately instead of editing the specification.
 
-## 7. Completion report
+## 8. Completion report
 
 At the end of an implementation task, report:
 
@@ -107,7 +131,7 @@ At the end of an implementation task, report:
 
 If no approved specification was modified, state that explicitly.
 
-## 8. Preferred implementation workflow
+## 9. Preferred implementation workflow
 
 Before coding:
 

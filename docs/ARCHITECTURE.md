@@ -9,8 +9,6 @@
 > dell'utente. I marker `TBD` e `QUESTION` restano decisioni aperte e non
 > autorizzano Codex a scegliere autonomamente una soluzione.
 
-
-
 Questo documento descrive i principi architetturali generali di LudoX. I dettagli dei singoli domini sono documentati nei file dedicati.
 
 ## Obiettivo
@@ -37,6 +35,24 @@ Database / workspace LudoX
 Un database può contenere più organizzazioni e più eventi. LudoX deve continuare a poter creare e aprire database differenti quando serve una separazione fisica completa dei workspace.
 
 ## Principi
+
+### Semplicità e leggibilità
+
+La semplicità di installazione e configurazione è un obiettivo architetturale primario di LudoX.
+
+Il sistema deve poter essere configurato e compreso anche da una persona che non abbia competenze da amministratore di sistema o sviluppatore.
+
+Quando più soluzioni soddisfano gli stessi requisiti, deve essere preferita quella:
+
+- più semplice da spiegare;
+- più semplice da configurare dall'interfaccia;
+- più leggibile nei file di configurazione;
+- più facile da diagnosticare e correggere manualmente;
+- basata su concetti e identificativi comprensibili.
+
+UUID, hash, mapping opachi, registri aggiuntivi, livelli di indirezione e astrazioni pensate soltanto per possibili esigenze future non devono essere introdotti se una soluzione più semplice soddisfa i requisiti correnti.
+
+La possibilità di evolvere LudoX in futuro non deve rendere inutilmente complessa la configurazione presente.
 
 ### Event-oriented
 
@@ -132,11 +148,18 @@ Eventuali futuri moduli che trattano partecipanti o prenotazioni costituiscono u
 
 ## Evoluzione dello schema
 
-La nuova struttura Organization → Event → Module costituirà la base dello **schema v1**.
+Lo schema viene evoluto per passi espliciti e riproducibili:
 
-Non viene garantita la migrazione automatica dai database sperimentali precedenti allo schema v1.
+```text
+v0 = schema legacy / sperimentale
+v1 = Organizations
+v2 = Events + Event Modules
+v3+ = successive modifiche strutturali
+```
 
-A partire dallo schema v1, l'evoluzione del database deve essere versionata e gestita tramite migrazioni.
+Ogni versione identifica uno stato preciso dello schema. Una versione non deve essere costruita progressivamente da più implementazioni indipendenti.
+
+Ogni passaggio strutturale deve essere gestito tramite il meccanismo di migrazione definito per LudoX.
 
 Vedi [DATABASE.md](DATABASE.md).
 
