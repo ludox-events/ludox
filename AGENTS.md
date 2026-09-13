@@ -260,3 +260,64 @@ run the complete relevant test suite before reporting completion.
 
 When unsure whether a decision belongs to implementation or specification,
 ask the user instead of deciding silently.
+
+11. Global UI implementation directives
+
+These directives apply to every UI implementation unless the user explicitly
+overrides them for a specific task.
+
+11.1 Temporary adaptive-layout directive
+
+For the current development phase, every screen must remain fully usable when
+its content is taller than the available window or display area.
+
+Prefer a simple vertical scrolling solution over shrinking controls,
+compressing the layout excessively, or allowing buttons/fields to become
+unreachable.
+
+In particular:
+
+- no required control may be inaccessible because of window size or Windows
+  display scaling;
+- forms and Backoffice pages with variable or growing content should be
+  scrollable when needed;
+- the minimum supported window size must still allow the user to reach every
+  action through scrolling;
+- do not redesign the whole UI only to satisfy this requirement.
+
+This scrolling preference is a temporary project directive. A later dedicated
+UI review may replace it with more adaptive layouts.
+
+11.2 Date and time picker directive
+
+Whenever the UI asks the user to enter a date, a time, or a datetime, do not
+require the user to type a complete date/time string manually.
+
+Use selectable picker controls.
+
+For a datetime input:
+
+- provide a date picker/calendar for the date;
+- provide a separate selectable control for the time;
+- hour and minute must be selectable independently or through a dedicated time
+  picker;
+- combine the selected date and time internally into the stored datetime;
+- validate the resulting value before saving.
+
+If the current Tkinter/ttkbootstrap stack does not provide a suitable native
+time picker, simple readable controls such as Combobox or Spinbox selectors
+for hour and minute are acceptable.
+
+A free-text ISO datetime field must not be the only input method.
+
+Seconds should not be requested unless a concrete functional requirement needs
+them.
+
+Where a timezone must be selected by the user, prefer a selectable list or
+Combobox of valid timezone identifiers instead of requiring arbitrary
+free-text input.
+
+Existing screens that are modified as part of a task should be brought into
+compliance with these rules when the change is reasonably within the task
+scope.
+
