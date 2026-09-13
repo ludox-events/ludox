@@ -37,7 +37,7 @@ if exist "dist\LudoX-Guida-rapida.pdf" (
   if errorlevel 1 exit /b 1
 )
 
-powershell -NoProfile -Command "Compress-Archive -Path 'build\windows\LudoX\*' -DestinationPath 'dist\windows\LudoX-%VERSION%-windows-x64.zip' -Force"
+".venv\Scripts\python.exe" -c "import os, shutil; shutil.make_archive(os.path.join('dist', 'windows', 'LudoX-' + os.environ['VERSION'] + '-windows-x64'), 'zip', os.path.join('build', 'windows', 'LudoX'))"
 if errorlevel 1 exit /b 1
 
 echo OK: dist\windows\LudoX-%VERSION%-windows-x64.zip
