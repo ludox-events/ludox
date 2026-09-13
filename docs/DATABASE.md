@@ -201,10 +201,10 @@ almeno:
 
 ```text
 id
- event_id
- copy_id
- source
- value
+event_id
+copy_id
+source
+value
 ```
 
 con:
