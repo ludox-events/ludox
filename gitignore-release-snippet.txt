@@ -1,0 +1,5 @@
+.venv-build/
+.venv-docs/
+build/
+dist/
+*.spec

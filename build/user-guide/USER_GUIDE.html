@@ -1,0 +1,602 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<base href="file:///C:/Users/gurus/gitrepo/LudoX/docs/">
+<title>LudoX - Guida rapida</title>
+<style>
+
+@page {
+    size: A4;
+    margin: 16mm 16mm 20mm 16mm;
+}
+
+html {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+}
+
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.45;
+    color: #222;
+    max-width: 178mm;
+    margin: 0 auto;
+}
+
+h1 {
+    font-size: 24pt;
+    line-height: 1.15;
+    margin: 0 0 8mm;
+}
+
+h2 {
+    font-size: 17pt;
+    line-height: 1.2;
+    margin-top: 10mm;
+    margin-bottom: 4mm;
+    break-after: avoid-page;
+    page-break-after: avoid;
+}
+
+h3 {
+    font-size: 13pt;
+    margin-top: 7mm;
+    margin-bottom: 3mm;
+    break-after: avoid-page;
+    page-break-after: avoid;
+}
+
+p {
+    orphans: 3;
+    widows: 3;
+}
+
+img {
+    display: block;
+    max-width: 100%;
+    max-height: 185mm;
+    width: auto;
+    height: auto;
+    margin: 5mm auto 2mm;
+    object-fit: contain;
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+
+pre {
+    background: #f3f3f3;
+    padding: 4mm;
+    border-radius: 2mm;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+
+code {
+    font-family: Consolas, "Courier New", monospace;
+}
+
+blockquote {
+    border-left: 3px solid #888;
+    padding: 2mm 0 2mm 5mm;
+    margin: 5mm 0;
+    color: #444;
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+
+li {
+    margin-bottom: 1.4mm;
+}
+
+hr {
+    border: 0;
+    border-top: 1px solid #ccc;
+    margin: 8mm 0;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 5mm 0;
+    break-inside: avoid;
+}
+
+th, td {
+    border: 1px solid #bbb;
+    padding: 2.5mm;
+    vertical-align: top;
+}
+
+em {
+    color: #555;
+}
+
+</style>
+</head>
+<body>
+<h1>LudoX — Guida rapida</h1>
+<p><strong>Versione 0.1.0-alpha</strong></p>
+<p>LudoX è un'applicazione locale per gestire il prestito di giochi durante eventi, serate ludiche, biblioteche e ludoteche.</p>
+<p>Questa guida descrive la versione <strong>0.1.0-alpha</strong> e il suo flusso principale: preparare la ludoteca, consegnare un gioco, gestire eventuali cambi e chiudere correttamente il prestito restituendo il documento.</p>
+<blockquote>
+<p><strong>Versione alpha</strong></p>
+<p>LudoX è ancora in sviluppo. Prima di utilizzarlo durante un evento reale è consigliato fare una prova completa della postazione, verificare i token fisici e controllare che il database selezionato sia quello corretto.</p>
+</blockquote>
+<h2>1. Come funziona LudoX</h2>
+<p>LudoX usa un sistema anonimo basato su <strong>token numerati</strong>.</p>
+<p>Quando una persona prende un gioco:</p>
+<ol>
+<li>consegna un documento alla postazione;</li>
+<li>LudoX assegna automaticamente un token libero;</li>
+<li>il documento viene custodito nella posizione fisica con lo stesso numero;</li>
+<li>il token numerato viene consegnato alla persona;</li>
+<li>LudoX registra il gioco in prestito.</li>
+</ol>
+<p>Esempio:</p>
+<pre><code class="language-text">LudoX assegna TOKEN 27
+
+Documento → posizione 27
+Token 27  → persona
+Gioco     → persona
+</code></pre>
+<p>LudoX <strong>non registra nel database il nome della persona, il numero del documento o altri dati identificativi</strong>.</p>
+<p>Il numero del token serve soltanto a collegare temporaneamente il prestito alla posizione fisica in cui è custodito il documento.</p>
+<h3>Materiale consigliato</h3>
+<p>Per utilizzare il sistema servono:</p>
+<ul>
+<li>un PC con LudoX;</li>
+<li>i giochi disponibili;</li>
+<li>token fisici numerati;</li>
+<li>uno schedario, portalistini o porta-carte con posizioni numerate;</li>
+<li>una postazione custodita e non liberamente accessibile al pubblico.</li>
+</ul>
+<p>Il numero di token configurato in LudoX deve corrispondere alle posizioni fisiche realmente disponibili.</p>
+<hr />
+<h2>2. Avvio e configurazione iniziale</h2>
+<p>Al primo avvio LudoX mostra la schermata <strong>Configurazione iniziale / Initial setup</strong>.</p>
+<p>Devi scegliere:</p>
+<ul>
+<li><strong>Lingua / Language</strong>;</li>
+<li><strong>Numero di token / Number of tokens</strong>;</li>
+<li><strong>Database</strong>.</li>
+</ul>
+<p>Il valore proposto per i token è <strong>50</strong>.</p>
+<h3>Scelta del database</h3>
+<p>Il database contiene giochi, proprietari, prestiti e storico.</p>
+<p>Puoi:</p>
+<ul>
+<li>scrivere direttamente un nome, per esempio <code>AMIGO2026.db</code>;</li>
+<li>premere <strong>NUOVO… / NEW…</strong> per scegliere dove creare un nuovo database;</li>
+<li>premere <strong>APRI ESISTENTE… / OPEN EXISTING…</strong> per utilizzare un database LudoX già esistente.</li>
+</ul>
+<p>Se inserisci soltanto un nome, LudoX crea il database nella cartella dell'applicazione.</p>
+<p>Quando hai terminato premi:</p>
+<p><strong>SALVA CONFIGURAZIONE E AVVIA / SAVE CONFIGURATION AND START</strong></p>
+<p><img alt="Configurazione iniziale di LudoX" src="user-guide/images/01-first-run.png" /></p>
+<p><em>Configurazione iniziale: lingua, numero di token e database.</em></p>
+<blockquote>
+<p>Conserva con attenzione il file del database. Contiene i dati operativi e lo storico della postazione.</p>
+</blockquote>
+<hr />
+<h2>3. La schermata principale</h2>
+<p>La Home mostra tre contatori:</p>
+<ul>
+<li><strong>PRESTITI EFFETTUATI</strong> — numero complessivo dei prestiti registrati;</li>
+<li><strong>PERSONE / DOCUMENTI</strong> — numero delle sessioni/documenti gestiti;</li>
+<li><strong>PRESTITI ATTIVI</strong> — documenti attualmente depositati.</li>
+</ul>
+<p>Le quattro azioni principali sono:</p>
+<ul>
+<li><strong>＋ NUOVO PRESTITO</strong></li>
+<li><strong>↔ CAMBIO GIOCO</strong></li>
+<li><strong>✓ RESTITUZIONE FINALE</strong></li>
+<li><strong>▥ STATISTICHE</strong></li>
+</ul>
+<p>In fondo trovi:</p>
+<ul>
+<li><strong>⚙ BACKOFFICE</strong></li>
+</ul>
+<p><img alt="Home di LudoX" src="user-guide/images/02-home.png" /></p>
+<p><em>Home con contatori e operazioni principali.</em></p>
+<hr />
+<h1>Preparazione della ludoteca</h1>
+<h2>4. Entrare nel Backoffice</h2>
+<p>Dalla Home premi <strong>⚙ BACKOFFICE</strong>.</p>
+<p>La password predefinita della versione alpha è:</p>
+<pre><code class="language-text">ludox
+</code></pre>
+<p>Premi <strong>ACCEDI</strong>.</p>
+<p>La password serve a evitare accessi accidentali alla parte amministrativa, ma <strong>non è una protezione di sicurezza forte</strong>.</p>
+<p>Nel Backoffice trovi:</p>
+<ul>
+<li><strong>GESTIONE GIOCHI</strong></li>
+<li><strong>GESTIONE PROPRIETARI</strong></li>
+<li><strong>TUTTI I PRESTITI</strong></li>
+<li><strong>DOCUMENTI / PERSONE</strong></li>
+<li><strong>GIOCHI PER PROPRIETARIO</strong></li>
+<li><strong>IMPOSTAZIONI</strong></li>
+<li><strong>REPORT UTILIZZO LUDOTECA</strong></li>
+<li><strong>REPORT PERSONE / DOCUMENTI</strong></li>
+</ul>
+<p><img alt="Backoffice di LudoX" src="user-guide/images/03-backoffice.png" /></p>
+<p><em>Backoffice con le funzioni di gestione, storico, report e impostazioni.</em></p>
+<hr />
+<h2>5. Gestire i proprietari</h2>
+<p>Un proprietario indica la persona o l'ente che mette a disposizione una o più copie di un gioco.</p>
+<p>Un nuovo database contiene già un proprietario iniziale generico, normalmente <strong>Organizzazione</strong>.</p>
+<p>Per aggiungerne altri:</p>
+<ol>
+<li>apri <strong>GESTIONE PROPRIETARI</strong>;</li>
+<li>premi <strong>＋ AGGIUNGI PROPRIETARIO</strong>;</li>
+<li>inserisci il nome;</li>
+<li>premi <strong>SALVA PROPRIETARIO</strong>.</li>
+</ol>
+<p>Esempi:</p>
+<pre><code class="language-text">Organizzazione
+Biblioteca
+Mario
+Associazione ABC
+</code></pre>
+<p>Dalla stessa schermata puoi selezionare un proprietario e premere <strong>MODIFICA PROPRIETARIO SELEZIONATO</strong>.</p>
+<p>Un proprietario può essere disattivato. Se ha ancora copie associate, LudoX chiede una conferma.</p>
+<hr />
+<h2>6. Aggiungere i giochi</h2>
+<p>Prima di iniziare i prestiti devi inserire i giochi e indicare quante copie sono disponibili.</p>
+<p>Apri:</p>
+<p><strong>BACKOFFICE → GESTIONE GIOCHI</strong></p>
+<p>Poi:</p>
+<ol>
+<li>premi <strong>＋ AGGIUNGI GIOCO</strong>;</li>
+<li>inserisci il nome del gioco;</li>
+<li>premi <strong>SALVA E ASSEGNA COPIE</strong>.</li>
+</ol>
+<p>LudoX apre la schermata <strong>MODIFICA GIOCO</strong>.</p>
+<h3>Assegnare le copie</h3>
+<p>Nella sezione <strong>COPIE PER PROPRIETARIO</strong>:</p>
+<ol>
+<li>seleziona il proprietario;</li>
+<li>inserisci la quantità;</li>
+<li>premi <strong>SALVA QUANTITÀ</strong>.</li>
+</ol>
+<p>Puoi distribuire le copie dello stesso titolo tra più proprietari.</p>
+<p>Esempio:</p>
+<pre><code class="language-text">Azul
+
+Organizzazione → 2 copie
+Biblioteca     → 1 copia
+
+Totale         → 3 copie
+</code></pre>
+<p>Una quantità pari a <code>0</code> rimuove l'associazione tra quel proprietario e il gioco.</p>
+<p>Premi <strong>SALVA GIOCO</strong> per salvare eventuali modifiche al nome o allo stato del titolo.</p>
+<p>Un gioco disattivato non viene proposto nei nuovi prestiti. LudoX non permette di disattivarlo se ci sono ancora copie di quel titolo in prestito.</p>
+<p><img alt="Modifica di un gioco in LudoX" src="user-guide/images/04-game-edit.png" /></p>
+<p><em>Modifica del gioco e assegnazione delle copie ai proprietari.</em></p>
+<hr />
+<h1>Durante l'evento</h1>
+<h2>7. Nuovo prestito</h2>
+<p>Quando una persona vuole prendere un gioco:</p>
+<ol>
+<li>ricevi fisicamente il documento;</li>
+<li>dalla Home premi <strong>＋ NUOVO PRESTITO</strong>;</li>
+<li>cerca il gioco digitando parte del titolo;</li>
+<li>verifica la colonna <strong>DISPONIBILITÀ</strong>;</li>
+<li>seleziona il gioco;</li>
+<li>premi <strong>CONFERMA</strong> oppure fai doppio clic sul titolo.</li>
+</ol>
+<p>LudoX assegna automaticamente il primo token libero.</p>
+<p>La schermata <strong>PRESTITO REGISTRATO</strong> mostra in grande la <strong>POSIZIONE DOCUMENTO</strong>.</p>
+<p>A questo punto:</p>
+<ol>
+<li>prendi il token fisico con quel numero;</li>
+<li>inserisci il documento nella posizione con lo stesso numero;</li>
+<li>consegna il token alla persona;</li>
+<li>consegna il gioco;</li>
+<li>premi <strong>COMPLETATO — TORNA ALLA HOME</strong>.</li>
+</ol>
+<p>Esempio:</p>
+<pre><code class="language-text">POSIZIONE DOCUMENTO: 27
+
+Documento → posizione 27
+Token 27  → persona
+Gioco     → persona
+</code></pre>
+<p><img alt="Prestito registrato in LudoX" src="user-guide/images/05-loan-created.png" /></p>
+<p><em>Prestito registrato con posizione del documento e gioco da consegnare.</em></p>
+<h3>Se non ci sono token liberi</h3>
+<p>LudoX mostra <strong>Token esauriti</strong>.</p>
+<p>Prima di fare nuovi prestiti devi completare una o più restituzioni finali oppure aumentare il numero dei token, se disponi fisicamente delle relative posizioni.</p>
+<hr />
+<h2>8. Cambio gioco</h2>
+<p>La persona può restituire il gioco e prenderne un altro mantenendo lo stesso token.</p>
+<ol>
+<li>ricevi il gioco precedente;</li>
+<li>dalla Home premi <strong>↔ CAMBIO GIOCO</strong>;</li>
+<li>inserisci il numero del token;</li>
+<li>premi <strong>CONTINUA</strong>;</li>
+<li>controlla il <strong>GIOCO ATTUALE</strong> mostrato da LudoX;</li>
+<li>cerca e seleziona il nuovo gioco;</li>
+<li>premi <strong>CONFERMA</strong>.</li>
+</ol>
+<p>LudoX chiude il prestito precedente e apre il nuovo prestito mantenendo lo stesso token.</p>
+<p>La schermata <strong>CAMBIO REGISTRATO</strong> indica:</p>
+<ul>
+<li>il token;</li>
+<li>il gioco restituito;</li>
+<li>il nuovo gioco da consegnare.</li>
+</ul>
+<h3>Importante</h3>
+<p>Durante il cambio gioco <strong>non spostare il documento</strong>.</p>
+<pre><code class="language-text">Prima:
+Token 27
+Documento → posizione 27
+Gioco     → Azul
+
+Dopo:
+Token 27
+Documento → posizione 27
+Gioco     → Cascadia
+</code></pre>
+<p>Consegna nuovamente il token e il nuovo gioco alla persona.</p>
+<p><img alt="Cambio gioco registrato in LudoX" src="user-guide/images/06-game-change.png" /></p>
+<p><em>Cambio registrato mantenendo invariati token e posizione del documento.</em></p>
+<hr />
+<h2>9. Restituzione finale</h2>
+<p>Usa <strong>RESTITUZIONE FINALE</strong> quando la persona non vuole più prendere altri giochi e deve riavere il documento.</p>
+<ol>
+<li>ricevi il gioco;</li>
+<li>dalla Home premi <strong>✓ RESTITUZIONE FINALE</strong>;</li>
+<li>inserisci il numero del token;</li>
+<li>premi <strong>CONTINUA</strong>;</li>
+<li>LudoX mostra il gioco associato;</li>
+<li>conferma che il gioco è stato fisicamente restituito.</li>
+</ol>
+<p>LudoX apre quindi la schermata <strong>RESTITUZIONE DOCUMENTO</strong> e mostra in grande la posizione del documento.</p>
+<h3>Recupera prima il documento</h3>
+<ol>
+<li>vai alla posizione indicata;</li>
+<li>recupera fisicamente il documento;</li>
+<li>restituiscilo alla persona;</li>
+<li>soltanto dopo premi <strong>✓ DOCUMENTO RESTITUITO</strong>;</li>
+<li>conferma nuovamente la restituzione.</li>
+</ol>
+<p>A questo punto LudoX chiude la sessione e il token torna disponibile.</p>
+<pre><code class="language-text">Gioco rientrato
+      ↓
+LudoX mostra POSIZIONE 27
+      ↓
+Recupera il documento
+      ↓
+Restituisci il documento
+      ↓
+DOCUMENTO RESTITUITO
+      ↓
+Token 27 libero
+</code></pre>
+<p>Questa doppia conferma evita di riassegnare un token mentre il documento precedente è ancora nello schedario.</p>
+<p><img alt="Restituzione del documento in LudoX" src="user-guide/images/07-final-return.png" /></p>
+<p><em>Posizione da cui recuperare il documento prima della conferma finale.</em></p>
+<hr />
+<h2>10. Se una persona perde il token</h2>
+<p>Il token non identifica personalmente la persona.</p>
+<p>In caso di smarrimento <strong>non restituire automaticamente un documento basandoti solo sulle indicazioni fornite dalla persona</strong>.</p>
+<p>Verifica la situazione secondo le procedure definite dalla tua organizzazione prima di consegnare qualsiasi documento.</p>
+<hr />
+<h1>Controllo e statistiche</h1>
+<h2>11. Statistiche</h2>
+<p>Dalla Home premi <strong>▥ STATISTICHE</strong>.</p>
+<p>Puoi analizzare:</p>
+<ul>
+<li>giochi consegnati;</li>
+<li>nuove persone/documenti;</li>
+<li>andamento nel tempo.</li>
+</ul>
+<p>Puoi scegliere rapidamente:</p>
+<ul>
+<li><strong>12 ORE</strong></li>
+<li><strong>6 ORE</strong></li>
+<li><strong>4 ORE</strong></li>
+<li><strong>2 ORE</strong></li>
+<li><strong>1 ORA</strong></li>
+</ul>
+<p>Puoi inoltre impostare:</p>
+<ul>
+<li>data tramite calendario;</li>
+<li>ora;</li>
+<li>minuti;</li>
+<li>risoluzione del grafico.</li>
+</ul>
+<p>Le risoluzioni disponibili sono comprese tra <strong>5 e 30 minuti</strong>.</p>
+<p>Premi <strong>APPLICA</strong> per aggiornare la visualizzazione oppure <strong>ADESSO</strong> per riportare il riferimento al momento corrente.</p>
+<p><img alt="Statistiche di LudoX" src="user-guide/images/08-statistics.png" /></p>
+<p><em>Statistiche con periodo, riferimento temporale, risoluzione e grafico.</em></p>
+<hr />
+<h2>12. Storico e report</h2>
+<p>Nel Backoffice sono disponibili diverse viste di controllo.</p>
+<h3>TUTTI I PRESTITI</h3>
+<p>Mostra lo storico dei prestiti con:</p>
+<ul>
+<li>token;</li>
+<li>documento/sessione;</li>
+<li>gioco;</li>
+<li>inizio;</li>
+<li>rientro;</li>
+<li>stato.</li>
+</ul>
+<h3>DOCUMENTI / PERSONE</h3>
+<p>Mostra il registro anonimo delle sessioni:</p>
+<ul>
+<li>token;</li>
+<li>deposito del documento;</li>
+<li>restituzione;</li>
+<li>numero di prestiti effettuati;</li>
+<li>stato.</li>
+</ul>
+<p>Il software non contiene il nome della persona.</p>
+<h3>GIOCHI PER PROPRIETARIO</h3>
+<p>Permette di scegliere un proprietario e vedere:</p>
+<ul>
+<li>titoli associati;</li>
+<li>copie del proprietario;</li>
+<li>copie totali;</li>
+<li>eventuali prestiti attivi del titolo.</li>
+</ul>
+<h3>REPORT UTILIZZO LUDOTECA</h3>
+<p>Permette di analizzare l'utilizzo dei titoli in un intervallo di date, anche filtrando per proprietario.</p>
+<p>Il report include indicatori come numero di prestiti, utilizzo dei titoli e durata dei prestiti conclusi.</p>
+<p>Può essere esportato con <strong>ESPORTA CSV</strong>.</p>
+<h3>REPORT PERSONE / DOCUMENTI</h3>
+<p>Analizza in forma anonima:</p>
+<ul>
+<li>numero di prestiti per sessione;</li>
+<li>tempo di permanenza del documento;</li>
+<li>durata media dei prestiti conclusi.</li>
+</ul>
+<p>Anche questo report può essere esportato con <strong>ESPORTA CSV</strong>.</p>
+<blockquote>
+<p>L'esportazione CSV presente in questa versione riguarda i report. La versione 0.1.0-alpha non include un comando dedicato all'importazione/esportazione completa del catalogo dei giochi.</p>
+</blockquote>
+<hr />
+<h1>Impostazioni</h1>
+<h2>13. Modificare lingua, token e database</h2>
+<p>Apri:</p>
+<p><strong>BACKOFFICE → IMPOSTAZIONI</strong></p>
+<p>Puoi modificare:</p>
+<ul>
+<li>lingua;</li>
+<li>numero massimo di token;</li>
+<li>database utilizzato.</li>
+</ul>
+<p><img alt="Impostazioni di LudoX" src="user-guide/images/09-settings.png" /></p>
+<p><em>Impostazioni della postazione: lingua, numero massimo di token e database.</em></p>
+<h3>Numero massimo di token</h3>
+<p>Il numero deve corrispondere alle posizioni fisiche disponibili.</p>
+<p>Esempio:</p>
+<pre><code class="language-text">Token configurati: 50
+Token fisici:       1–50
+Posizioni:          1–50
+</code></pre>
+<p>LudoX non permette di abbassare il limite sotto il numero di un token attualmente occupato.</p>
+<h3>Cambiare database</h3>
+<p>Puoi:</p>
+<ul>
+<li>inserire un nome/percorso;</li>
+<li>creare un nuovo database;</li>
+<li>aprire un database esistente.</li>
+</ul>
+<p>LudoX <strong>non permette di cambiare database mentre ci sono documenti ancora depositati nel database corrente</strong>.</p>
+<p>Questa protezione evita di abbandonare una sessione aperta passando accidentalmente a un altro archivio.</p>
+<blockquote>
+<p>Prima di cambiare database verifica sempre quale archivio stai utilizzando e conserva una copia di sicurezza dei database importanti.</p>
+</blockquote>
+<hr />
+<h2>14. Chiusura di LudoX</h2>
+<p>Se provi a chiudere LudoX mentre risultano ancora documenti depositati, il programma mostra un avviso con:</p>
+<ul>
+<li>numero dei documenti ancora aperti;</li>
+<li>elenco dei token coinvolti.</li>
+</ul>
+<p>Prima di chiudere la postazione verifica fisicamente che la situazione corrisponda a quanto mostrato.</p>
+<p>A fine evento è consigliato arrivare a:</p>
+<pre><code class="language-text">PRESTITI ATTIVI = 0
+</code></pre>
+<p>e controllare che nello schedario non siano rimasti documenti.</p>
+<hr />
+<h1>Problemi comuni</h1>
+<h2>Non vedo un gioco nell'elenco dei prestiti</h2>
+<p>Controlla in <strong>BACKOFFICE → GESTIONE GIOCHI</strong> che:</p>
+<ul>
+<li>il gioco sia attivo;</li>
+<li>abbia almeno una copia assegnata;</li>
+<li>ci siano copie disponibili.</li>
+</ul>
+<hr />
+<h2>Il gioco risulta non disponibile</h2>
+<p>Tutte le copie configurate potrebbero essere già in prestito.</p>
+<p>La schermata di selezione mostra:</p>
+<pre><code class="language-text">copie disponibili / copie totali
+</code></pre>
+<hr />
+<h2>Il token risulta libero durante un cambio o una restituzione</h2>
+<p>Verifica di aver inserito il numero corretto.</p>
+<p>Un token può essere riutilizzato dopo la chiusura completa della sessione precedente.</p>
+<hr />
+<h2>Non posso ridurre il numero dei token</h2>
+<p>Potrebbe esserci una sessione aperta con un numero di token superiore al nuovo limite richiesto.</p>
+<p>Chiudi prima le sessioni interessate.</p>
+<hr />
+<h2>Non posso cambiare database</h2>
+<p>LudoX blocca il cambio se nel database corrente risultano documenti ancora depositati.</p>
+<p>Completa prima le restituzioni finali.</p>
+<hr />
+<h2>Non posso disattivare un gioco</h2>
+<p>Un titolo con copie attualmente in prestito non può essere disattivato.</p>
+<p>Completa prima i relativi prestiti.</p>
+<hr />
+<h2>Ho chiuso LudoX con prestiti ancora aperti</h2>
+<p>I dati rimangono nel database.</p>
+<p>Al riavvio, utilizzando lo stesso database, le sessioni risultano ancora aperte.</p>
+<p>Verifica sempre anche la situazione fisica dei documenti e dei token.</p>
+<hr />
+<h1>Buone pratiche per la postazione</h1>
+<ul>
+<li>tieni i documenti fuori dalla vista del pubblico;</li>
+<li>rendi lo schedario accessibile solo alle persone incaricate;</li>
+<li>non scrivere nomi sui token;</li>
+<li>usa sempre la regola <code>token = posizione documento</code>;</li>
+<li>non spostare il documento durante un cambio gioco;</li>
+<li>conferma <strong>DOCUMENTO RESTITUITO</strong> solo dopo la consegna fisica;</li>
+<li>controlla periodicamente che token e posizioni siano completi;</li>
+<li>conserva copie di sicurezza del database;</li>
+<li>a fine evento verifica che non risultino prestiti attivi.</li>
+</ul>
+<hr />
+<h1>Promemoria operativo</h1>
+<pre><code class="language-text">NUOVO PRESTITO
+
+ricevi documento
+→ scegli gioco
+→ LudoX assegna token N
+→ documento in posizione N
+→ token N alla persona
+→ gioco alla persona
+</code></pre>
+<pre><code class="language-text">CAMBIO GIOCO
+
+ricevi gioco A
+→ inserisci token N
+→ scegli gioco B
+→ documento resta in posizione N
+→ token resta N
+→ consegna gioco B
+</code></pre>
+<pre><code class="language-text">RESTITUZIONE FINALE
+
+ricevi gioco
+→ inserisci token N
+→ conferma rientro gioco
+→ recupera documento da posizione N
+→ restituisci documento
+→ DOCUMENTO RESTITUITO
+→ token N libero
+</code></pre>
+<hr />
+<h1>Segnalare un problema</h1>
+<p>LudoX è un progetto open source in fase alpha.</p>
+<p>Per segnalare un bug o un comportamento inatteso utilizza il repository ufficiale:</p>
+<p><strong>https://github.com/ludox-events/ludox</strong></p>
+<p>Quando possibile indica:</p>
+<ul>
+<li>versione utilizzata: <code>0.1.0-alpha</code>;</li>
+<li>sistema operativo;</li>
+<li>cosa stavi facendo;</li>
+<li>cosa ti aspettavi;</li>
+<li>cosa è successo.</li>
+</ul>
+<p>Non allegare database reali contenenti informazioni che non vuoi condividere.</p>
+</body>
+</html>
