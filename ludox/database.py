@@ -1002,13 +1002,59 @@ def inserisci_sessione(db, event_id, slot, timestamp):
     return cursor.lastrowid
 
 
-def inserisci_prestito_evento(db, event_id, session_id, game_id, timestamp):
+def inserisci_prestito_evento(
+    db, event_id, session_id, game_id, timestamp, copy_id=None
+):
     cursor = db.execute("""
         INSERT INTO game_library_loans(
-            event_id, session_id, game_id, checked_out_at
-        ) VALUES (?, ?, ?, ?)
-    """, (event_id, session_id, game_id, timestamp))
+            event_id, session_id, game_id, copy_id, checked_out_at
+        ) VALUES (?, ?, ?, ?, ?)
+    """, (event_id, session_id, game_id, copy_id, timestamp))
     return cursor.lastrowid
+
+
+def impostazioni_game_library_in_transazione(db, event_id):
+    return db.execute("""
+        SELECT event_id, max_slots, identification_mode
+        FROM game_library_settings WHERE event_id = ?
+    """, (event_id,)).fetchone()
+
+
+def copia_da_identificatore_in_transazione(db, event_id, value):
+    return db.execute("""
+        SELECT c.id AS copy_id, c.event_id, c.game_id,
+               c.active AS copy_active,
+               g.name AS game_name, g.active AS game_active,
+               i.value AS copy_identifier, i.source AS identifier_source
+        FROM game_library_copy_identifiers i
+        JOIN game_library_game_copies c
+          ON c.event_id = i.event_id AND c.id = i.copy_id
+        JOIN game_library_games g
+          ON g.event_id = c.event_id AND g.id = c.game_id
+        WHERE i.event_id = ? AND i.value = ?
+    """, (event_id, value)).fetchone()
+
+
+def copia_in_prestito_in_transazione(db, event_id, copy_id):
+    return bool(db.execute("""
+        SELECT EXISTS(
+            SELECT 1 FROM game_library_loans
+            WHERE event_id = ? AND copy_id = ? AND returned_at IS NULL
+        )
+    """, (event_id, copy_id)).fetchone()[0])
+
+
+def slot_libero_in_transazione(db, event_id, max_slots):
+    occupied = {
+        row[0] for row in db.execute("""
+            SELECT slot FROM game_library_sessions
+            WHERE event_id = ? AND closed_at IS NULL
+        """, (event_id,)).fetchall()
+    }
+    return next(
+        (slot for slot in range(1, max_slots + 1) if slot not in occupied),
+        None,
+    )
 
 
 def nome_gioco_evento_in_transazione(db, event_id, game_id):

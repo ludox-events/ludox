@@ -10,6 +10,7 @@ Confirmation dialogs and translation belong to the caller.
 
 from dataclasses import dataclass
 
+from . import copy_identifiers
 from . import database as data
 
 ErrorePersistenza = data.ErrorePersistenza
@@ -35,6 +36,22 @@ class CambioNonValido(Exception):
     """The displayed loan or the selected game is no longer valid."""
 
 
+class ModalitaIdentificazioneNonValida(Exception):
+    pass
+
+
+class CopiaInattiva(Exception):
+    pass
+
+
+class GiocoInattivo(Exception):
+    pass
+
+
+class CopiaGiaInPrestito(Exception):
+    pass
+
+
 @dataclass(frozen=True)
 class SituazionePrestito:
     documento: dict
@@ -47,6 +64,12 @@ class PrestitoCreato:
     prestito_id: int
     token: int
     gioco_nome: str
+    copy_id: int | None = None
+    copy_identifier: str | None = None
+
+    @property
+    def slot(self):
+        return self.token
 
 
 @dataclass(frozen=True)
@@ -134,13 +157,18 @@ def consulta_token(token: int, *, event_id=None) -> SituazionePrestito:
 
 def nuovo_prestito(gioco_id: int, max_tokens: int | None = None,
                    *, event_id=None) -> PrestitoCreato:
-    disponibili, _ = disponibilita_gioco(gioco_id, event_id=event_id)
-    if disponibili <= 0:
-        raise GiocoNonDisponibile("Non ci sono copie disponibili.")
     if event_id is not None:
         settings = data.impostazioni_game_library(event_id)
         if settings is None:
             raise ErrorePersistenza("Il modulo Prestiti Ludoteca non è configurato.")
+        if settings["identification_mode"] != "token":
+            raise ModalitaIdentificazioneNonValida(
+                "L'Event corrente usa la modalità copy_identifier."
+            )
+    disponibili, _ = disponibilita_gioco(gioco_id, event_id=event_id)
+    if disponibili <= 0:
+        raise GiocoNonDisponibile("Non ci sono copie disponibili.")
+    if event_id is not None:
         token = data.slot_libero(event_id, settings["max_slots"])
     else:
         token = data.token_libero(max_tokens)
@@ -164,6 +192,59 @@ def nuovo_prestito(gioco_id: int, max_tokens: int | None = None,
             )
             gioco = data.nome_gioco_in_transazione(db, gioco_id)
     return PrestitoCreato(documento_id, prestito_id, token, gioco["nome"])
+
+
+def nuovo_prestito_da_identificatore(
+    copy_identifier: str, *, event_id: int
+) -> PrestitoCreato:
+    """Open a copy-specific session atomically from keyboard/HID input."""
+    identifier = copy_identifiers.normalize_identifier(copy_identifier)
+    timestamp = data.now_iso()
+    with data.transazione_prestiti(immediata=True) as db:
+        settings = data.impostazioni_game_library_in_transazione(db, event_id)
+        if settings is None:
+            raise ErrorePersistenza("Il modulo Prestiti Ludoteca non è configurato.")
+        if settings["identification_mode"] != "copy_identifier":
+            raise ModalitaIdentificazioneNonValida(
+                "L'Event corrente usa la modalità token."
+            )
+        copy = data.copia_da_identificatore_in_transazione(
+            db, event_id, identifier
+        )
+        if copy is None:
+            raise copy_identifiers.UnknownCopyIdentifier(
+                "Identificatore sconosciuto nell'Event corrente."
+            )
+        if not copy["copy_active"]:
+            raise CopiaInattiva("La copia identificata non è attiva.")
+        if not copy["game_active"]:
+            raise GiocoInattivo("Il gioco associato alla copia non è attivo.")
+        if data.copia_in_prestito_in_transazione(
+            db, event_id, copy["copy_id"]
+        ):
+            raise CopiaGiaInPrestito("La copia risulta già in prestito.")
+        slot = data.slot_libero_in_transazione(
+            db, event_id, settings["max_slots"]
+        )
+        if slot is None:
+            raise TokenEsauriti("Non ci sono posizioni documento libere.")
+        session_id = data.inserisci_sessione(db, event_id, slot, timestamp)
+        loan_id = data.inserisci_prestito_evento(
+            db,
+            event_id,
+            session_id,
+            copy["game_id"],
+            timestamp,
+            copy_id=copy["copy_id"],
+        )
+    return PrestitoCreato(
+        session_id,
+        loan_id,
+        slot,
+        copy["game_name"],
+        copy["copy_id"],
+        copy["copy_identifier"],
+    )
 
 
 def cambia_gioco(

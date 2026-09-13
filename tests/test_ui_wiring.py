@@ -112,6 +112,7 @@ def test_pulsanti_indietro_tornano_alla_schermata_prevista():
     assert command_pulsanti("pulsante_indietro") == ["command"]
     destinazioni = {
         "show_nuovo_prestito": "self.show_home",
+        "show_nuovo_prestito_copia": "self.show_home",
         "show_cambio_token": "self.show_home",
         "show_cambio_gioco": "self.show_cambio_token",
         "show_restituzione": "self.show_home",
@@ -232,6 +233,26 @@ def test_gestione_copie_collega_scanner_azioni_e_qr_png():
         keyword.arg: ast.unparse(keyword.value)
         for keyword in clear_calls[0].keywords
     } == {"scrollable": "True"}
+
+
+def test_nuovo_prestito_per_copia_usa_input_hid_e_service_dedicato():
+    nuovo = metodo("show_nuovo_prestito")
+    assert len([
+        node for node in ast.walk(nuovo)
+        if isinstance(node, ast.Call)
+        and ast.unparse(node.func) == "self.show_nuovo_prestito_copia"
+    ]) == 1
+    assert_command("show_nuovo_prestito_copia", {"registra"})
+    invio = chiamate("show_nuovo_prestito_copia", "entry.bind")
+    assert any(
+        ast.unparse(node.args[0]) == "'<Return>'"
+        and ast.unparse(node.args[1]) == "lambda event: registra()"
+        for node in invio
+    )
+    assert len(chiamate(
+        "show_nuovo_prestito_copia",
+        "lending.nuovo_prestito_da_identificatore",
+    )) == 1
 
 
 def test_gestione_eventi_usa_picker_e_timezone_selezionabile_per_create_update():

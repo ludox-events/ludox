@@ -695,6 +695,10 @@ class PrestitiApp(ttk.Window):
         ).pack(ipadx=20, ipady=6)
 
     def show_nuovo_prestito(self):
+        settings = catalog.impostazioni_modulo(self._game_library_event_id())
+        if settings["identification_mode"] == "copy_identifier":
+            self.show_nuovo_prestito_copia()
+            return
         frame = self.clear()
 
         self.pulsante_indietro(
@@ -712,6 +716,53 @@ class PrestitiApp(ttk.Window):
             frame,
             self.crea_nuovo_prestito
         )
+
+    def show_nuovo_prestito_copia(self):
+        frame = self.clear()
+        self.pulsante_indietro(frame, self.show_home)
+        self.titolo_pagina(
+            frame, "copy_lending.new", "copy_lending.scan_copy"
+        )
+        identifier_var = tk.StringVar()
+        entry = ttk.Entry(
+            frame,
+            textvariable=identifier_var,
+            font=("Arial", 28, "bold"),
+            justify=CENTER,
+            bootstyle="success",
+        )
+        entry.pack(fill=X, padx=170, pady=(45, 15), ipady=10)
+        entry.focus_set()
+
+        def registra():
+            try:
+                result = lending.nuovo_prestito_da_identificatore(
+                    identifier_var.get(), event_id=self._game_library_event_id()
+                )
+            except (
+                copy_identifiers.CopyIdentifierError,
+                lending.CopiaInattiva,
+                lending.GiocoInattivo,
+                lending.CopiaGiaInPrestito,
+                lending.ModalitaIdentificazioneNonValida,
+            ) as exc:
+                messagebox.showwarning(tr("copy_lending.new"), tr(str(exc)))
+                identifier_var.set("")
+                entry.focus_set()
+                return
+            except lending.TokenEsauriti as exc:
+                messagebox.showerror(tr("copy_lending.no_slots"), tr(str(exc)))
+                return
+            except lending.ErrorePersistenza as exc:
+                messagebox.showerror(tr("Errore database"), tr(str(exc)))
+                return
+            self.show_token_assegnato(result.slot, result.gioco_nome)
+
+        ttk.Button(
+            frame, text=tr("copy_lending.register"), command=registra,
+            bootstyle="success"
+        ).pack(ipadx=35, ipady=10)
+        entry.bind("<Return>", lambda event: registra())
 
     def crea_nuovo_prestito(self, gioco_id):
         try:
