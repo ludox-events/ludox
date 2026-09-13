@@ -87,6 +87,26 @@ def test_pulsanti_backoffice_aprono_le_sezioni_previste():
     )
 
 
+def test_backoffice_usa_il_contenitore_scrollabile_e_mantiene_gli_export():
+    clear_calls = chiamate("show_backoffice", "self.clear")
+    assert len(clear_calls) == 1
+    assert {
+        keyword.arg: ast.unparse(keyword.value)
+        for keyword in clear_calls[0].keywords
+    } == {"scrollable": "True"}
+    assert {
+        "self.esporta_ludoteca_legacy",
+        "self.esporta_ludoteca_evento",
+    } <= set(command_pulsanti("show_backoffice"))
+
+    scroller = next(
+        node for node in UI_TREE.body
+        if isinstance(node, ast.ClassDef) and node.name == "VerticalScrolledFrame"
+    )
+    calls = {ast.unparse(node.func) for node in ast.walk(scroller) if isinstance(node, ast.Call)}
+    assert {"tk.Canvas", "ttk.Scrollbar", "self.canvas.yview_scroll"} <= calls
+
+
 def test_pulsanti_indietro_tornano_alla_schermata_prevista():
     assert command_pulsanti("pulsante_indietro") == ["command"]
     destinazioni = {

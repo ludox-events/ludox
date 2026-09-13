@@ -35,6 +35,41 @@ from .i18n import tr, set_language, get_language, language_display_names
 APP_THEME = "flatly"
 BACKOFFICE_PASSWORD = "ludox"
 
+
+class VerticalScrolledFrame(ttk.Frame):
+    """A simple reusable vertically scrollable screen container."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.canvas = tk.Canvas(self, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(
+            self, orient=VERTICAL, command=self.canvas.yview
+        )
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=RIGHT, fill=Y)
+        self.canvas.pack(side=LEFT, fill=BOTH, expand=YES)
+        self.content = ttk.Frame(self.canvas, padding=30)
+        self._window = self.canvas.create_window(
+            (0, 0), window=self.content, anchor=NW
+        )
+        self.content.bind("<Configure>", self._update_scroll_region)
+        self.canvas.bind("<Configure>", self._fit_content_width)
+
+    def _update_scroll_region(self, _event=None):
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def _fit_content_width(self, event):
+        self.canvas.itemconfigure(self._window, width=event.width)
+
+    def scroll_mousewheel(self, event):
+        if self.content.winfo_reqheight() <= self.canvas.winfo_height():
+            return
+        if getattr(event, "delta", 0):
+            steps = -1 if event.delta > 0 else 1
+        else:
+            steps = -1 if getattr(event, "num", None) == 4 else 1
+        self.canvas.yview_scroll(steps, "units")
+
 class PrestitiApp(ttk.Window):
 
     def __init__(
@@ -70,6 +105,10 @@ class PrestitiApp(ttk.Window):
         self.minsize(950, 680)
 
         self.current_frame = None
+        self.current_scroller = None
+        self.bind("<MouseWheel>", self._scroll_current_screen)
+        self.bind("<Button-4>", self._scroll_current_screen)
+        self.bind("<Button-5>", self._scroll_current_screen)
 
         self.protocol(
             "WM_DELETE_WINDOW",
@@ -109,9 +148,20 @@ class PrestitiApp(ttk.Window):
     # HELPERS GRAFICI
     # ========================================================
 
-    def clear(self):
+    def _scroll_current_screen(self, event):
+        if self.current_scroller is not None:
+            self.current_scroller.scroll_mousewheel(event)
+
+    def clear(self, *, scrollable=False):
         if self.current_frame:
             self.current_frame.destroy()
+
+        self.current_scroller = None
+        if scrollable:
+            self.current_scroller = VerticalScrolledFrame(self)
+            self.current_frame = self.current_scroller
+            self.current_frame.pack(fill=BOTH, expand=YES)
+            return self.current_scroller.content
 
         self.current_frame = ttk.Frame(
             self,
@@ -1851,7 +1901,7 @@ class PrestitiApp(ttk.Window):
     # ========================================================
 
     def show_backoffice(self):
-        frame = self.clear()
+        frame = self.clear(scrollable=True)
         game_library_attiva = bool(
             self.evento_attivo is not None
             and self.evento_attivo.modules.get("game_library", False)
