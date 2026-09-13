@@ -13,7 +13,6 @@ else:
     
 CONFIG_PATH = PROJECT_DIR / "config.ini"
 DEFAULT_LANGUAGE = "it"
-DEFAULT_MAX_TOKENS = 50
 DEFAULT_DATABASE = "ludox.db"
 SUPPORTED_LANGUAGES = ("it", "en")
 
@@ -21,8 +20,11 @@ SUPPORTED_LANGUAGES = ("it", "en")
 @dataclass
 class AppConfig:
     language: str = DEFAULT_LANGUAGE
-    max_tokens: int = DEFAULT_MAX_TOKENS
     database: str = DEFAULT_DATABASE
+    active_organization_id: int | None = None
+    active_organization_name: str | None = None
+    active_event_id: int | None = None
+    active_event_slug: str | None = None
 
 
 def resolve_database_path(database: str) -> Path:
@@ -74,8 +76,6 @@ def normalize_database_setting(value: str) -> str:
 def validate_config(config: AppConfig) -> bool:
     if not (
         config.language in SUPPORTED_LANGUAGES
-        and isinstance(config.max_tokens, int)
-        and config.max_tokens > 0
         and isinstance(config.database, str)
         and bool(config.database.strip())
     ):
@@ -85,7 +85,58 @@ def validate_config(config: AppConfig) -> bool:
         normalize_database_setting(config.database)
     except (OSError, ValueError):
         return False
-    return True
+
+    organization_id = config.active_organization_id
+    organization_name = config.active_organization_name
+    if not _valid_reference(organization_id, organization_name):
+        return False
+    return _valid_reference(config.active_event_id, config.active_event_slug)
+
+
+def _valid_reference(identifier, label):
+    if identifier is None and label is None:
+        return True
+    return (
+        isinstance(identifier, int)
+        and not isinstance(identifier, bool)
+        and identifier > 0
+        and isinstance(label, str)
+        and bool(label.strip())
+    )
+
+
+def _load_organization_reference(
+    parser: configparser.ConfigParser,
+) -> tuple[int | None, str | None]:
+    raw_id = parser.get(
+        "organization", "active_organization_id", fallback=""
+    ).strip()
+    name = parser.get(
+        "organization", "active_organization_name", fallback=""
+    ).strip()
+    if not raw_id or not name:
+        return None, None
+    try:
+        organization_id = int(raw_id)
+    except ValueError:
+        return None, None
+    if organization_id <= 0:
+        return None, None
+    return organization_id, name
+
+
+def _load_event_reference(parser):
+    raw_id = parser.get("event", "active_event_id", fallback="").strip()
+    slug = parser.get("event", "active_event_slug", fallback="").strip()
+    if not raw_id or not slug:
+        return None, None
+    try:
+        event_id = int(raw_id)
+    except ValueError:
+        return None, None
+    if event_id <= 0:
+        return None, None
+    return event_id, slug
 
 
 def load_config(path: Path = CONFIG_PATH) -> AppConfig | None:
@@ -98,20 +149,22 @@ def load_config(path: Path = CONFIG_PATH) -> AppConfig | None:
         language = parser.get(
             "general", "language", fallback=DEFAULT_LANGUAGE
         ).strip().lower()
-        max_tokens = parser.getint(
-            "general", "max_tokens", fallback=DEFAULT_MAX_TOKENS
-        )
         database = parser.get(
             "general", "database", fallback=DEFAULT_DATABASE
         ).strip()
         database = normalize_database_setting(database)
+        organization_id, organization_name = _load_organization_reference(parser)
+        event_id, event_slug = _load_event_reference(parser)
     except (configparser.Error, OSError, ValueError):
         return None
 
     result = AppConfig(
         language=language,
-        max_tokens=max_tokens,
         database=database,
+        active_organization_id=organization_id,
+        active_organization_name=organization_name,
+        active_event_id=event_id,
+        active_event_slug=event_slug,
     )
     return result if validate_config(result) else None
 
@@ -120,8 +173,19 @@ def save_config(config: AppConfig, path: Path = CONFIG_PATH) -> None:
     database = normalize_database_setting(config.database)
     normalized = AppConfig(
         language=config.language,
-        max_tokens=config.max_tokens,
         database=database,
+        active_organization_id=config.active_organization_id,
+        active_organization_name=(
+            config.active_organization_name.strip()
+            if isinstance(config.active_organization_name, str)
+            else config.active_organization_name
+        ),
+        active_event_id=config.active_event_id,
+        active_event_slug=(
+            config.active_event_slug.strip()
+            if isinstance(config.active_event_slug, str)
+            else config.active_event_slug
+        ),
     )
     if not validate_config(normalized):
         raise ValueError("Invalid LudoX configuration")
@@ -129,9 +193,18 @@ def save_config(config: AppConfig, path: Path = CONFIG_PATH) -> None:
     parser = configparser.ConfigParser(interpolation=None)
     parser["general"] = {
         "language": normalized.language,
-        "max_tokens": str(normalized.max_tokens),
         "database": normalized.database,
     }
+    if normalized.active_organization_id is not None:
+        parser["organization"] = {
+            "active_organization_id": str(normalized.active_organization_id),
+            "active_organization_name": normalized.active_organization_name,
+        }
+    if normalized.active_event_id is not None:
+        parser["event"] = {
+            "active_event_id": str(normalized.active_event_id),
+            "active_event_slug": normalized.active_event_slug,
+        }
     with path.open("w", encoding="utf-8") as handle:
         parser.write(handle)
 
@@ -195,34 +268,16 @@ def _first_run_dialog(initial: AppConfig | None = None) -> AppConfig | None:
 
     ttk.Label(
         form,
-        text="Numero di token / Number of tokens",
+        text="Database",
         font=("Arial", 11, "bold"),
     ).grid(row=2, column=0, sticky="w")
 
-    tokens_var = tk.StringVar(
-        value=str(initial.max_tokens or DEFAULT_MAX_TOKENS)
-    )
-    tokens_entry = ttk.Entry(form, textvariable=tokens_var, width=12)
-    tokens_entry.grid(row=3, column=0, sticky="w", pady=(4, 2), ipady=3)
-
-    ttk.Label(
-        form,
-        text=f"Valore suggerito / Suggested value: {DEFAULT_MAX_TOKENS}",
-        bootstyle="secondary",
-    ).grid(row=4, column=0, sticky="w", pady=(0, 18))
-
-    ttk.Label(
-        form,
-        text="Database",
-        font=("Arial", 11, "bold"),
-    ).grid(row=5, column=0, sticky="w")
-
     database_var = tk.StringVar(value=initial.database or DEFAULT_DATABASE)
     database_entry = ttk.Entry(form, textvariable=database_var)
-    database_entry.grid(row=6, column=0, sticky="ew", pady=(4, 8), ipady=3)
+    database_entry.grid(row=3, column=0, sticky="ew", pady=(4, 8), ipady=3)
 
     db_buttons = ttk.Frame(form)
-    db_buttons.grid(row=7, column=0, sticky="w")
+    db_buttons.grid(row=4, column=0, sticky="w")
 
     def choose_new_database() -> None:
         selected = filedialog.asksaveasfilename(
@@ -277,7 +332,7 @@ def _first_run_dialog(initial: AppConfig | None = None) -> AppConfig | None:
         bootstyle="secondary",
         justify="left",
         wraplength=680,
-    ).grid(row=8, column=0, sticky="w", pady=(8, 0))
+    ).grid(row=5, column=0, sticky="w", pady=(8, 0))
 
     separator = ttk.Separator(frame)
     separator.grid(row=3, column=0, sticky="ew", pady=(26, 18))
@@ -288,20 +343,6 @@ def _first_run_dialog(initial: AppConfig | None = None) -> AppConfig | None:
 
     def confirm() -> None:
         nonlocal result
-        try:
-            max_tokens = int(tokens_var.get().strip())
-        except ValueError:
-            max_tokens = 0
-
-        if max_tokens <= 0:
-            messagebox.showwarning(
-                "Configurazione non valida / Invalid configuration",
-                "Inserisci un numero di token maggiore di zero.\n"
-                "Enter a number of tokens greater than zero.",
-                parent=root,
-            )
-            return
-
         try:
             database = normalize_database_setting(database_var.get())
         except (OSError, ValueError) as exc:
@@ -317,7 +358,6 @@ def _first_run_dialog(initial: AppConfig | None = None) -> AppConfig | None:
         language = "it" if language_var.get() == "Italiano" else "en"
         candidate = AppConfig(
             language=language,
-            max_tokens=max_tokens,
             database=database,
         )
         if not validate_config(candidate):
@@ -353,7 +393,7 @@ def _first_run_dialog(initial: AppConfig | None = None) -> AppConfig | None:
 
     root.bind("<Return>", lambda _event: confirm())
     root.protocol("WM_DELETE_WINDOW", cancel)
-    tokens_entry.focus_set()
+    database_entry.focus_set()
     root.mainloop()
     return result
 

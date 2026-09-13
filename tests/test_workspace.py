@@ -1,0 +1,308 @@
+# Copyright (C) 2026 Matteo Sassi
+# SPDX-License-Identifier: AGPL-3.0-only
+
+"""Workspace switching and settings tests with temporary files only."""
+
+import sqlite3
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from ludox import bootstrap, config, database as data, events, organizations, workspace
+
+
+def salva(
+    database,
+    lingua="it",
+    organizzazione_attiva_id=None,
+    organizzazione_attiva_nome=None,
+    migrazione_autorizzata=False,
+    evento_attivo_id=None,
+    evento_attivo_slug=None,
+):
+    return workspace.salva_impostazioni(
+        lingua=lingua,
+        database_testo=database,
+        nome_proprietario_predefinito="Biblioteca",
+        organizzazione_attiva_id=organizzazione_attiva_id,
+        organizzazione_attiva_nome=organizzazione_attiva_nome,
+        evento_attivo_id=evento_attivo_id,
+        evento_attivo_slug=evento_attivo_slug,
+        migrazione_autorizzata=migrazione_autorizzata,
+    )
+
+
+def inserisci_documento_aperto(db, token):
+    db.execute(
+        "INSERT INTO documenti(token, ingresso) VALUES (?, '2026-09-12T10:00:00')",
+        (token,),
+    )
+    db.commit()
+
+
+def test_salvataggio_sullo_stesso_database_non_cambia_workspace(db):
+    risultato = salva("test.db", lingua="en")
+
+    assert risultato == workspace.ImpostazioniSalvate(
+        config.AppConfig("en", "test.db"), False
+    )
+    assert data.get_db_path() == config.PROJECT_DIR / "test.db"
+    assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
+
+
+def test_salvataggio_preserva_il_contesto_organizzazione(db):
+    organizzazione_id = db.execute(
+        "INSERT INTO organizations(name) VALUES ('Ludoteca Centro')"
+    ).lastrowid
+    db.commit()
+    risultato = salva(
+        "test.db",
+        organizzazione_attiva_id=organizzazione_id,
+        organizzazione_attiva_nome="Ludoteca Centro",
+    )
+
+    assert risultato.configurazione.active_organization_id == organizzazione_id
+    assert risultato.configurazione.active_organization_name == "Ludoteca Centro"
+    assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
+
+
+def test_cambio_database_seleziona_automaticamente_l_unica_organizzazione(db):
+    destinazione = config.PROJECT_DIR / "destinazione.db"
+    precedente = data.get_db_path()
+    data.set_db_path(destinazione)
+    data.init_db()
+    with data.get_db() as destinazione_db:
+        destinazione_db.execute(
+            "INSERT INTO organizations(name) VALUES ('Ludoteca Nuova')"
+        )
+    data.set_db_path(precedente)
+
+    risultato = salva(
+        "destinazione.db",
+        organizzazione_attiva_id=1,
+        organizzazione_attiva_nome="Altro workspace",
+    )
+
+    assert risultato.configurazione.active_organization_id == 1
+    assert risultato.configurazione.active_organization_name == "Ludoteca Nuova"
+    assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
+
+
+def test_cambio_database_non_accetta_collisione_id_con_nome_diverso(db):
+    destinazione = config.PROJECT_DIR / "destinazione.db"
+    precedente = data.get_db_path()
+    data.set_db_path(destinazione)
+    data.init_db()
+    with data.get_db() as destinazione_db:
+        destinazione_db.executemany(
+            "INSERT INTO organizations(name) VALUES (?)",
+            [("Ludoteca Nuova",), ("Ludoteca Nord",)],
+        )
+    data.set_db_path(precedente)
+
+    risultato = salva(
+        "destinazione.db",
+        organizzazione_attiva_id=1,
+        organizzazione_attiva_nome="Altro workspace",
+    )
+
+    assert risultato.configurazione.active_organization_id is None
+    assert risultato.configurazione.active_organization_name is None
+    assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
+
+
+def test_cambio_database_rivalida_organization_ed_event(db):
+    destination = config.PROJECT_DIR / "destination.db"
+    previous = data.get_db_path()
+    data.set_db_path(destination)
+    data.init_db()
+    organization = organizations.crea_organizzazione("Destination")
+    event = events.create_event(
+        organization.id,
+        name="Destination Event",
+        slug="destination",
+        start_datetime="2027-01-01T09:00:00",
+        end_datetime="2027-01-01T18:00:00",
+        timezone="UTC",
+    )
+    data.set_db_path(previous)
+
+    result = salva(
+        "destination.db",
+        organizzazione_attiva_id=organization.id,
+        organizzazione_attiva_nome=organization.nome,
+        evento_attivo_id=event.id,
+        evento_attivo_slug="wrong",
+    )
+
+    assert result.configurazione.active_organization_id == organization.id
+    assert result.configurazione.active_event_id == event.id
+    assert result.configurazione.active_event_slug == event.slug
+
+
+def test_percorso_non_valido_non_modifica_file_o_workspace(db):
+    precedente = data.get_db_path()
+
+    with pytest.raises(workspace.DatabaseNonValido):
+        salva("cartella-assente/evento.db")
+
+    assert data.get_db_path() == precedente
+    assert not config.CONFIG_PATH.exists()
+
+
+def test_documenti_aperti_impediscono_il_cambio_database(db):
+    inserisci_documento_aperto(db, 4)
+    precedente = data.get_db_path()
+
+    with pytest.raises(workspace.DatabaseInUso):
+        salva("nuovo.db")
+
+    assert data.get_db_path() == precedente
+    assert not (config.PROJECT_DIR / "nuovo.db").exists()
+    assert not config.CONFIG_PATH.exists()
+
+
+def test_sessioni_evento_aperte_impediscono_il_cambio_database(db, monkeypatch):
+    organization = organizations.crea_organizzazione("Ludoteca")
+    event = events.create_event(
+        organization.id,
+        name="Evento",
+        slug="evento",
+        start_datetime="2026-09-13T09:00:00",
+        end_datetime="2026-09-13T20:00:00",
+        timezone="UTC",
+        modules=("game_library",),
+    )
+    with data.get_db() as connection:
+        owner = connection.execute("""
+            INSERT INTO game_library_owner_labels(event_id, name, name_key)
+            VALUES (?, 'LAM', 'lam')
+        """, (event.id,)).lastrowid
+        game = connection.execute("""
+            INSERT INTO game_library_games(event_id, name, name_key)
+            VALUES (?, 'Azul', 'azul')
+        """, (event.id,)).lastrowid
+        connection.execute("""
+            INSERT INTO game_library_game_copies(event_id, game_id, owner_label_id)
+            VALUES (?, ?, ?)
+        """, (event.id, game, owner))
+    from ludox import lending
+    monkeypatch.setattr(data, "now_iso", lambda: "2026-09-13T10:00:00")
+    lending.nuovo_prestito(game, event_id=event.id)
+
+    with pytest.raises(workspace.DatabaseInUso):
+        salva(
+            "nuovo.db",
+            organizzazione_attiva_id=organization.id,
+            organizzazione_attiva_nome=organization.nome,
+            evento_attivo_id=event.id,
+            evento_attivo_slug=event.slug,
+        )
+
+    assert data.get_db_path() == config.PROJECT_DIR / "test.db"
+    assert not (config.PROJECT_DIR / "nuovo.db").exists()
+
+
+def test_cambio_inizializza_database_e_salva_configurazione(db):
+    risultato = salva("nuovo.db", lingua="en")
+    destinazione = config.PROJECT_DIR / "nuovo.db"
+
+    assert risultato.database_cambiato is True
+    assert data.get_db_path() == destinazione
+    assert destinazione.exists()
+    assert data.proprietario_per_id(1)["nome"] == "Biblioteca"
+    assert config.load_config(config.CONFIG_PATH) == config.AppConfig(
+        "en", "nuovo.db"
+    )
+
+
+def test_cambio_verso_legacy_richiede_consenso_e_ripristina_workspace(db):
+    precedente = data.get_db_path()
+    destinazione = config.PROJECT_DIR / "legacy.db"
+    with sqlite3.connect(destinazione) as legacy:
+        legacy.execute("CREATE TABLE legacy_data(value TEXT)")
+        legacy.execute("INSERT INTO legacy_data VALUES ('preserved')")
+
+    with pytest.raises(bootstrap.MigrationApprovalRequired):
+        salva("legacy.db")
+
+    assert data.get_db_path() == precedente
+    assert not config.CONFIG_PATH.exists()
+    with sqlite3.connect(destinazione) as legacy:
+        assert legacy.execute("PRAGMA user_version").fetchone()[0] == 0
+        assert legacy.execute(
+            "SELECT name FROM sqlite_schema WHERE name = 'organizations'"
+        ).fetchone() is None
+
+
+def test_cambio_verso_legacy_autorizzato_crea_backup(db):
+    destinazione = config.PROJECT_DIR / "legacy.db"
+    with sqlite3.connect(destinazione) as legacy:
+        legacy.execute("CREATE TABLE legacy_data(value TEXT)")
+
+    risultato = salva("legacy.db", migrazione_autorizzata=True)
+
+    assert risultato.database_cambiato is True
+    assert data.get_db_path() == destinazione
+    assert len(list(config.PROJECT_DIR.glob("legacy.backup-v0-to-v3-*.db"))) == 1
+    assert config.load_config(config.CONFIG_PATH) == risultato.configurazione
+
+
+def test_errore_apertura_destinazione_ripristina_workspace(db, monkeypatch):
+    precedente = data.get_db_path()
+
+    def init_fallita(default_owner_name, **kwargs):
+        raise sqlite3.DatabaseError("database non leggibile")
+
+    monkeypatch.setattr(data, "init_db", init_fallita)
+
+    with pytest.raises(workspace.CambioDatabaseFallito, match="non leggibile"):
+        salva("destinazione.db")
+
+    assert data.get_db_path() == precedente
+    assert not config.CONFIG_PATH.exists()
+
+
+def test_errore_salvataggio_ripristina_workspace(db, monkeypatch):
+    precedente = data.get_db_path()
+
+    def salvataggio_fallito(candidate, path):
+        raise OSError("config non scrivibile")
+
+    monkeypatch.setattr(config, "save_config", salvataggio_fallito)
+
+    with pytest.raises(
+        workspace.SalvataggioConfigurazioneFallito,
+        match="non scrivibile",
+    ):
+        salva("destinazione.db")
+
+    assert data.get_db_path() == precedente
+
+
+def test_conversione_percorso_usa_la_configurazione_locale(tmp_path):
+    percorso = tmp_path / "evento.db"
+    assert workspace.impostazione_database_da_percorso(percorso) == "evento.db"
+
+
+def test_workspace_non_richiede_dipendenze_gui():
+    root = Path(__file__).resolve().parents[1]
+    code = """
+import sys
+class NoGUI:
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split('.')[0] in ('tkinter', 'ttkbootstrap', 'matplotlib'):
+            raise AssertionError('GUI dependency: ' + fullname)
+sys.meta_path.insert(0, NoGUI())
+from ludox import workspace
+assert 'ludox.ui' not in sys.modules
+"""
+    subprocess.run(
+        [sys.executable, "-B", "-c", code],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )

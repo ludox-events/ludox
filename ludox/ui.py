@@ -1,13 +1,12 @@
 # Copyright (C) 2026 Matteo Sassi
 # SPDX-License-Identifier: AGPL-3.0-only
 
+from datetime import datetime, timedelta
+from pathlib import Path
 import csv
 import sqlite3
-from datetime import datetime, timedelta
-from statistics import median, pstdev
-from pathlib import Path
 import tkinter as tk
-from tkinter import messagebox, filedialog
+from tkinter import messagebox, filedialog, simpledialog
 
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
@@ -17,28 +16,116 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from .config import (
-    AppConfig, save_config, normalize_database_setting,
-    database_setting_from_path, resolve_database_path, PROJECT_DIR,
+    AppConfig, PROJECT_DIR,
 )
-from .database import (
-    get_db, now_iso, formatta_data_ora, conta_prestiti, conta_documenti,
-    conta_documenti_attivi, token_libero, documento_aperto_da_token,
-    prestito_aperto_documento, copie_totali_gioco, copie_in_prestito,
-    disponibilita_gioco, cerca_giochi, elenco_proprietari,
-    proprietario_per_id, totale_copie_proprietario, gioco_per_id,
-    elenco_giochi_backoffice, copie_per_proprietario_del_gioco,
-    riepilogo_proprietari_gioco, massimo_token_aperto, init_db,
-    set_db_path, get_db_path,
+from . import (
+    bootstrap,
+    catalog,
+    events,
+    lending,
+    library_transfer,
+    migration_ui,
+    migrations,
+    organizations,
+    reporting,
+    workspace,
 )
 from .i18n import tr, set_language, get_language, language_display_names
+from .ui_helpers import (
+    HOUR_VALUES,
+    MINUTE_VALUES,
+    TIMEZONE_VALUES,
+    canonical_timezone,
+    compose_picker_datetime,
+    detect_local_timezone,
+    filter_timezone_values,
+    split_picker_datetime,
+)
 
 APP_THEME = "flatly"
 BACKOFFICE_PASSWORD = "ludox"
 
+
+class VerticalScrolledFrame(ttk.Frame):
+    """A simple reusable vertically scrollable screen container."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.canvas = tk.Canvas(self, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(
+            self, orient=VERTICAL, command=self.canvas.yview
+        )
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=RIGHT, fill=Y)
+        self.canvas.pack(side=LEFT, fill=BOTH, expand=YES)
+        self.content = ttk.Frame(self.canvas, padding=30)
+        self._window = self.canvas.create_window(
+            (0, 0), window=self.content, anchor=NW
+        )
+        self.content.bind("<Configure>", self._update_scroll_region)
+        self.canvas.bind("<Configure>", self._fit_content_width)
+
+    def _update_scroll_region(self, _event=None):
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def _fit_content_width(self, event):
+        self.canvas.itemconfigure(self._window, width=event.width)
+
+    def scroll_mousewheel(self, event):
+        if self.content.winfo_reqheight() <= self.canvas.winfo_height():
+            return
+        if getattr(event, "delta", 0):
+            steps = -1 if event.delta > 0 else 1
+        else:
+            steps = -1 if getattr(event, "num", None) == 4 else 1
+        self.canvas.yview_scroll(steps, "units")
+
+
+class SearchableTimezoneCombobox(ttk.Combobox):
+    """Combobox that narrows its selectable values as the user types."""
+
+    def __init__(self, parent, *, values, **kwargs):
+        self._all_values = tuple(values)
+        super().__init__(
+            parent,
+            values=self._all_values,
+            state="normal",
+            **kwargs,
+        )
+        self.bind("<KeyRelease>", self._filter_values, add="+")
+
+    def _filter_values(self, event):
+        if event.keysym in {"Up", "Down", "Return", "Escape", "Tab"}:
+            return
+        self.configure(values=filter_timezone_values(self.get()))
+
+
 class PrestitiApp(ttk.Window):
 
-    def __init__(self, config: AppConfig):
+    def __init__(
+        self,
+        config: AppConfig,
+        organization_context: organizations.ContestoOrganizzazione | None = None,
+        event_context: events.EventContext | None = None,
+    ):
         self.config = config
+        organization_context = (
+            organization_context
+            if organization_context is not None
+            else organizations.risolvi_contesto(config)
+        )
+        self._applica_contesto_organizzazione(organization_context)
+        event_context = (
+            event_context
+            if event_context is not None
+            else events.sync_context(
+                self.config,
+                self.organizzazione_attiva.id
+                if self.organizzazione_attiva is not None
+                else None,
+            )
+        )
+        self._applica_contesto_evento(event_context)
         super().__init__(
             title=tr("app.title"),
             themename=APP_THEME
@@ -48,6 +135,10 @@ class PrestitiApp(ttk.Window):
         self.minsize(950, 680)
 
         self.current_frame = None
+        self.current_scroller = None
+        self.bind("<MouseWheel>", self._scroll_current_screen)
+        self.bind("<Button-4>", self._scroll_current_screen)
+        self.bind("<Button-5>", self._scroll_current_screen)
 
         self.protocol(
             "WM_DELETE_WINDOW",
@@ -56,13 +147,51 @@ class PrestitiApp(ttk.Window):
 
         self.show_home()
 
+    def _applica_contesto_organizzazione(self, context):
+        self.config = context.configurazione
+        self.organizzazione_attiva = context.organizzazione
+        self.selezione_organizzazione_richiesta = context.selezione_richiesta
+
+    def _applica_contesto_evento(self, context):
+        self.config = context.configuration
+        self.evento_attivo = context.event
+        self.selezione_evento_richiesta = context.selection_required
+
+    def _rivalida_contesto_evento(self):
+        context = events.sync_context(
+            self.config,
+            self.organizzazione_attiva.id
+            if self.organizzazione_attiva is not None
+            else None,
+        )
+        self._applica_contesto_evento(context)
+
+    def _game_library_event_id(self):
+        if (
+            self.evento_attivo is None
+            or not self.evento_attivo.modules.get("game_library", False)
+        ):
+            raise events.EventError("Prestiti Ludoteca non disponibile")
+        return self.evento_attivo.id
+
     # ========================================================
     # HELPERS GRAFICI
     # ========================================================
 
-    def clear(self):
+    def _scroll_current_screen(self, event):
+        if self.current_scroller is not None:
+            self.current_scroller.scroll_mousewheel(event)
+
+    def clear(self, *, scrollable=False):
         if self.current_frame:
             self.current_frame.destroy()
+
+        self.current_scroller = None
+        if scrollable:
+            self.current_scroller = VerticalScrolledFrame(self)
+            self.current_frame = self.current_scroller
+            self.current_frame.pack(fill=BOTH, expand=YES)
+            return self.current_scroller.content
 
         self.current_frame = ttk.Frame(
             self,
@@ -128,18 +257,116 @@ class PrestitiApp(ttk.Window):
             bootstyle="secondary"
         ).pack(pady=(4, 0))
 
+    def crea_datetime_picker(self, parent, label, initial_value, row):
+        selected_date, hour, minute = split_picker_datetime(initial_value)
+        ttk.Label(parent, text=tr(label)).grid(row=row, column=0, sticky=W)
+        controls = ttk.Frame(parent)
+        controls.grid(row=row, column=1, sticky=W, padx=8, pady=2)
+        date_picker = DateEntry(
+            controls,
+            startdate=selected_date,
+            dateformat="%Y-%m-%d",
+            bootstyle="primary",
+        )
+        date_picker.pack(side=LEFT)
+        hour_var = tk.StringVar(value=hour)
+        minute_var = tk.StringVar(value=minute)
+        ttk.Combobox(
+            controls,
+            textvariable=hour_var,
+            values=HOUR_VALUES,
+            state="readonly",
+            width=3,
+        ).pack(side=LEFT, padx=(10, 2))
+        ttk.Label(controls, text=":").pack(side=LEFT)
+        ttk.Combobox(
+            controls,
+            textvariable=minute_var,
+            values=MINUTE_VALUES,
+            state="readonly",
+            width=3,
+        ).pack(side=LEFT, padx=(2, 0))
+        return {
+            "date": date_picker,
+            "hour": hour_var,
+            "minute": minute_var,
+        }
+
+    def imposta_datetime_picker(self, picker, value):
+        selected_date, hour, minute = split_picker_datetime(value)
+        picker["date"].entry.delete(0, END)
+        picker["date"].entry.insert(0, selected_date.strftime("%Y-%m-%d"))
+        picker["hour"].set(hour)
+        picker["minute"].set(minute)
+
+    def leggi_datetime_picker(self, picker):
+        return compose_picker_datetime(
+            picker["date"].get_date(),
+            picker["hour"].get(),
+            picker["minute"].get(),
+        )
+
     # ========================================================
     # HOME
     # ========================================================
 
     def show_home(self):
         frame = self.clear()
+        game_library_attiva = bool(
+            self.evento_attivo is not None
+            and self.evento_attivo.modules.get("game_library", False)
+        )
+        riepilogo = (
+            lending.riepilogo_home(event_id=self.evento_attivo.id)
+            if game_library_attiva
+            else lending.RiepilogoHome(0, 0, 0)
+        )
 
         self.titolo_pagina(
             frame,
             "PRESTITI LUDOTECA",
             "Gestione prestiti e documenti"
         )
+
+        if self.organizzazione_attiva is not None:
+            testo_organizzazione = tr(
+                "organizations.current_tpl",
+                name=self.organizzazione_attiva.nome,
+            )
+        elif self.selezione_organizzazione_richiesta:
+            testo_organizzazione = tr("organizations.selection_required")
+        else:
+            testo_organizzazione = tr("organizations.none_active")
+
+        ttk.Label(
+            frame,
+            text=testo_organizzazione,
+            font=("Arial", 11, "bold"),
+            bootstyle="secondary",
+        ).pack(pady=(0, 5))
+
+        if self.evento_attivo is not None:
+            testo_evento = tr("events.current_tpl", name=self.evento_attivo.name)
+        elif self.selezione_evento_richiesta:
+            testo_evento = tr("events.selection_required")
+        else:
+            testo_evento = tr("events.none_selectable")
+        ttk.Label(
+            frame,
+            text=testo_evento,
+            font=("Arial", 11, "bold"),
+            bootstyle="secondary",
+        ).pack(pady=(0, 5))
+
+        if self.organizzazione_attiva is not None and len(
+            events.list_events(self.organizzazione_attiva.id, selectable_only=True)
+        ) > 1:
+            ttk.Button(
+                frame,
+                text=tr("events.change"),
+                command=self.show_selezione_evento,
+                bootstyle="secondary-outline",
+            ).pack(pady=(2, 8))
 
         cards = ttk.Frame(frame)
         cards.pack(
@@ -153,7 +380,7 @@ class PrestitiApp(ttk.Window):
         self.crea_card(
             cards,
             0,
-            conta_prestiti(),
+            riepilogo.prestiti,
             "PRESTITI EFFETTUATI",
             "primary"
         )
@@ -161,7 +388,7 @@ class PrestitiApp(ttk.Window):
         self.crea_card(
             cards,
             1,
-            conta_documenti(),
+            riepilogo.documenti,
             "PERSONE / DOCUMENTI",
             "info"
         )
@@ -169,7 +396,7 @@ class PrestitiApp(ttk.Window):
         self.crea_card(
             cards,
             2,
-            conta_documenti_attivi(),
+            riepilogo.documenti_attivi,
             "PRESTITI ATTIVI",
             "success"
         )
@@ -187,7 +414,8 @@ class PrestitiApp(ttk.Window):
             azioni,
             text=tr("＋  NUOVO PRESTITO"),
             command=self.show_nuovo_prestito,
-            bootstyle="success"
+            bootstyle="success",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
             row=0,
             column=0,
@@ -201,7 +429,8 @@ class PrestitiApp(ttk.Window):
             azioni,
             text=tr("↔  CAMBIO GIOCO"),
             command=self.show_cambio_token,
-            bootstyle="primary"
+            bootstyle="primary",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
             row=0,
             column=1,
@@ -215,7 +444,8 @@ class PrestitiApp(ttk.Window):
             azioni,
             text=tr("✓  RESTITUZIONE FINALE"),
             command=self.show_restituzione,
-            bootstyle="warning"
+            bootstyle="warning",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
             row=1,
             column=0,
@@ -229,7 +459,8 @@ class PrestitiApp(ttk.Window):
             azioni,
             text=tr("▥  STATISTICHE"),
             command=self.show_statistiche,
-            bootstyle="info"
+            bootstyle="info",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
             row=1,
             column=1,
@@ -344,25 +575,20 @@ class PrestitiApp(ttk.Window):
             for item in tree.get_children():
                 tree.delete(item)
 
-            giochi = cerca_giochi(
-                ricerca_var.get()
+            giochi = lending.cerca_giochi_con_disponibilita(
+                ricerca_var.get(),
+                gioco_da_escludere,
+                event_id=self._game_library_event_id(),
             )
 
             for gioco in giochi:
-                if gioco_da_escludere == gioco["id"]:
-                    continue
-
-                disponibili, totali = disponibilita_gioco(
-                    gioco["id"]
-                )
-
                 tree.insert(
                     "",
                     END,
                     iid=str(gioco["id"]),
                     values=(
                         gioco["nome"],
-                        f"{disponibili} / {totali}"
+                        f"{gioco['disponibili']} / {gioco['copie_totali']}"
                     )
                 )
 
@@ -383,8 +609,9 @@ class PrestitiApp(ttk.Window):
                 return
 
             gioco_id = int(selezione[0])
-            disponibili, _ = disponibilita_gioco(
-                gioco_id
+            disponibili, _ = lending.disponibilita_gioco(
+                gioco_id,
+                event_id=self._game_library_event_id(),
             )
 
             if disponibili <= 0:
@@ -417,6 +644,55 @@ class PrestitiApp(ttk.Window):
     # NUOVO PRESTITO
     # ========================================================
 
+    def show_selezione_evento(self):
+        frame = self.clear()
+        self.pulsante_indietro(frame, self.show_home)
+        self.titolo_pagina(frame, "events.select_title", "events.select_subtitle")
+        organization_id = (
+            self.organizzazione_attiva.id
+            if self.organizzazione_attiva is not None
+            else None
+        )
+        selectable = events.list_events(organization_id, selectable_only=True)
+        tree = ttk.Treeview(
+            frame,
+            columns=("name", "slug", "status"),
+            show="headings",
+            height=12,
+        )
+        for column, label in (
+            ("name", "events.name"),
+            ("slug", "events.slug"),
+            ("status", "events.status"),
+        ):
+            tree.heading(column, text=tr(label))
+        tree.pack(fill=BOTH, expand=YES, pady=15)
+        for event in selectable:
+            tree.insert(
+                "", END, iid=str(event.id),
+                values=(event.name, event.slug, event.status),
+            )
+
+        def conferma():
+            selection = tree.selection()
+            if not selection:
+                messagebox.showwarning(
+                    tr("events.select_title"), tr("events.select_first")
+                )
+                return
+            context = events.select_event(
+                int(selection[0]), organization_id, self.config
+            )
+            self._applica_contesto_evento(context)
+            self.show_home()
+
+        ttk.Button(
+            frame,
+            text=tr("events.use_selected"),
+            command=conferma,
+            bootstyle="primary",
+        ).pack(ipadx=20, ipady=6)
+
     def show_nuovo_prestito(self):
         frame = self.clear()
 
@@ -437,65 +713,23 @@ class PrestitiApp(ttk.Window):
         )
 
     def crea_nuovo_prestito(self, gioco_id):
-        disponibili, _ = disponibilita_gioco(
-            gioco_id
-        )
-
-        if disponibili <= 0:
+        try:
+            risultato = lending.nuovo_prestito(
+                gioco_id, event_id=self._game_library_event_id()
+            )
+        except lending.GiocoNonDisponibile as e:
             messagebox.showwarning(
                 tr("Non disponibile"),
-                tr("Non ci sono copie disponibili.")
+                tr(str(e))
             )
             return
-
-        token = token_libero(self.config.max_tokens)
-
-        if token is None:
+        except lending.TokenEsauriti as e:
             messagebox.showerror(
                 tr("Token esauriti"),
-                tr("Non ci sono posizioni documento libere.")
+                tr(str(e))
             )
             return
-
-        timestamp = now_iso()
-
-        try:
-            with get_db() as db:
-                cursor = db.execute("""
-                    INSERT INTO documenti (
-                        token,
-                        ingresso
-                    )
-                    VALUES (?, ?)
-                """, (
-                    token,
-                    timestamp
-                ))
-
-                documento_id = cursor.lastrowid
-
-                db.execute("""
-                    INSERT INTO prestiti (
-                        documento_id,
-                        gioco_id,
-                        uscita
-                    )
-                    VALUES (?, ?, ?)
-                """, (
-                    documento_id,
-                    gioco_id,
-                    timestamp
-                ))
-
-                gioco = db.execute("""
-                    SELECT nome
-                    FROM giochi
-                    WHERE id = ?
-                """, (
-                    gioco_id,
-                )).fetchone()
-
-        except sqlite3.Error as e:
+        except lending.ErrorePersistenza as e:
             messagebox.showerror(
                 tr("Errore database"),
                 tr(str(e))
@@ -503,8 +737,8 @@ class PrestitiApp(ttk.Window):
             return
 
         self.show_token_assegnato(
-            token,
-            gioco["nome"]
+            risultato.token,
+            risultato.gioco_nome
         )
 
     def show_token_assegnato(self, token, gioco_nome):
@@ -616,27 +850,26 @@ class PrestitiApp(ttk.Window):
                 )
                 return
 
-            documento = documento_aperto_da_token(
-                token
-            )
-
-            if not documento:
+            try:
+                situazione = lending.consulta_token(
+                    token, event_id=self._game_library_event_id()
+                )
+            except lending.TokenLibero:
                 messagebox.showwarning(
                     tr("Token libero"),
                     tr(f"Il token {token} non ha un prestito aperto.")
                 )
                 return
 
-            prestito = prestito_aperto_documento(
-                documento["id"]
-            )
-
-            if not prestito:
+            except lending.PrestitoAssente:
                 messagebox.showerror(
                     tr("Errore"),
                     tr("Non risulta un gioco aperto.")
                 )
                 return
+
+            documento = situazione.documento
+            prestito = situazione.prestito
 
             self.show_cambio_gioco(
                 token,
@@ -704,180 +937,16 @@ class PrestitiApp(ttk.Window):
         ).pack(pady=4)
 
         def cambia(nuovo_gioco_id):
-            """
-            Registra il cambio in un'unica transazione atomica.
-
-            Prima di modificare il database ricontrolla che:
-            - il documento sia ancora aperto;
-            - il prestito visualizzato sia ancora quello aperto;
-            - il nuovo gioco esista, sia attivo e abbia almeno una copia;
-            - il nuovo gioco sia ancora disponibile.
-
-            BEGIN IMMEDIATE serializza le operazioni di scrittura SQLite:
-            evita che due istanze leggano contemporaneamente la stessa
-            disponibilità e registrino entrambe l'ultima copia disponibile.
-            """
-
-            class CambioNonValido(Exception):
-                pass
-
-            class GiocoNonDisponibile(Exception):
-                pass
-
-            timestamp = now_iso()
-
             try:
-                with get_db() as db:
-                    # Acquisisce subito il lock di scrittura.
-                    # Tutti i controlli successivi e le due scritture
-                    # fanno quindi parte della stessa transazione.
-                    db.execute(
-                        "BEGIN IMMEDIATE"
-                    )
-
-                    # 1. Il documento deve essere ancora aperto
-                    #    e associato allo stesso token.
-                    documento_corrente = db.execute("""
-                        SELECT id, token
-                        FROM documenti
-                        WHERE id = ?
-                          AND token = ?
-                          AND uscita IS NULL
-                    """, (
-                        documento["id"],
-                        token
-                    )).fetchone()
-
-                    if not documento_corrente:
-                        raise CambioNonValido(
-                            "Il documento non risulta più aperto. "
-                            "Il cambio non è stato registrato."
-                        )
-
-                    # 2. Il prestito che stiamo chiudendo deve essere
-                    #    ancora esattamente quello aperto per il documento.
-                    prestito_corrente = db.execute("""
-                        SELECT
-                            p.id,
-                            p.gioco_id,
-                            g.nome AS gioco_nome
-                        FROM prestiti p
-                        JOIN giochi g
-                          ON g.id = p.gioco_id
-                        WHERE p.id = ?
-                          AND p.documento_id = ?
-                          AND p.rientro IS NULL
-                    """, (
-                        prestito["id"],
-                        documento["id"]
-                    )).fetchone()
-
-                    if not prestito_corrente:
-                        raise CambioNonValido(
-                            "Il prestito è cambiato o è già stato chiuso. "
-                            "Il cambio non è stato registrato."
-                        )
-
-                    # Ulteriore protezione: il gioco corrente deve essere
-                    # lo stesso che era visualizzato quando è stata aperta
-                    # la schermata di cambio.
-                    if (
-                        prestito_corrente["gioco_id"]
-                        != prestito["gioco_id"]
-                    ):
-                        raise CambioNonValido(
-                            "Il gioco associato al token è cambiato. "
-                            "Riapri la procedura di cambio."
-                        )
-
-                    # 3. Il nuovo titolo deve esistere ed essere ancora attivo.
-                    nuovo = db.execute("""
-                        SELECT id, nome, attivo
-                        FROM giochi
-                        WHERE id = ?
-                    """, (
-                        nuovo_gioco_id,
-                    )).fetchone()
-
-                    if (
-                        not nuovo
-                        or nuovo["attivo"] != 1
-                    ):
-                        raise CambioNonValido(
-                            "Il gioco selezionato non è più disponibile "
-                            "nel catalogo attivo."
-                        )
-
-                    # 4. Ricontrollo della disponibilità DENTRO
-                    #    la stessa transazione.
-                    copie_totali = db.execute("""
-                        SELECT COALESCE(SUM(quantita), 0)
-                        FROM copie_gioco
-                        WHERE gioco_id = ?
-                    """, (
-                        nuovo_gioco_id,
-                    )).fetchone()[0]
-
-                    copie_fuori = db.execute("""
-                        SELECT COUNT(*)
-                        FROM prestiti
-                        WHERE gioco_id = ?
-                          AND rientro IS NULL
-                    """, (
-                        nuovo_gioco_id,
-                    )).fetchone()[0]
-
-                    disponibili = (
-                        copie_totali
-                        - copie_fuori
-                    )
-
-                    if disponibili <= 0:
-                        raise GiocoNonDisponibile(
-                            "Nel frattempo l'ultima copia disponibile "
-                            "è stata assegnata. Scegli un altro gioco."
-                        )
-
-                    # 5. Chiude il vecchio prestito.
-                    cursore = db.execute("""
-                        UPDATE prestiti
-                        SET rientro = ?
-                        WHERE id = ?
-                          AND documento_id = ?
-                          AND rientro IS NULL
-                    """, (
-                        timestamp,
-                        prestito["id"],
-                        documento["id"]
-                    ))
-
-                    # Se nessuna riga è stata modificata, non procediamo
-                    # mai con l'apertura del nuovo prestito.
-                    if cursore.rowcount != 1:
-                        raise CambioNonValido(
-                            "Non è stato possibile chiudere il prestito "
-                            "precedente. Nessuna modifica è stata salvata."
-                        )
-
-                    # 6. Apre il nuovo prestito nello stesso istante.
-                    db.execute("""
-                        INSERT INTO prestiti (
-                            documento_id,
-                            gioco_id,
-                            uscita
-                        )
-                        VALUES (?, ?, ?)
-                    """, (
-                        documento["id"],
-                        nuovo_gioco_id,
-                        timestamp
-                    ))
-
-                    # Il blocco 'with' esegue il COMMIT solo se
-                    # tutte le operazioni sopra sono andate a buon fine.
-                    # Qualsiasi eccezione provoca il ROLLBACK completo.
-
-            except GiocoNonDisponibile as e:
+                nuovo_nome = lending.cambia_gioco(
+                    token=token,
+                    documento_id=documento["id"],
+                    prestito_id=prestito["id"],
+                    gioco_id_atteso=prestito["gioco_id"],
+                    nuovo_gioco_id=nuovo_gioco_id,
+                    event_id=self._game_library_event_id(),
+                )
+            except lending.GiocoNonDisponibile as e:
                 messagebox.showwarning(
                     tr("Gioco non disponibile"),
                     tr(str(e))
@@ -892,7 +961,7 @@ class PrestitiApp(ttk.Window):
                 )
                 return
 
-            except CambioNonValido as e:
+            except lending.CambioNonValido as e:
                 messagebox.showwarning(
                     tr("Cambio non registrato"),
                     tr(str(e))
@@ -903,7 +972,7 @@ class PrestitiApp(ttk.Window):
                 self.show_cambio_token()
                 return
 
-            except sqlite3.Error as e:
+            except lending.ErrorePersistenza as e:
                 messagebox.showerror(
                     tr("Errore database"),
                     tr("Il cambio non è stato registrato.\n\n"
@@ -914,7 +983,7 @@ class PrestitiApp(ttk.Window):
             self.show_cambio_completato(
                 token,
                 prestito["gioco_nome"],
-                nuovo["nome"]
+                nuovo_nome
             )
 
         self.crea_selettore_giochi(
@@ -1031,27 +1100,26 @@ class PrestitiApp(ttk.Window):
                 )
                 return
 
-            documento = documento_aperto_da_token(
-                token
-            )
-
-            if not documento:
+            try:
+                situazione = lending.consulta_token(
+                    token, event_id=self._game_library_event_id()
+                )
+            except lending.TokenLibero:
                 messagebox.showwarning(
                     tr("Token libero"),
                     tr(f"Il token {token} non risulta occupato.")
                 )
                 return
 
-            prestito = prestito_aperto_documento(
-                documento["id"]
-            )
-
-            if not prestito:
+            except lending.PrestitoAssente:
                 messagebox.showerror(
                     tr("Errore"),
                     tr("Non risulta un gioco aperto per questo token.")
                 )
                 return
+
+            documento = situazione.documento
+            prestito = situazione.prestito
 
             # PRIMA CONFERMA
             conferma = messagebox.askyesno(
@@ -1161,41 +1229,13 @@ class PrestitiApp(ttk.Window):
             if not conferma:
                 return
 
-            timestamp = now_iso()
-
             try:
-                with get_db() as db:
-                    prestito_update = db.execute("""
-                        UPDATE prestiti
-                        SET rientro = ?
-                        WHERE id = ?
-                          AND rientro IS NULL
-                    """, (
-                        timestamp,
-                        prestito["id"]
-                    ))
-
-                    documento_update = db.execute("""
-                        UPDATE documenti
-                        SET uscita = ?
-                        WHERE id = ?
-                          AND uscita IS NULL
-                    """, (
-                        timestamp,
-                        documento["id"]
-                    ))
-
-                    if prestito_update.rowcount != 1:
-                        raise sqlite3.Error(
-                            "Il prestito non risulta più aperto."
-                        )
-
-                    if documento_update.rowcount != 1:
-                        raise sqlite3.Error(
-                            "Il documento non risulta più depositato."
-                        )
-
-            except sqlite3.Error as e:
+                lending.restituzione_finale(
+                    documento_id=documento["id"],
+                    prestito_id=prestito["id"],
+                    event_id=self._game_library_event_id(),
+                )
+            except lending.ErrorePersistenza as e:
                 messagebox.showerror(
                     tr("Errore database"),
                     tr(str(e))
@@ -1281,41 +1321,12 @@ class PrestitiApp(ttk.Window):
     @staticmethod
     def arrotonda_giu_bucket(dt, minuti_bucket):
         """Arrotonda un datetime verso il basso al confine del bucket."""
-        mezzanotte = dt.replace(
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0
-        )
-
-        secondi_trascorsi = int(
-            (dt - mezzanotte).total_seconds()
-        )
-        secondi_bucket = minuti_bucket * 60
-        secondi_allineati = (
-            secondi_trascorsi
-            // secondi_bucket
-            * secondi_bucket
-        )
-
-        return mezzanotte + timedelta(
-            seconds=secondi_allineati
-        )
+        return reporting.arrotonda_giu_bucket(dt, minuti_bucket)
 
     @classmethod
     def arrotonda_su_bucket(cls, dt, minuti_bucket):
         """Arrotonda un datetime verso l'alto al confine del bucket."""
-        arrotondato = cls.arrotonda_giu_bucket(
-            dt,
-            minuti_bucket
-        )
-
-        if dt == arrotondato:
-            return arrotondato
-
-        return arrotondato + timedelta(
-            minutes=minuti_bucket
-        )
+        return reporting.arrotonda_su_bucket(dt, minuti_bucket)
 
     @classmethod
     def intervallo_statistiche(
@@ -1330,20 +1341,7 @@ class PrestitiApp(ttk.Window):
         L'inizio viene arrotondato verso il basso e la fine verso l'alto
         in modo da utilizzare sempre bucket temporali completi.
         """
-        inizio_nominale = riferimento - timedelta(
-            hours=ore
-        )
-
-        inizio = cls.arrotonda_giu_bucket(
-            inizio_nominale,
-            minuti_bucket
-        )
-        fine = cls.arrotonda_su_bucket(
-            riferimento,
-            minuti_bucket
-        )
-
-        return inizio, fine
+        return reporting.intervallo_statistiche(riferimento, ore, minuti_bucket)
 
     def show_statistiche(
         self,
@@ -1711,39 +1709,16 @@ class PrestitiApp(ttk.Window):
         # INTERVALLO E CONTATORI
         # ----------------------------------------------------
 
-        inizio, fine = self.intervallo_statistiche(
+        statistiche = reporting.statistiche_periodo(
             riferimento,
             ore,
-            minuti_bucket
+            minuti_bucket,
+            event_id=self._game_library_event_id(),
         )
-
-        inizio_iso = inizio.isoformat(
-            timespec="seconds"
-        )
-        fine_iso = fine.isoformat(
-            timespec="seconds"
-        )
-
-        with get_db() as db:
-            prestiti_periodo = db.execute("""
-                SELECT COUNT(*)
-                FROM prestiti
-                WHERE uscita >= ?
-                  AND uscita < ?
-            """, (
-                inizio_iso,
-                fine_iso
-            )).fetchone()[0]
-
-            persone_periodo = db.execute("""
-                SELECT COUNT(*)
-                FROM documenti
-                WHERE ingresso >= ?
-                  AND ingresso < ?
-            """, (
-                inizio_iso,
-                fine_iso
-            )).fetchone()[0]
+        inizio = statistiche.inizio
+        fine = statistiche.fine
+        prestiti_periodo = statistiche.prestiti
+        persone_periodo = statistiche.documenti
 
         intervallo_testo = (
             f"Periodo visualizzato: "
@@ -1792,93 +1767,18 @@ class PrestitiApp(ttk.Window):
 
         self.crea_grafico(
             frame,
-            inizio,
-            fine,
-            minuti_bucket
+            statistiche
         )
 
     def crea_grafico(
         self,
         parent,
-        inizio,
-        fine,
-        minuti_bucket
+        statistiche
     ):
-        delta = timedelta(
-            minutes=minuti_bucket
-        )
-
-        punti = []
-        t = inizio
-
-        while t < fine:
-            punti.append({
-                "inizio": t,
-                "fine": t + delta,
-                "prestiti": 0,
-                "documenti": 0
-            })
-            t += delta
-
-        inizio_iso = inizio.isoformat(
-            timespec="seconds"
-        )
-        fine_iso = fine.isoformat(
-            timespec="seconds"
-        )
-
-        with get_db() as db:
-            righe_prestiti = db.execute("""
-                SELECT uscita
-                FROM prestiti
-                WHERE uscita >= ?
-                  AND uscita < ?
-            """, (
-                inizio_iso,
-                fine_iso
-            )).fetchall()
-
-            righe_documenti = db.execute("""
-                SELECT ingresso
-                FROM documenti
-                WHERE ingresso >= ?
-                  AND ingresso < ?
-            """, (
-                inizio_iso,
-                fine_iso
-            )).fetchall()
-
-        secondi_bucket = delta.total_seconds()
-
-        for row in righe_prestiti:
-            try:
-                dt = datetime.fromisoformat(
-                    row["uscita"]
-                )
-                indice = int(
-                    (dt - inizio).total_seconds()
-                    // secondi_bucket
-                )
-
-                if 0 <= indice < len(punti):
-                    punti[indice]["prestiti"] += 1
-            except (ValueError, TypeError):
-                continue
-
-        for row in righe_documenti:
-            try:
-                dt = datetime.fromisoformat(
-                    row["ingresso"]
-                )
-                indice = int(
-                    (dt - inizio).total_seconds()
-                    // secondi_bucket
-                )
-
-                if 0 <= indice < len(punti):
-                    punti[indice]["documenti"] += 1
-            except (ValueError, TypeError):
-                continue
+        inizio = statistiche.inizio
+        fine = statistiche.fine
+        minuti_bucket = statistiche.minuti_bucket
+        punti = statistiche.punti
 
         giochi_consegnati = [
             p["prestiti"]
@@ -2080,7 +1980,11 @@ class PrestitiApp(ttk.Window):
     # ========================================================
 
     def show_backoffice(self):
-        frame = self.clear()
+        frame = self.clear(scrollable=True)
+        game_library_attiva = bool(
+            self.evento_attivo is not None
+            and self.evento_attivo.modules.get("game_library", False)
+        )
 
         self.pulsante_indietro(
             frame,
@@ -2107,7 +2011,8 @@ class PrestitiApp(ttk.Window):
             area,
             text=tr("🎲  GESTIONE GIOCHI"),
             command=self.show_gestione_giochi,
-            bootstyle="primary"
+            bootstyle="primary",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
             row=0,
             column=0,
@@ -2121,7 +2026,8 @@ class PrestitiApp(ttk.Window):
             area,
             text=tr("👤  GESTIONE PROPRIETARI"),
             command=self.show_gestione_proprietari,
-            bootstyle="info"
+            bootstyle="info",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
             row=0,
             column=1,
@@ -2135,7 +2041,8 @@ class PrestitiApp(ttk.Window):
             area,
             text=tr("📋  TUTTI I PRESTITI"),
             command=self.show_tutti_prestiti,
-            bootstyle="success"
+            bootstyle="success",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
             row=1,
             column=0,
@@ -2149,7 +2056,8 @@ class PrestitiApp(ttk.Window):
             area,
             text=tr("🪪  DOCUMENTI / PERSONE"),
             command=self.show_tutti_documenti,
-            bootstyle="warning"
+            bootstyle="warning",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
             row=1,
             column=1,
@@ -2163,7 +2071,8 @@ class PrestitiApp(ttk.Window):
             area,
             text=tr("📦  GIOCHI PER PROPRIETARIO"),
             command=self.show_giochi_per_proprietario,
-            bootstyle="secondary"
+            bootstyle="secondary",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
             row=2,
             column=0,
@@ -2189,11 +2098,87 @@ class PrestitiApp(ttk.Window):
 
         ttk.Button(
             area,
-            text=tr("📊  REPORT UTILIZZO LUDOTECA"),
-            command=self.show_report_utilizzo_ludoteca,
+            text=tr("organizations.manage"),
+            command=self.show_gestione_organizzazioni,
+            bootstyle="success-outline"
+        ).grid(
+            row=3,
+            column=0,
+            padx=15,
+            pady=15,
+            ipady=22,
+            sticky=EW
+        )
+
+        ttk.Button(
+            area,
+            text=tr("events.manage"),
+            command=self.show_gestione_eventi,
             bootstyle="primary-outline"
         ).grid(
             row=3,
+            column=1,
+            padx=15,
+            pady=15,
+            ipady=22,
+            sticky=EW
+        )
+
+        ttk.Button(
+            area,
+            text=tr("library_transfer.export_legacy"),
+            command=self.esporta_ludoteca_legacy,
+            bootstyle="secondary-outline"
+        ).grid(
+            row=4,
+            column=0,
+            columnspan=2,
+            padx=15,
+            pady=15,
+            ipady=22,
+            sticky=EW
+        )
+
+        ttk.Button(
+            area,
+            text=tr("game_library.settings"),
+            command=self.show_impostazioni_ludoteca,
+            bootstyle="info-outline",
+            state="normal" if game_library_attiva else "disabled",
+        ).grid(
+            row=6,
+            column=0,
+            columnspan=2,
+            padx=15,
+            pady=15,
+            ipady=22,
+            sticky=EW,
+        )
+
+        ttk.Button(
+            area,
+            text=tr("library_transfer.import_event"),
+            command=self.importa_ludoteca_evento,
+            bootstyle="success-outline",
+            state="normal" if game_library_attiva else "disabled",
+        ).grid(row=5, column=0, padx=15, pady=15, ipady=22, sticky=EW)
+
+        ttk.Button(
+            area,
+            text=tr("library_transfer.export_event"),
+            command=self.esporta_ludoteca_evento,
+            bootstyle="primary-outline",
+            state="normal" if game_library_attiva else "disabled",
+        ).grid(row=5, column=1, padx=15, pady=15, ipady=22, sticky=EW)
+
+        ttk.Button(
+            area,
+            text=tr("📊  REPORT UTILIZZO LUDOTECA"),
+            command=self.show_report_utilizzo_ludoteca,
+            bootstyle="primary-outline",
+            state="normal" if game_library_attiva else "disabled",
+        ).grid(
+            row=7,
             column=0,
             columnspan=2,
             padx=15,
@@ -2206,9 +2191,10 @@ class PrestitiApp(ttk.Window):
             area,
             text=tr("🧑  REPORT PERSONE / DOCUMENTI"),
             command=self.show_report_documenti,
-            bootstyle="info-outline"
+            bootstyle="info-outline",
+            state="normal" if game_library_attiva else "disabled",
         ).grid(
-            row=4,
+            row=8,
             column=0,
             columnspan=2,
             padx=15,
@@ -2216,6 +2202,582 @@ class PrestitiApp(ttk.Window):
             ipady=22,
             sticky=EW
         )
+
+    def show_impostazioni_ludoteca(self):
+        event_id = self._game_library_event_id()
+        settings = catalog.impostazioni_modulo(event_id)
+        frame = self.clear()
+        self.pulsante_indietro(frame, self.show_backoffice)
+        self.titolo_pagina(
+            frame, "game_library.settings", "game_library.settings_subtitle"
+        )
+        max_slots_var = tk.StringVar(value=str(settings["max_slots"]))
+        card = ttk.Labelframe(frame, padding=30, bootstyle="info")
+        card.pack(padx=230, pady=35, fill=X)
+        ttk.Label(card, text=tr("game_library.max_slots")).pack(anchor=W)
+        ttk.Entry(card, textvariable=max_slots_var, width=12).pack(
+            anchor=W, pady=(5, 20)
+        )
+        ttk.Label(
+            card, text=tr("game_library.identification_token"),
+            bootstyle="secondary",
+        ).pack(anchor=W, pady=(0, 20))
+
+        def salva():
+            try:
+                catalog.modifica_impostazioni_modulo(
+                    event_id, max_slots_var.get(), "token"
+                )
+            except catalog.ConfigurazioneNonValida:
+                messagebox.showwarning(
+                    tr("game_library.settings"),
+                    tr("game_library.invalid_max_slots"),
+                )
+                return
+            self.show_backoffice()
+
+        ttk.Button(
+            card, text=tr("common.save"), command=salva,
+            bootstyle="success",
+        ).pack(ipadx=25, ipady=8)
+
+        def resetta():
+            if not messagebox.askyesno(
+                tr("library_transfer.reset"),
+                tr("library_transfer.reset_confirm"),
+            ):
+                return
+            try:
+                library_transfer.reset_event_library(event_id)
+            except library_transfer.LibraryResetBlocked:
+                messagebox.showwarning(
+                    tr("library_transfer.reset"),
+                    tr("library_transfer.reset_blocked"),
+                )
+                return
+            self.show_backoffice()
+
+        ttk.Button(
+            card, text=tr("library_transfer.reset"), command=resetta,
+            bootstyle="danger-outline",
+        ).pack(pady=(20, 0), ipadx=25, ipady=8)
+
+    def esporta_ludoteca_legacy(self):
+        percorso = filedialog.asksaveasfilename(
+            parent=self,
+            title=tr("library_transfer.export_title"),
+            defaultextension=".csv",
+            filetypes=[(tr("common.csv"), "*.csv")],
+        )
+        if not percorso:
+            return
+        try:
+            righe = library_transfer.export_legacy_library_csv(percorso)
+        except (OSError, csv.Error, sqlite3.Error) as exc:
+            messagebox.showerror(
+                tr("common.export_error"),
+                tr("common.export_fail_tpl", error=exc),
+            )
+            return
+        messagebox.showinfo(
+            tr("common.export_done"),
+            tr("library_transfer.export_done_tpl", rows=righe),
+        )
+
+    def esporta_ludoteca_evento(self):
+        percorso = filedialog.asksaveasfilename(
+            parent=self,
+            title=tr("library_transfer.export_event"),
+            defaultextension=".csv",
+            filetypes=[
+                (tr("common.csv"), "*.csv"),
+                (tr("library_transfer.xlsx"), "*.xlsx"),
+            ],
+        )
+        if not percorso:
+            return
+        try:
+            righe = library_transfer.export_event_library(
+                percorso, self._game_library_event_id()
+            )
+        except (OSError, ValueError, csv.Error, sqlite3.Error) as exc:
+            messagebox.showerror(
+                tr("common.export_error"),
+                tr("common.export_fail_tpl", error=exc),
+            )
+            return
+        messagebox.showinfo(
+            tr("common.export_done"),
+            tr("library_transfer.export_done_tpl", rows=righe),
+        )
+
+    def importa_ludoteca_evento(self):
+        percorso = filedialog.askopenfilename(
+            parent=self,
+            title=tr("library_transfer.import_event"),
+            filetypes=[
+                (tr("library_transfer.supported_files"), "*.csv *.xlsx"),
+                (tr("common.csv"), "*.csv"),
+                (tr("library_transfer.xlsx"), "*.xlsx"),
+            ],
+        )
+        if not percorso:
+            return
+        owner_label = None
+        try:
+            if library_transfer.import_requires_owner(percorso):
+                owner_label = simpledialog.askstring(
+                    tr("library_transfer.owner_required"),
+                    tr("library_transfer.owner_prompt"),
+                    parent=self,
+                )
+                if owner_label is None:
+                    return
+            preview = library_transfer.preview_import(
+                percorso,
+                self._game_library_event_id(),
+                owner_label=owner_label,
+            )
+        except (OSError, ValueError, csv.Error) as exc:
+            messagebox.showerror(
+                tr("library_transfer.import_event"), str(exc)
+            )
+            return
+        dettagli = tr(
+            "library_transfer.preview_tpl",
+            valid=preview.valid_count,
+            invalid=preview.invalid_count,
+            existing=len(preview.existing_titles),
+            owners=len(preview.new_owner_labels),
+        )
+        if preview.problems:
+            dettagli += "\n\n" + "\n".join(
+                f"{problem.row_number}: {problem.message}"
+                for problem in preview.problems[:10]
+            )
+            messagebox.showwarning(tr("library_transfer.preview"), dettagli)
+            return
+        if not messagebox.askyesno(
+            tr("library_transfer.preview"),
+            dettagli + "\n\n" + tr("library_transfer.apply_confirm"),
+        ):
+            return
+        try:
+            result = library_transfer.apply_import(preview)
+        except (library_transfer.ImportNotValid, sqlite3.Error) as exc:
+            messagebox.showerror(
+                tr("library_transfer.import_event"), str(exc)
+            )
+            return
+        messagebox.showinfo(
+            tr("library_transfer.import_done"),
+            tr("library_transfer.import_done_tpl", copies=result.copies_created),
+        )
+
+    # ========================================================
+    # BACKOFFICE - EVENTI
+    # ========================================================
+
+    def show_gestione_eventi(self):
+        frame = self.clear(scrollable=True)
+        self.pulsante_indietro(frame, self.show_backoffice)
+        self.titolo_pagina(frame, "events.manage", "events.manage_subtitle")
+        if self.organizzazione_attiva is None:
+            ttk.Label(frame, text=tr("events.organization_required")).pack(pady=30)
+            return
+
+        organization_id = self.organizzazione_attiva.id
+        tree = ttk.Treeview(
+            frame,
+            columns=("name", "slug", "start", "end", "timezone", "status"),
+            show="headings",
+            height=8,
+        )
+        for column, label in (
+            ("name", "events.name"),
+            ("slug", "events.slug"),
+            ("start", "events.start"),
+            ("end", "events.end"),
+            ("timezone", "events.timezone"),
+            ("status", "events.status"),
+        ):
+            tree.heading(column, text=tr(label))
+        tree.pack(fill=BOTH, expand=YES, pady=(0, 12))
+        for event in events.list_events(organization_id):
+            tree.insert(
+                "", END, iid=str(event.id),
+                values=(
+                    event.name, event.slug, event.start_datetime,
+                    event.end_datetime, event.timezone, event.status,
+                ),
+            )
+
+        form = ttk.Frame(frame)
+        form.pack(fill=X)
+        name_var = tk.StringVar()
+        slug_var = tk.StringVar()
+        local_timezone = detect_local_timezone()
+        timezone_var = tk.StringVar(value=local_timezone)
+        status_var = tk.StringVar(value="draft")
+        game_library_var = tk.BooleanVar()
+        activities_var = tk.BooleanVar()
+        selected_id = None
+        entries = {}
+        for row, (key, label, variable) in enumerate((
+            ("name", "events.name", name_var),
+            ("slug", "events.slug", slug_var),
+        )):
+            ttk.Label(form, text=tr(label)).grid(row=row, column=0, sticky=W)
+            entries[key] = ttk.Entry(form, textvariable=variable, width=52)
+            entries[key].grid(row=row, column=1, sticky=EW, padx=8, pady=2)
+        initial_start = datetime.now().replace(second=0, microsecond=0)
+        start_picker = self.crea_datetime_picker(
+            form, "events.start", initial_start.isoformat(), 2
+        )
+        end_picker = self.crea_datetime_picker(
+            form, "events.end", (initial_start + timedelta(hours=1)).isoformat(), 3
+        )
+        ttk.Label(form, text=tr("events.timezone")).grid(
+            row=4, column=0, sticky=W
+        )
+        SearchableTimezoneCombobox(
+            form,
+            textvariable=timezone_var,
+            values=TIMEZONE_VALUES,
+            height=15,
+        ).grid(row=4, column=1, sticky=EW, padx=8, pady=2)
+        ttk.Label(form, text=tr("events.status")).grid(row=5, column=0, sticky=W)
+        ttk.Combobox(
+            form, textvariable=status_var, values=events.EVENT_STATES,
+            state="readonly",
+        ).grid(row=5, column=1, sticky=EW, padx=8, pady=2)
+        ttk.Checkbutton(
+            form, text=tr("events.module_game_library"),
+            variable=game_library_var,
+        ).grid(row=0, column=2, sticky=W, padx=12)
+        ttk.Checkbutton(
+            form, text=tr("events.module_activities"),
+            variable=activities_var,
+        ).grid(row=1, column=2, sticky=W, padx=12)
+        form.columnconfigure(1, weight=1)
+
+        def nuovo():
+            nonlocal selected_id
+            selected_id = None
+            tree.selection_remove(tree.selection())
+            for variable in (name_var, slug_var):
+                variable.set("")
+            start = datetime.now().replace(second=0, microsecond=0)
+            self.imposta_datetime_picker(start_picker, start.isoformat())
+            self.imposta_datetime_picker(
+                end_picker, (start + timedelta(hours=1)).isoformat()
+            )
+            timezone_var.set(local_timezone)
+            status_var.set("draft")
+            game_library_var.set(False)
+            activities_var.set(False)
+            entries["slug"].configure(state="normal")
+
+        def carica(event=None):
+            nonlocal selected_id
+            selection = tree.selection()
+            if not selection:
+                return
+            selected_id = int(selection[0])
+            selected = events.get_event(selected_id)
+            if selected is None:
+                return
+            name_var.set(selected.name)
+            slug_var.set(selected.slug)
+            self.imposta_datetime_picker(start_picker, selected.start_datetime)
+            self.imposta_datetime_picker(end_picker, selected.end_datetime)
+            timezone_var.set(selected.timezone)
+            status_var.set(selected.status)
+            game_library_var.set(selected.modules["game_library"])
+            activities_var.set(selected.modules["activities"])
+            entries["slug"].configure(state="disabled")
+
+        def salva():
+            try:
+                start_datetime = self.leggi_datetime_picker(start_picker)
+                end_datetime = self.leggi_datetime_picker(end_picker)
+                timezone = canonical_timezone(timezone_var.get())
+                if selected_id is None:
+                    saved = events.create_event(
+                        organization_id,
+                        name=name_var.get(),
+                        slug=slug_var.get() or events.suggested_slug(name_var.get()),
+                        start_datetime=start_datetime,
+                        end_datetime=end_datetime,
+                        timezone=timezone,
+                        modules=tuple(
+                            module_id for module_id, enabled in (
+                                ("game_library", game_library_var.get()),
+                                ("activities", activities_var.get()),
+                            ) if enabled
+                        ),
+                    )
+                else:
+                    saved = events.update_event(
+                        selected_id,
+                        name=name_var.get(),
+                        start_datetime=start_datetime,
+                        end_datetime=end_datetime,
+                        timezone=timezone,
+                        status=status_var.get(),
+                    )
+                    events.set_module_enabled(
+                        saved.id, "game_library", game_library_var.get()
+                    )
+                    events.set_module_enabled(
+                        saved.id, "activities", activities_var.get()
+                    )
+                self._rivalida_contesto_evento()
+            except (ValueError, events.EventError, sqlite3.Error) as exc:
+                messagebox.showwarning(tr("events.invalid"), str(exc))
+                return
+            self.show_gestione_eventi()
+
+        def elimina():
+            selection = tree.selection()
+            if not selection or not messagebox.askyesno(
+                tr("events.delete"), tr("events.delete_confirm")
+            ):
+                return
+            try:
+                events.delete_event(int(selection[0]))
+                self._rivalida_contesto_evento()
+            except events.EventDeletionBlocked:
+                messagebox.showwarning(
+                    tr("events.delete"), tr("events.delete_blocked")
+                )
+                return
+            self.show_gestione_eventi()
+
+        actions = ttk.Frame(frame)
+        actions.pack(pady=12)
+        for text, command, style in (
+            ("events.new", nuovo, "secondary-outline"),
+            ("events.save", salva, "success"),
+            ("events.delete", elimina, "danger-outline"),
+        ):
+            ttk.Button(
+                actions, text=tr(text), command=command, bootstyle=style
+            ).pack(side=LEFT, padx=5, ipadx=12, ipady=5)
+        tree.bind("<<TreeviewSelect>>", carica)
+
+    # ========================================================
+    # BACKOFFICE - ORGANIZZAZIONI
+    # ========================================================
+
+    def show_gestione_organizzazioni(self):
+        frame = self.clear()
+
+        self.pulsante_indietro(
+            frame,
+            self.show_backoffice
+        )
+
+        self.titolo_pagina(
+            frame,
+            "organizations.title",
+            "organizations.subtitle"
+        )
+
+        if self.organizzazione_attiva is not None:
+            stato_contesto = tr(
+                "organizations.current_tpl",
+                name=self.organizzazione_attiva.nome,
+            )
+        elif self.selezione_organizzazione_richiesta:
+            stato_contesto = tr("organizations.selection_required")
+        else:
+            stato_contesto = tr("organizations.none_active")
+
+        ttk.Label(
+            frame,
+            text=stato_contesto,
+            font=("Arial", 12, "bold"),
+            bootstyle="secondary",
+        ).pack(pady=(0, 12))
+
+        tree = ttk.Treeview(
+            frame,
+            columns=("nome", "attiva", "corrente"),
+            show="headings",
+            height=10,
+            bootstyle="success",
+        )
+        tree.heading("nome", text=tr("organizations.name"))
+        tree.heading("attiva", text=tr("organizations.active"))
+        tree.heading("corrente", text=tr("organizations.current"))
+        tree.column("nome", width=620)
+        tree.column("attiva", width=130, anchor=CENTER)
+        tree.column("corrente", width=130, anchor=CENTER)
+        tree.pack(fill=BOTH, expand=YES)
+
+        for organizzazione in organizations.elenco_organizzazioni():
+            tree.insert(
+                "",
+                END,
+                iid=str(organizzazione.id),
+                values=(
+                    organizzazione.nome,
+                    tr("common.yes") if organizzazione.attiva else tr("common.no"),
+                    (
+                        tr("common.yes")
+                        if self.organizzazione_attiva is not None
+                        and organizzazione.id == self.organizzazione_attiva.id
+                        else tr("common.no")
+                    ),
+                ),
+            )
+
+        form = ttk.Labelframe(
+            frame,
+            text=tr("organizations.details"),
+            padding=18,
+            bootstyle="secondary",
+        )
+        form.pack(fill=X, pady=(16, 8))
+
+        nome_var = tk.StringVar()
+        attiva_var = tk.BooleanVar(value=True)
+        organizzazione_id = None
+
+        ttk.Label(
+            form,
+            text=tr("organizations.name"),
+            font=("Arial", 11, "bold"),
+        ).grid(row=0, column=0, sticky=W, padx=(0, 10))
+        nome_entry = ttk.Entry(form, textvariable=nome_var, width=52)
+        nome_entry.grid(row=0, column=1, sticky=EW, ipady=3)
+        ttk.Checkbutton(
+            form,
+            text=tr("organizations.active"),
+            variable=attiva_var,
+            bootstyle="success-round-toggle",
+        ).grid(row=0, column=2, sticky=W, padx=(18, 0))
+        form.columnconfigure(1, weight=1)
+
+        def nuova():
+            nonlocal organizzazione_id
+            organizzazione_id = None
+            tree.selection_remove(tree.selection())
+            nome_var.set("")
+            attiva_var.set(True)
+            nome_entry.focus_set()
+
+        def carica_selezione(event=None):
+            nonlocal organizzazione_id
+            selezione = tree.selection()
+            if not selezione:
+                return
+            organizzazione_id = int(selezione[0])
+            organizzazione = organizations.organizzazione_per_id(
+                organizzazione_id
+            )
+            if organizzazione is None:
+                return
+            nome_var.set(organizzazione.nome)
+            attiva_var.set(organizzazione.attiva)
+
+        def salva():
+            try:
+                if organizzazione_id is None:
+                    salvata = organizations.crea_organizzazione(nome_var.get())
+                else:
+                    salvata = organizations.modifica_organizzazione(
+                        organizzazione_id,
+                        nome=nome_var.get(),
+                        attiva=attiva_var.get(),
+                    )
+
+                if (
+                    self.organizzazione_attiva is not None
+                    and self.organizzazione_attiva.id == salvata.id
+                    and salvata.attiva
+                ):
+                    contesto = organizations.seleziona_organizzazione(
+                        salvata.id,
+                        self.config,
+                    )
+                else:
+                    contesto = organizations.sincronizza_contesto(self.config)
+                self._applica_contesto_organizzazione(contesto)
+                self._rivalida_contesto_evento()
+            except organizations.NomeOrganizzazioneMancante:
+                messagebox.showwarning(
+                    tr("organizations.missing_name"),
+                    tr("organizations.missing_name_msg"),
+                )
+                return
+            except (OSError, ValueError) as exc:
+                messagebox.showerror(
+                    tr("settings.save_failed"),
+                    tr("settings.save_failed_tpl", error=exc),
+                )
+                return
+
+            self.show_gestione_organizzazioni()
+
+        def usa_selezionata():
+            selezione = tree.selection()
+            if not selezione:
+                messagebox.showwarning(
+                    tr("organizations.select_first"),
+                    tr("organizations.select_first_msg"),
+                )
+                return
+            try:
+                contesto = organizations.seleziona_organizzazione(
+                    int(selezione[0]),
+                    self.config,
+                )
+            except organizations.OrganizzazioneNonAttiva:
+                messagebox.showwarning(
+                    tr("organizations.inactive"),
+                    tr("organizations.inactive_msg"),
+                )
+                return
+            except organizations.OrganizzazioneNonTrovata:
+                self.show_gestione_organizzazioni()
+                return
+            except (OSError, ValueError) as exc:
+                messagebox.showerror(
+                    tr("settings.save_failed"),
+                    tr("settings.save_failed_tpl", error=exc),
+                )
+                return
+
+            self._applica_contesto_organizzazione(contesto)
+            self._rivalida_contesto_evento()
+            self.show_gestione_organizzazioni()
+
+        azioni = ttk.Frame(frame)
+        azioni.pack(pady=(8, 0))
+
+        ttk.Button(
+            azioni,
+            text=tr("organizations.new"),
+            command=nuova,
+            bootstyle="secondary-outline",
+        ).pack(side=LEFT, padx=5, ipadx=14, ipady=6)
+        ttk.Button(
+            azioni,
+            text=tr("organizations.save"),
+            command=salva,
+            bootstyle="success",
+        ).pack(side=LEFT, padx=5, ipadx=14, ipady=6)
+        ttk.Button(
+            azioni,
+            text=tr("organizations.use_selected"),
+            command=usa_selezionata,
+            bootstyle="primary",
+        ).pack(side=LEFT, padx=5, ipadx=14, ipady=6)
+
+        tree.bind("<<TreeviewSelect>>", carica_selezione)
+        nome_entry.bind("<Return>", lambda event: salva())
 
     # ========================================================
     # BACKOFFICE - TUTTI I PRESTITI
@@ -2235,33 +2797,12 @@ class PrestitiApp(ttk.Window):
             "Ogni cambio gioco genera un nuovo record di prestito"
         )
 
-        with get_db() as db:
-            totale = db.execute("""
-                SELECT COUNT(*)
-                FROM prestiti
-            """).fetchone()[0]
-
-            attivi = db.execute("""
-                SELECT COUNT(*)
-                FROM prestiti
-                WHERE rientro IS NULL
-            """).fetchone()[0]
-
-            righe = db.execute("""
-                SELECT
-                    p.id AS prestito_id,
-                    d.id AS documento_id,
-                    d.token,
-                    g.nome AS gioco,
-                    p.uscita,
-                    p.rientro
-                FROM prestiti p
-                JOIN documenti d
-                  ON d.id = p.documento_id
-                JOIN giochi g
-                  ON g.id = p.gioco_id
-                ORDER BY p.uscita DESC, p.id DESC
-            """).fetchall()
+        storico = reporting.storico_prestiti(
+            event_id=self._game_library_event_id()
+        )
+        totale = storico.totale
+        attivi = storico.attivi
+        righe = storico.righe
 
         riepilogo = ttk.Frame(frame)
         riepilogo.pack(
@@ -2355,8 +2896,8 @@ class PrestitiApp(ttk.Window):
                     row["token"],
                     row["documento_id"],
                     row["gioco"],
-                    formatta_data_ora(row["uscita"]),
-                    formatta_data_ora(row["rientro"]),
+                    row["uscita_testo"],
+                    row["rientro_testo"],
                     tr("common.active") if row["rientro"] is None else tr("common.closed")
                 )
             )
@@ -2379,35 +2920,12 @@ class PrestitiApp(ttk.Window):
             "Registro anonimo: il software non memorizza dati personali"
         )
 
-        with get_db() as db:
-            totale = db.execute("""
-                SELECT COUNT(*)
-                FROM documenti
-            """).fetchone()[0]
-
-            attivi = db.execute("""
-                SELECT COUNT(*)
-                FROM documenti
-                WHERE uscita IS NULL
-            """).fetchone()[0]
-
-            righe = db.execute("""
-                SELECT
-                    d.id,
-                    d.token,
-                    d.ingresso,
-                    d.uscita,
-                    COUNT(p.id) AS numero_prestiti
-                FROM documenti d
-                LEFT JOIN prestiti p
-                  ON p.documento_id = d.id
-                GROUP BY
-                    d.id,
-                    d.token,
-                    d.ingresso,
-                    d.uscita
-                ORDER BY d.ingresso DESC, d.id DESC
-            """).fetchall()
+        storico = reporting.storico_documenti(
+            event_id=self._game_library_event_id()
+        )
+        totale = storico.totale
+        attivi = storico.attivi
+        righe = storico.righe
 
         riepilogo = ttk.Frame(frame)
         riepilogo.pack(
@@ -2496,8 +3014,8 @@ class PrestitiApp(ttk.Window):
                 values=(
                     row["id"],
                     row["token"],
-                    formatta_data_ora(row["ingresso"]),
-                    formatta_data_ora(row["uscita"]),
+                    row["ingresso_testo"],
+                    row["uscita_testo"],
                     row["numero_prestiti"],
                     tr("common.deposited") if row["uscita"] is None else tr("common.returned")
                 )
@@ -2804,228 +3322,27 @@ class PrestitiApp(ttk.Window):
         # DATI DEL REPORT
         # ----------------------------------------------------
 
-        inizio = data_inizio.replace(
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0
+        report = reporting.report_documenti(
+            data_inizio,
+            data_fine,
+            ordina_per=ordina_per,
+            ordine_desc=ordine_desc,
+            adesso=datetime.now(),
+            event_id=self._game_library_event_id(),
         )
-
-        fine_esclusiva = (
-            data_fine.replace(
-                hour=0,
-                minute=0,
-                second=0,
-                microsecond=0
-            )
-            + timedelta(days=1)
-        )
-
-        inizio_iso = inizio.isoformat(
-            timespec="seconds"
-        )
-        fine_iso = fine_esclusiva.isoformat(
-            timespec="seconds"
-        )
-
-        with get_db() as db:
-            documenti = db.execute("""
-                SELECT
-                    id,
-                    token,
-                    ingresso,
-                    uscita
-                FROM documenti
-                WHERE ingresso >= ?
-                  AND ingresso < ?
-                ORDER BY ingresso
-            """, (
-                inizio_iso,
-                fine_iso
-            )).fetchall()
-
-            documenti_ids = [
-                row["id"]
-                for row in documenti
-            ]
-
-            prestiti_per_documento = {}
-
-            if documenti_ids:
-                placeholders = ",".join(
-                    "?"
-                    for _ in documenti_ids
-                )
-
-                prestiti = db.execute(
-                    f"""
-                    SELECT
-                        documento_id,
-                        uscita,
-                        rientro
-                    FROM prestiti
-                    WHERE documento_id IN ({placeholders})
-                    ORDER BY documento_id, uscita
-                    """,
-                    documenti_ids
-                ).fetchall()
-
-                for row in prestiti:
-                    prestiti_per_documento.setdefault(
-                        row["documento_id"],
-                        []
-                    ).append(row)
-
-        def formatta_durata(secondi):
-            if secondi is None:
-                return "—"
-
-            secondi = max(
-                0,
-                int(round(secondi))
-            )
-
-            ore_totali, resto = divmod(
-                secondi,
-                3600
-            )
-            minuti, _ = divmod(
-                resto,
-                60
-            )
-
-            if ore_totali > 0:
-                return f"{ore_totali}h {minuti:02d}m"
-
-            return f"{minuti}m"
-
-        adesso = datetime.now()
-
-        righe_report = []
-        tutte_durate_prestiti = []
-
-        for documento in documenti:
-            try:
-                ingresso_dt = datetime.fromisoformat(
-                    documento["ingresso"]
-                )
-            except (ValueError, TypeError):
-                continue
-
-            if documento["uscita"]:
-                try:
-                    uscita_dt = datetime.fromisoformat(
-                        documento["uscita"]
-                    )
-                except (ValueError, TypeError):
-                    uscita_dt = None
-            else:
-                uscita_dt = None
-
-            fine_documento = (
-                uscita_dt
-                if uscita_dt is not None
-                else adesso
-            )
-
-            tempo_documento_secondi = max(
-                0,
-                (
-                    fine_documento
-                    - ingresso_dt
-                ).total_seconds()
-            )
-
-            prestiti_documento = prestiti_per_documento.get(
-                documento["id"],
-                []
-            )
-
-            durate_partite = []
-
-            for prestito in prestiti_documento:
-                if not prestito["rientro"]:
-                    continue
-
-                try:
-                    uscita_prestito = datetime.fromisoformat(
-                        prestito["uscita"]
-                    )
-                    rientro_prestito = datetime.fromisoformat(
-                        prestito["rientro"]
-                    )
-
-                    durata = (
-                        rientro_prestito
-                        - uscita_prestito
-                    ).total_seconds()
-
-                    if durata >= 0:
-                        durate_partite.append(
-                            durata
-                        )
-
-                except (ValueError, TypeError):
-                    continue
-
-            numero_prestiti = len(
-                prestiti_documento
-            )
-
-            tutte_durate_prestiti.extend(
-                durate_partite
-            )
-
-            media_partita_secondi = (
-                sum(durate_partite)
-                / len(durate_partite)
-                if durate_partite
-                else None
-            )
-
-            righe_report.append({
-                "documento_id": documento["id"],
-                "token": documento["token"],
-                "ingresso_dt": ingresso_dt,
-                "ingresso": formatta_data_ora(
-                    documento["ingresso"]
-                ),
-                "uscita": formatta_data_ora(
-                    documento["uscita"]
-                ),
-                "prestiti": numero_prestiti,
-                "tempo_documento_secondi": tempo_documento_secondi,
-                "tempo_documento": formatta_durata(
-                    tempo_documento_secondi
-                ),
-                "media_partita_secondi": media_partita_secondi,
-                "media_partita": formatta_durata(
-                    media_partita_secondi
-                ),
+        inizio = report.inizio
+        righe_report = [
+            {
+                **row,
                 "stato": (
                     tr("common.in_progress")
-                    if documento["uscita"] is None
+                    if row["aperto"]
                     else tr("common.closed")
                 )
-            })
-
-        def chiave_ordinamento(row):
-            if ordina_per == "prestiti":
-                return row["prestiti"]
-
-            if ordina_per == "tempo_documento_secondi":
-                return row["tempo_documento_secondi"]
-
-            if ordina_per == "media_partita_secondi":
-                valore = row["media_partita_secondi"]
-                return -1 if valore is None else valore
-
-            return row["ingresso_dt"]
-
-        righe_report.sort(
-            key=chiave_ordinamento,
-            reverse=ordine_desc
-        )
+            }
+            for row in report.righe
+        ]
+        formatta_durata = reporting.formatta_durata
 
         criterio_testo = {
             "ingresso": tr("people_report.sort_entry"),
@@ -3037,82 +3354,17 @@ class PrestitiApp(ttk.Window):
             tr("people_report.sort_entry")
         )
 
-        # ----------------------------------------------------
-        # RIEPILOGO E STATISTICHE DESCRITTIVE
-        # ----------------------------------------------------
-
-        totale_documenti = len(
-            righe_report
-        )
-
-        totale_prestiti = sum(
-            row["prestiti"]
-            for row in righe_report
-        )
-
-        prestiti_per_persona = [
-            row["prestiti"]
-            for row in righe_report
-        ]
-
-        media_prestiti_persona = (
-            totale_prestiti / totale_documenti
-            if totale_documenti
-            else 0
-        )
-
-        mediana_prestiti_persona = (
-            median(prestiti_per_persona)
-            if prestiti_per_persona
-            else 0
-        )
-
-        dev_std_prestiti_persona = (
-            pstdev(prestiti_per_persona)
-            if prestiti_per_persona
-            else 0
-        )
-
-        persone_almeno_2 = sum(
-            1
-            for valore in prestiti_per_persona
-            if valore >= 2
-        )
-
-        persone_almeno_3 = sum(
-            1
-            for valore in prestiti_per_persona
-            if valore >= 3
-        )
-
-        percentuale_almeno_2 = (
-            persone_almeno_2 / totale_documenti * 100
-            if totale_documenti
-            else 0
-        )
-
-        percentuale_almeno_3 = (
-            persone_almeno_3 / totale_documenti * 100
-            if totale_documenti
-            else 0
-        )
-
-        permanenze = [
-            row["tempo_documento_secondi"]
-            for row in righe_report
-        ]
-
-        permanenza_mediana_secondi = (
-            median(permanenze)
-            if permanenze
-            else None
-        )
-
-        durata_mediana_prestito_secondi = (
-            median(tutte_durate_prestiti)
-            if tutte_durate_prestiti
-            else None
-        )
+        totale_documenti = report.totale_documenti
+        totale_prestiti = report.totale_prestiti
+        prestiti_per_persona = report.prestiti_per_persona
+        media_prestiti_persona = report.media_prestiti_persona
+        mediana_prestiti_persona = report.mediana_prestiti_persona
+        dev_std_prestiti_persona = report.dev_std_prestiti_persona
+        persone_almeno_3 = report.persone_almeno_3
+        percentuale_almeno_2 = report.percentuale_almeno_2
+        percentuale_almeno_3 = report.percentuale_almeno_3
+        permanenza_mediana_secondi = report.permanenza_mediana_secondi
+        durata_mediana_prestito_secondi = report.durata_mediana_prestito_secondi
 
         ttk.Label(
             frame,
@@ -3488,15 +3740,6 @@ class PrestitiApp(ttk.Window):
         # ESPORTAZIONE CSV
         # ----------------------------------------------------
 
-        def minuti_csv(secondi):
-            if secondi is None:
-                return ""
-
-            return (
-                f"{secondi / 60:.2f}"
-                .replace(".", ",")
-            )
-
         def esporta_csv():
             if not righe_report:
                 messagebox.showinfo(
@@ -3524,48 +3767,26 @@ class PrestitiApp(ttk.Window):
             if not percorso:
                 return
 
+            intestazioni = [
+                tr("people_report.csv_document"),
+                tr("people_report.csv_token"),
+                tr("people_report.csv_entry"),
+                tr("people_report.csv_exit"),
+                tr("people_report.csv_num_loans"),
+                tr("people_report.csv_stay"),
+                tr("people_report.csv_stay_minutes"),
+                tr("people_report.csv_avg"),
+                tr("people_report.csv_avg_minutes"),
+                tr("people_report.csv_status")
+            ]
+            righe_csv = reporting.righe_csv_documenti(
+                report,
+                tr("common.in_progress"),
+                tr("common.closed")
+            )
+
             try:
-                with open(
-                    percorso,
-                    "w",
-                    newline="",
-                    encoding="utf-8-sig"
-                ) as csvfile:
-                    writer = csv.writer(
-                        csvfile,
-                        delimiter=";"
-                    )
-
-                    writer.writerow([
-                        tr("people_report.csv_document"),
-                        tr("people_report.csv_token"),
-                        tr("people_report.csv_entry"),
-                        tr("people_report.csv_exit"),
-                        tr("people_report.csv_num_loans"),
-                        tr("people_report.csv_stay"),
-                        tr("people_report.csv_stay_minutes"),
-                        tr("people_report.csv_avg"),
-                        tr("people_report.csv_avg_minutes"),
-                        tr("people_report.csv_status")
-                    ])
-
-                    for row in righe_report:
-                        writer.writerow([
-                            row["documento_id"],
-                            row["token"],
-                            row["ingresso"],
-                            row["uscita"],
-                            row["prestiti"],
-                            row["tempo_documento"],
-                            minuti_csv(
-                                row["tempo_documento_secondi"]
-                            ),
-                            row["media_partita"],
-                            minuti_csv(
-                                row["media_partita_secondi"]
-                            ),
-                            row["stato"]
-                        ])
+                reporting.esporta_csv(percorso, intestazioni, righe_csv)
 
             except OSError as e:
                 messagebox.showerror(
@@ -3747,7 +3968,9 @@ class PrestitiApp(ttk.Window):
             padx=(0, 18)
         )
 
-        proprietari = elenco_proprietari()
+        proprietari = catalog.elenco_proprietari(
+            event_id=self._game_library_event_id()
+        )
         proprietari_by_name = {
             row["nome"]: row["id"]
             for row in proprietari
@@ -3758,8 +3981,9 @@ class PrestitiApp(ttk.Window):
         )
 
         if proprietario_id is not None:
-            proprietario = proprietario_per_id(
-                proprietario_id
+            proprietario = catalog.proprietario_per_id(
+                proprietario_id,
+                event_id=self._game_library_event_id(),
             )
             if proprietario:
                 proprietario_var.set(
@@ -4018,257 +4242,25 @@ class PrestitiApp(ttk.Window):
         # COSTRUZIONE DATI REPORT
         # ----------------------------------------------------
 
-        # La data finale è inclusiva:
-        # "dal 05/09 al 06/09" significa
-        # 05/09 00:00 <= uscita < 07/09 00:00.
-        inizio = data_inizio.replace(
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0
+        report = reporting.report_utilizzo(
+            data_inizio,
+            data_fine,
+            proprietario_id=proprietario_id,
+            escludi_tempo_zero=escludi_tempo_zero,
+            ordina_per=ordina_per,
+            ordine_desc=ordine_desc,
+            event_id=self._game_library_event_id(),
         )
-        fine_esclusiva = (
-            data_fine.replace(
-                hour=0,
-                minute=0,
-                second=0,
-                microsecond=0
-            )
-            + timedelta(days=1)
-        )
-
-        inizio_iso = inizio.isoformat(
-            timespec="seconds"
-        )
-        fine_iso = fine_esclusiva.isoformat(
-            timespec="seconds"
-        )
-
-        with get_db() as db:
-            giochi = db.execute("""
-                SELECT
-                    g.id,
-                    g.nome,
-                    g.attivo,
-                    COALESCE(SUM(cg.quantita), 0) AS copie_totali
-                FROM giochi g
-                LEFT JOIN copie_gioco cg
-                  ON cg.gioco_id = g.id
-                GROUP BY
-                    g.id,
-                    g.nome,
-                    g.attivo
-                HAVING COALESCE(SUM(cg.quantita), 0) > 0
-                ORDER BY g.nome
-            """).fetchall()
-
-            proprietari_giochi = db.execute("""
-                SELECT
-                    cg.gioco_id,
-                    p.id AS proprietario_id,
-                    p.nome AS proprietario_nome,
-                    cg.quantita
-                FROM copie_gioco cg
-                JOIN proprietari p
-                  ON p.id = cg.proprietario_id
-                WHERE cg.quantita > 0
-                ORDER BY
-                    cg.gioco_id,
-                    p.nome
-            """).fetchall()
-
-            prestiti_periodo = db.execute("""
-                SELECT
-                    gioco_id,
-                    uscita,
-                    rientro
-                FROM prestiti
-                WHERE uscita >= ?
-                  AND uscita < ?
-                ORDER BY uscita
-            """, (
-                inizio_iso,
-                fine_iso
-            )).fetchall()
-
-        proprietari_per_gioco = {}
-
-        for row in proprietari_giochi:
-            proprietari_per_gioco.setdefault(
-                row["gioco_id"],
-                []
-            ).append({
-                "id": row["proprietario_id"],
-                "nome": row["proprietario_nome"],
-                "quantita": row["quantita"]
-            })
-
-        prestiti_per_gioco = {}
-
-        for row in prestiti_periodo:
-            prestiti_per_gioco.setdefault(
-                row["gioco_id"],
-                []
-            ).append(row)
-
-        def formatta_durata(secondi):
-            if secondi is None:
-                return "—"
-
-            secondi = max(
-                0,
-                int(round(secondi))
-            )
-
-            ore_totali, resto = divmod(
-                secondi,
-                3600
-            )
-            minuti, _ = divmod(
-                resto,
-                60
-            )
-
-            if ore_totali > 0:
-                return f"{ore_totali}h {minuti:02d}m"
-
-            return f"{minuti}m"
-
-        righe_report = []
-
-        for gioco in giochi:
-            proprietari_del_gioco = proprietari_per_gioco.get(
-                gioco["id"],
-                []
-            )
-
-            if proprietario_id is not None:
-                if not any(
-                    p["id"] == proprietario_id
-                    for p in proprietari_del_gioco
-                ):
-                    continue
-
-            proprietari_testo = ", ".join(
-                f'{p["nome"]} ({p["quantita"]})'
-                for p in proprietari_del_gioco
-            )
-
-            prestiti_gioco = prestiti_per_gioco.get(
-                gioco["id"],
-                []
-            )
-
-            durate = []
-
-            for prestito in prestiti_gioco:
-                # Le metriche di durata vengono calcolate sui soli prestiti
-                # conclusi. I prestiti ancora aperti restano comunque inclusi
-                # nel conteggio "Prestiti".
-                if not prestito["rientro"]:
-                    continue
-
-                try:
-                    uscita = datetime.fromisoformat(
-                        prestito["uscita"]
-                    )
-                    rientro = datetime.fromisoformat(
-                        prestito["rientro"]
-                    )
-
-                    durata = (
-                        rientro
-                        - uscita
-                    ).total_seconds()
-
-                    if durata >= 0:
-                        durate.append(
-                            durata
-                        )
-
-                except (ValueError, TypeError):
-                    continue
-
-            numero_prestiti = len(
-                prestiti_gioco
-            )
-
-            totale_secondi = sum(
-                durate
-            )
-
-            media_secondi = (
-                totale_secondi / len(durate)
-                if durate
-                else None
-            )
-
-            deviazione_secondi = (
-                pstdev(durate)
-                if durate
-                else None
-            )
-
-            righe_report.append({
-                "gioco": gioco["nome"],
-                "proprietari": proprietari_testo or "—",
-                "copie_totali": gioco["copie_totali"],
-                "prestiti": numero_prestiti,
-                "tempo_totale_secondi": totale_secondi,
-                "tempo_totale": formatta_durata(
-                    totale_secondi
-                ),
-                "media_secondi": media_secondi,
-                "media": formatta_durata(
-                    media_secondi
-                ),
-                "deviazione_secondi": deviazione_secondi,
-                "deviazione": formatta_durata(
-                    deviazione_secondi
-                ),
-                "durate_prestiti": durate
-            })
-
-        # Filtro opzionale: nasconde i giochi che, nell'intervallo,
-        # non hanno accumulato alcun tempo di prestito concluso.
-        if escludi_tempo_zero:
-            righe_report = [
-                row
-                for row in righe_report
-                if row["tempo_totale_secondi"] > 0
-            ]
-
-        # Ordinamento numerico reale per prestiti/durate.
-        # Per valori non disponibili (es. media senza prestiti conclusi)
-        # usiamo -1, così restano in fondo in ordine crescente e
-        # in testa in ordine decrescente solo se esplicitamente richiesto.
-        def chiave_ordinamento(row):
-            if ordina_per == "prestiti":
-                return row["prestiti"]
-
-            if ordina_per == "tempo_totale_secondi":
-                return row["tempo_totale_secondi"]
-
-            if ordina_per == "media_secondi":
-                valore = row["media_secondi"]
-                return -1 if valore is None else valore
-
-            return row["gioco"].casefold()
-
-        righe_report.sort(
-            key=chiave_ordinamento,
-            reverse=ordine_desc
-        )
-
-        # ----------------------------------------------------
-        # RIEPILOGO E STATISTICHE DESCRITTIVE
-        # ----------------------------------------------------
+        inizio = report.inizio
+        righe_report = report.righe
+        formatta_durata = reporting.formatta_durata
 
         proprietario_testo = (
             tr("common.all")
             if proprietario_id is None
-            else proprietario_per_id(
-                proprietario_id
+            else catalog.proprietario_per_id(
+                proprietario_id,
+                event_id=self._game_library_event_id(),
             )["nome"]
         )
 
@@ -4282,66 +4274,16 @@ class PrestitiApp(ttk.Window):
             tr("usage.sort_game")
         )
 
-        totale_titoli = len(
-            righe_report
-        )
-
-        totale_prestiti = sum(
-            row["prestiti"]
-            for row in righe_report
-        )
-
-        prestiti_per_titolo = [
-            row["prestiti"]
-            for row in righe_report
-        ]
-
-        media_prestiti_titolo = (
-            totale_prestiti / totale_titoli
-            if totale_titoli
-            else 0
-        )
-
-        mediana_prestiti_titolo = (
-            median(prestiti_per_titolo)
-            if prestiti_per_titolo
-            else 0
-        )
-
-        dev_std_prestiti_titolo = (
-            pstdev(prestiti_per_titolo)
-            if prestiti_per_titolo
-            else 0
-        )
-
-        titoli_utilizzati = sum(
-            1
-            for valore in prestiti_per_titolo
-            if valore > 0
-        )
-
-        percentuale_titoli_utilizzati = (
-            titoli_utilizzati / totale_titoli * 100
-            if totale_titoli
-            else 0
-        )
-
-        tutte_durate_prestiti = [
-            durata
-            for row in righe_report
-            for durata in row["durate_prestiti"]
-        ]
-
-        durata_mediana_prestito_secondi = (
-            median(tutte_durate_prestiti)
-            if tutte_durate_prestiti
-            else None
-        )
-
-        tempo_totale_fuori_secondi = sum(
-            row["tempo_totale_secondi"]
-            for row in righe_report
-        )
+        totale_titoli = report.totale_titoli
+        totale_prestiti = report.totale_prestiti
+        prestiti_per_titolo = report.prestiti_per_titolo
+        media_prestiti_titolo = report.media_prestiti_titolo
+        mediana_prestiti_titolo = report.mediana_prestiti_titolo
+        dev_std_prestiti_titolo = report.dev_std_prestiti_titolo
+        titoli_utilizzati = report.titoli_utilizzati
+        percentuale_titoli_utilizzati = report.percentuale_titoli_utilizzati
+        durata_mediana_prestito_secondi = report.durata_mediana_prestito_secondi
+        tempo_totale_fuori_secondi = report.tempo_totale_fuori_secondi
 
         ttk.Label(
             frame,
@@ -4707,15 +4649,6 @@ class PrestitiApp(ttk.Window):
         # ESPORTAZIONE CSV
         # ----------------------------------------------------
 
-        def minuti_csv(secondi):
-            if secondi is None:
-                return ""
-
-            return (
-                f"{secondi / 60:.2f}"
-                .replace(".", ",")
-            )
-
         def esporta_csv():
             if not righe_report:
                 messagebox.showinfo(
@@ -4743,50 +4676,22 @@ class PrestitiApp(ttk.Window):
             if not percorso:
                 return
 
+            intestazioni = [
+                tr("usage.sort_game"),
+                tr("usage.csv_owners"),
+                tr("usage.csv_total_copies"),
+                tr("usage.csv_loans"),
+                tr("usage.csv_total_time"),
+                tr("usage.csv_total_minutes"),
+                tr("usage.csv_avg"),
+                tr("usage.csv_avg_minutes"),
+                tr("usage.csv_std"),
+                tr("usage.csv_std_minutes")
+            ]
+            righe_csv = reporting.righe_csv_utilizzo(report)
+
             try:
-                with open(
-                    percorso,
-                    "w",
-                    newline="",
-                    encoding="utf-8-sig"
-                ) as csvfile:
-                    writer = csv.writer(
-                        csvfile,
-                        delimiter=";"
-                    )
-
-                    writer.writerow([
-                        tr("usage.sort_game"),
-                        tr("usage.csv_owners"),
-                        tr("usage.csv_total_copies"),
-                        tr("usage.csv_loans"),
-                        tr("usage.csv_total_time"),
-                        tr("usage.csv_total_minutes"),
-                        tr("usage.csv_avg"),
-                        tr("usage.csv_avg_minutes"),
-                        tr("usage.csv_std"),
-                        tr("usage.csv_std_minutes")
-                    ])
-
-                    for row in righe_report:
-                        writer.writerow([
-                            row["gioco"],
-                            row["proprietari"],
-                            row["copie_totali"],
-                            row["prestiti"],
-                            row["tempo_totale"],
-                            minuti_csv(
-                                row["tempo_totale_secondi"]
-                            ),
-                            row["media"],
-                            minuti_csv(
-                                row["media_secondi"]
-                            ),
-                            row["deviazione"],
-                            minuti_csv(
-                                row["deviazione_secondi"]
-                            )
-                        ])
+                reporting.esporta_csv(percorso, intestazioni, righe_csv)
 
             except OSError as e:
                 messagebox.showerror(
@@ -4859,7 +4764,9 @@ class PrestitiApp(ttk.Window):
             "Inventario delle copie messe a disposizione da ciascun proprietario"
         )
 
-        proprietari = elenco_proprietari()
+        proprietari = catalog.elenco_proprietari(
+            event_id=self._game_library_event_id()
+        )
         proprietari_by_name = {
             row["nome"]: row["id"]
             for row in proprietari
@@ -5019,39 +4926,12 @@ class PrestitiApp(ttk.Window):
 
             proprietario_id = proprietari_by_name[nome]
 
-            with get_db() as db:
-                righe = db.execute("""
-                    SELECT
-                        g.id AS gioco_id,
-                        g.nome AS gioco,
-                        g.attivo AS gioco_attivo,
-                        cg.quantita AS copie_proprietario,
-                        (
-                            SELECT COALESCE(SUM(cg2.quantita), 0)
-                            FROM copie_gioco cg2
-                            WHERE cg2.gioco_id = g.id
-                        ) AS copie_totali,
-                        (
-                            SELECT COUNT(*)
-                            FROM prestiti pr
-                            WHERE pr.gioco_id = g.id
-                              AND pr.rientro IS NULL
-                        ) AS prestiti_attivi_titolo
-                    FROM copie_gioco cg
-                    JOIN giochi g
-                      ON g.id = cg.gioco_id
-                    WHERE cg.proprietario_id = ?
-                      AND cg.quantita > 0
-                    ORDER BY g.nome
-                """, (
-                    proprietario_id,
-                )).fetchall()
-
-            totale_titoli = len(righe)
-            totale_copie = sum(
-                row["copie_proprietario"]
-                for row in righe
+            inventario = catalog.inventario_proprietario(
+                proprietario_id, event_id=self._game_library_event_id()
             )
+            righe = inventario.righe
+            totale_titoli = inventario.totale_titoli
+            totale_copie = inventario.totale_copie
 
             riepilogo_var.set(
                 tr(f"{nome}  •  Titoli: {totale_titoli}  •  Copie: {totale_copie}")
@@ -5149,15 +5029,18 @@ class PrestitiApp(ttk.Window):
             expand=YES
         )
 
-        for proprietario in elenco_proprietari():
+        for proprietario in catalog.elenco_proprietari(
+            event_id=self._game_library_event_id()
+        ):
             tree.insert(
                 "",
                 END,
                 iid=str(proprietario["id"]),
                 values=(
                     proprietario["nome"],
-                    totale_copie_proprietario(
-                        proprietario["id"]
+                    catalog.totale_copie_proprietario(
+                        proprietario["id"],
+                        event_id=self._game_library_event_id(),
                     ),
                     tr("common.yes") if proprietario["attivo"] else tr("common.no")
                 )
@@ -5238,26 +5121,18 @@ class PrestitiApp(ttk.Window):
         entry.focus_set()
 
         def salva():
-            nome = nome_var.get().strip()
-
-            if not nome:
+            try:
+                catalog.aggiungi_proprietario(
+                    nome_var.get(), event_id=self._game_library_event_id()
+                )
+            except catalog.NomeMancante:
                 messagebox.showwarning(
                     tr("Nome mancante"),
                     tr("Inserisci il nome del proprietario.")
                 )
                 return
 
-            try:
-                with get_db() as db:
-                    db.execute("""
-                        INSERT INTO proprietari (
-                            nome,
-                            attivo
-                        )
-                        VALUES (?, 1)
-                    """, (nome,))
-
-            except sqlite3.IntegrityError:
+            except catalog.NomeDuplicato:
                 messagebox.showerror(
                     tr("Proprietario già presente"),
                     tr("Esiste già un proprietario con questo nome.")
@@ -5283,8 +5158,9 @@ class PrestitiApp(ttk.Window):
         )
 
     def show_modifica_proprietario(self, proprietario_id):
-        proprietario = proprietario_per_id(
-            proprietario_id
+        proprietario = catalog.proprietario_per_id(
+            proprietario_id,
+            event_id=self._game_library_event_id(),
         )
 
         if not proprietario:
@@ -5342,7 +5218,7 @@ class PrestitiApp(ttk.Window):
             card,
             text=(
                 tr(f"Copie associate: "
-                f"{totale_copie_proprietario(proprietario_id)}")
+                f"{catalog.totale_copie_proprietario(proprietario_id, event_id=self._game_library_event_id())}")
             ),
             font=("Arial", 12),
             bootstyle="secondary"
@@ -5362,46 +5238,35 @@ class PrestitiApp(ttk.Window):
         )
 
         def salva():
-            nome = nome_var.get().strip()
-
-            if not nome:
+            nome = nome_var.get()
+            attivo = attivo_var.get()
+            try:
+                try:
+                    catalog.modifica_proprietario(
+                        proprietario_id, nome, attivo,
+                        event_id=self._game_library_event_id(),
+                    )
+                except catalog.ConfermaDisattivazione:
+                    conferma = messagebox.askyesno(
+                        tr("Proprietario con copie associate"),
+                        tr("Questo proprietario ha ancora copie "
+                        "associate ai giochi.\n\n"
+                        "Vuoi comunque disattivarlo?")
+                    )
+                    if not conferma:
+                        return
+                    catalog.modifica_proprietario(
+                        proprietario_id, nome, attivo_var.get(),
+                        conferma_disattivazione=True,
+                        event_id=self._game_library_event_id(),
+                    )
+            except catalog.NomeMancante:
                 messagebox.showwarning(
                     tr("Nome mancante"),
                     tr("Inserisci il nome del proprietario.")
                 )
                 return
-
-            if (
-                not attivo_var.get()
-                and totale_copie_proprietario(
-                    proprietario_id
-                ) > 0
-            ):
-                conferma = messagebox.askyesno(
-                    tr("Proprietario con copie associate"),
-                    tr("Questo proprietario ha ancora copie "
-                    "associate ai giochi.\n\n"
-                    "Vuoi comunque disattivarlo?")
-                )
-
-                if not conferma:
-                    return
-
-            try:
-                with get_db() as db:
-                    db.execute("""
-                        UPDATE proprietari
-                        SET
-                            nome = ?,
-                            attivo = ?
-                        WHERE id = ?
-                    """, (
-                        nome,
-                        1 if attivo_var.get() else 0,
-                        proprietario_id
-                    ))
-
-            except sqlite3.IntegrityError:
+            except catalog.NomeDuplicato:
                 messagebox.showerror(
                     tr("Nome duplicato"),
                     tr("Esiste già un proprietario con questo nome.")
@@ -5495,19 +5360,21 @@ class PrestitiApp(ttk.Window):
             expand=YES
         )
 
-        for gioco in elenco_giochi_backoffice():
+        for gioco in catalog.elenco_giochi_backoffice(
+            event_id=self._game_library_event_id()
+        ):
             tree.insert(
                 "",
                 END,
                 iid=str(gioco["id"]),
                 values=(
                     gioco["nome"],
-                    riepilogo_proprietari_gioco(
-                        gioco["id"]
+                    catalog.riepilogo_proprietari_gioco(
+                        gioco["id"], event_id=self._game_library_event_id()
                     ),
                     gioco["copie_totali"],
-                    copie_in_prestito(
-                        gioco["id"]
+                    catalog.copie_in_prestito(
+                        gioco["id"], event_id=self._game_library_event_id()
                     ),
                     tr("common.yes") if gioco["attivo"] else tr("common.no")
                 )
@@ -5589,28 +5456,18 @@ class PrestitiApp(ttk.Window):
         entry.focus_set()
 
         def salva():
-            nome = nome_var.get().strip()
-
-            if not nome:
+            try:
+                gioco_id = catalog.aggiungi_gioco(
+                    nome_var.get(), event_id=self._game_library_event_id()
+                )
+            except catalog.NomeMancante:
                 messagebox.showwarning(
                     tr("Nome mancante"),
                     tr("Inserisci il nome del gioco.")
                 )
                 return
 
-            try:
-                with get_db() as db:
-                    cursor = db.execute("""
-                        INSERT INTO giochi (
-                            nome,
-                            attivo
-                        )
-                        VALUES (?, 1)
-                    """, (nome,))
-
-                    gioco_id = cursor.lastrowid
-
-            except sqlite3.IntegrityError:
+            except catalog.NomeDuplicato:
                 messagebox.showerror(
                     tr("Gioco già presente"),
                     tr("Esiste già un gioco con questo nome.")
@@ -5638,8 +5495,8 @@ class PrestitiApp(ttk.Window):
         )
 
     def show_modifica_gioco(self, gioco_id):
-        gioco = gioco_per_id(
-            gioco_id
+        gioco = catalog.gioco_per_id(
+            gioco_id, event_id=self._game_library_event_id()
         )
 
         if not gioco:
@@ -5789,8 +5646,8 @@ class PrestitiApp(ttk.Window):
             for item in tree.get_children():
                 tree.delete(item)
 
-            righe = copie_per_proprietario_del_gioco(
-                gioco_id
+            righe = catalog.copie_per_proprietario_del_gioco(
+                gioco_id, event_id=self._game_library_event_id()
             )
 
             for row in righe:
@@ -5892,86 +5749,29 @@ class PrestitiApp(ttk.Window):
 
         def salva_quantita():
             proprietario_id = proprietario_selezionato["id"]
-
-            if proprietario_id is None:
+            try:
+                catalog.imposta_quantita(
+                    gioco_id, proprietario_id, quantita_var.get(),
+                    event_id=self._game_library_event_id(),
+                )
+            except catalog.ProprietarioNonSelezionato:
                 messagebox.showwarning(
                     tr("Seleziona un proprietario"),
                     tr("Seleziona prima un proprietario nella tabella.")
                 )
                 return
-
-            try:
-                quantita = int(
-                    quantita_var.get()
-                )
-
-                if quantita < 0:
-                    raise ValueError
-
-            except ValueError:
+            except catalog.QuantitaNonValida:
                 messagebox.showwarning(
                     tr("Quantità non valida"),
                     tr("Inserisci un numero intero maggiore o uguale a zero.")
                 )
                 return
-
-            # Il totale complessivo non può scendere
-            # sotto le copie attualmente in prestito.
-            with get_db() as db:
-                altre_copie = db.execute("""
-                    SELECT COALESCE(SUM(quantita), 0)
-                    FROM copie_gioco
-                    WHERE gioco_id = ?
-                      AND proprietario_id <> ?
-                """, (
-                    gioco_id,
-                    proprietario_id
-                )).fetchone()[0]
-
-            nuovo_totale = altre_copie + quantita
-            fuori = copie_in_prestito(
-                gioco_id
-            )
-
-            if nuovo_totale < fuori:
+            except catalog.CopieInsufficienti as e:
                 messagebox.showwarning(
                     tr("Copie insufficienti"),
-                    tr(f"Ci sono attualmente {fuori} copie "
-                    f"di questo gioco in prestito.\n\n"
-                    f"Il totale non può essere ridotto "
-                    f"a {nuovo_totale}.")
+                    tr(str(e))
                 )
                 return
-
-            with get_db() as db:
-                if quantita == 0:
-                    db.execute("""
-                        DELETE FROM copie_gioco
-                        WHERE gioco_id = ?
-                          AND proprietario_id = ?
-                    """, (
-                        gioco_id,
-                        proprietario_id
-                    ))
-                else:
-                    db.execute("""
-                        INSERT INTO copie_gioco (
-                            gioco_id,
-                            proprietario_id,
-                            quantita
-                        )
-                        VALUES (?, ?, ?)
-                        ON CONFLICT(
-                            gioco_id,
-                            proprietario_id
-                        )
-                        DO UPDATE SET
-                            quantita = excluded.quantita
-                    """, (
-                        gioco_id,
-                        proprietario_id,
-                        quantita
-                    ))
 
             aggiorna_lista()
 
@@ -5998,45 +5798,25 @@ class PrestitiApp(ttk.Window):
         # ----------------------------------------------------
 
         def salva_gioco():
-            nome = nome_var.get().strip()
-
-            if not nome:
+            try:
+                catalog.modifica_gioco(
+                    gioco_id, nome_var.get(), attivo_var.get(),
+                    event_id=self._game_library_event_id(),
+                )
+            except catalog.NomeMancante:
                 messagebox.showwarning(
                     tr("Nome mancante"),
                     tr("Inserisci il nome del gioco.")
                 )
                 return
-
-            fuori = copie_in_prestito(
-                gioco_id
-            )
-
-            if (
-                not attivo_var.get()
-                and fuori > 0
-            ):
+            except catalog.GiocoInPrestito:
                 messagebox.showwarning(
                     tr("Gioco in prestito"),
                     tr("Non puoi disattivare un gioco "
                     "mentre ci sono copie in prestito.")
                 )
                 return
-
-            try:
-                with get_db() as db:
-                    db.execute("""
-                        UPDATE giochi
-                        SET
-                            nome = ?,
-                            attivo = ?
-                        WHERE id = ?
-                    """, (
-                        nome,
-                        1 if attivo_var.get() else 0,
-                        gioco_id
-                    ))
-
-            except sqlite3.IntegrityError:
+            except catalog.NomeDuplicato:
                 messagebox.showerror(
                     tr("Nome duplicato"),
                     tr("Esiste già un gioco con questo nome.")
@@ -6132,28 +5912,6 @@ class PrestitiApp(ttk.Window):
 
         ttk.Label(
             panel,
-            text=tr("settings.tokens"),
-            font=("Arial", 12, "bold")
-        ).pack(anchor=W, pady=(0, 5))
-
-        tokens_var = tk.StringVar(
-            value=str(self.config.max_tokens)
-        )
-        tokens_entry = ttk.Entry(
-            panel,
-            textvariable=tokens_var,
-            width=14
-        )
-        tokens_entry.pack(anchor=W, pady=(0, 4), ipady=3)
-
-        ttk.Label(
-            panel,
-            text=tr("settings.tokens_help"),
-            bootstyle="secondary"
-        ).pack(anchor=W, pady=(0, 18))
-
-        ttk.Label(
-            panel,
             text=tr("settings.database"),
             font=("Arial", 12, "bold")
         ).pack(anchor=W, pady=(0, 5))
@@ -6182,7 +5940,9 @@ class PrestitiApp(ttk.Window):
                 ],
             )
             if selected:
-                database_var.set(database_setting_from_path(selected))
+                database_var.set(
+                    workspace.impostazione_database_da_percorso(selected)
+                )
 
         def scegli_database_esistente():
             selected = filedialog.askopenfilename(
@@ -6195,7 +5955,9 @@ class PrestitiApp(ttk.Window):
                 ],
             )
             if selected:
-                database_var.set(database_setting_from_path(selected))
+                database_var.set(
+                    workspace.impostazione_database_da_percorso(selected)
+                )
 
         database_buttons = ttk.Frame(panel)
         database_buttons.pack(fill=X, pady=(0, 4))
@@ -6222,104 +5984,96 @@ class PrestitiApp(ttk.Window):
             justify=LEFT
         ).pack(anchor=W, pady=(0, 20))
 
+        def esegui_salvataggio(language, migrazione_autorizzata=False):
+            return workspace.salva_impostazioni(
+                lingua=language,
+                database_testo=database_var.get(),
+                nome_proprietario_predefinito=tr("owner.default"),
+                organizzazione_attiva_id=(
+                    self.organizzazione_attiva.id
+                    if self.organizzazione_attiva is not None
+                    else None
+                ),
+                organizzazione_attiva_nome=(
+                    self.organizzazione_attiva.nome
+                    if self.organizzazione_attiva is not None
+                    else None
+                ),
+                evento_attivo_id=(
+                    self.evento_attivo.id
+                    if self.evento_attivo is not None
+                    else None
+                ),
+                evento_attivo_slug=(
+                    self.evento_attivo.slug
+                    if self.evento_attivo is not None
+                    else None
+                ),
+                migrazione_autorizzata=migrazione_autorizzata,
+            )
+
         def salva():
-            try:
-                max_tokens = int(tokens_var.get().strip())
-            except ValueError:
-                max_tokens = 0
-
-            if max_tokens <= 0:
-                messagebox.showwarning(
-                    tr("settings.invalid_tokens"),
-                    tr("settings.invalid_tokens_msg")
-                )
-                return
-
-            try:
-                database = normalize_database_setting(database_var.get())
-                target_path = resolve_database_path(database)
-            except (OSError, ValueError) as exc:
-                messagebox.showwarning(
-                    tr("settings.invalid_database"),
-                    tr("settings.invalid_database_msg_tpl", error=str(exc))
-                )
-                return
-
-            current_path = get_db_path().resolve(strict=False)
-            database_changed = target_path != current_path
-
-            # Avoid abandoning an event database while documents are still
-            # physically deposited in it.
-            if database_changed and conta_documenti_attivi() > 0:
-                messagebox.showwarning(
-                    tr("settings.database_busy"),
-                    tr("settings.database_busy_msg")
-                )
-                return
-
-            if not database_changed:
-                highest_open = massimo_token_aperto()
-                if highest_open > max_tokens:
-                    messagebox.showwarning(
-                        tr("settings.invalid_tokens"),
-                        tr(
-                            "settings.active_token_limit_tpl",
-                            token=highest_open
-                        )
-                    )
-                    return
-
             language = display_to_code.get(
                 language_var.get(),
                 "it"
             )
 
-            old_path = current_path
-            switched = False
-            if database_changed:
-                try:
-                    set_db_path(target_path)
-                    switched = True
-                    init_db(default_owner_name=tr("owner.default"))
-                    highest_open = massimo_token_aperto()
-                    if highest_open > max_tokens:
-                        set_db_path(old_path)
-                        switched = False
-                        messagebox.showwarning(
-                            tr("settings.invalid_tokens"),
-                            tr(
-                                "settings.target_active_token_limit_tpl",
-                                token=highest_open
-                            )
-                        )
-                        return
-                except (sqlite3.Error, OSError, ValueError) as exc:
-                    set_db_path(old_path)
-                    switched = False
-                    messagebox.showwarning(
-                        tr("settings.invalid_database"),
-                        tr("settings.database_switch_failed_tpl", error=str(exc))
-                    )
-                    return
-
-            candidate = AppConfig(
-                language=language,
-                max_tokens=max_tokens,
-                database=database
-            )
-
             try:
-                save_config(candidate)
-            except (OSError, ValueError) as exc:
-                if switched:
-                    set_db_path(old_path)
+                try:
+                    risultato = esegui_salvataggio(language)
+                except bootstrap.MigrationApprovalRequired as request:
+                    autorizzata = migration_ui.chiedi_autorizzazione(
+                        request.plan,
+                        parent=self,
+                    )
+                    if not autorizzata:
+                        self.destroy()
+                        return
+                    risultato = esegui_salvataggio(
+                        language,
+                        migrazione_autorizzata=True,
+                    )
+            except (
+                bootstrap.BackupCreationFailed,
+                bootstrap.MigrationExecutionFailed,
+                migrations.MigrationError,
+            ) as error:
+                migration_ui.mostra_errore(error, parent=self)
+                self.destroy()
+                return
+            except workspace.DatabaseNonValido as exc:
+                messagebox.showwarning(
+                    tr("settings.invalid_database"),
+                    tr("settings.invalid_database_msg_tpl", error=exc.dettaglio)
+                )
+                return
+            except workspace.DatabaseInUso:
+                messagebox.showwarning(
+                    tr("settings.database_busy"),
+                    tr("settings.database_busy_msg")
+                )
+                return
+            except workspace.CambioDatabaseFallito as exc:
+                messagebox.showwarning(
+                    tr("settings.invalid_database"),
+                    tr(
+                        "settings.database_switch_failed_tpl",
+                        error=exc.dettaglio
+                    )
+                )
+                return
+            except workspace.SalvataggioConfigurazioneFallito as exc:
                 messagebox.showwarning(
                     tr("settings.save_failed"),
-                    tr("settings.save_failed_tpl", error=str(exc))
+                    tr("settings.save_failed_tpl", error=exc.dettaglio)
                 )
                 return
 
-            self.config = candidate
+            self.config = risultato.configurazione
+            self._applica_contesto_organizzazione(
+                organizations.risolvi_contesto(self.config)
+            )
+            self._rivalida_contesto_evento()
             set_language(language)
             self.title(tr("app.title"))
 
@@ -6327,7 +6081,7 @@ class PrestitiApp(ttk.Window):
                 tr("settings.saved"),
                 tr(
                     "settings.saved_database_msg"
-                    if database_changed
+                    if risultato.database_cambiato
                     else "settings.saved_msg"
                 )
             )
@@ -6345,20 +6099,18 @@ class PrestitiApp(ttk.Window):
     # ========================================================
 
     def chiudi_app(self):
-        attivi = conta_documenti_attivi()
+        situazione = (
+            lending.situazione_chiusura(event_id=self.evento_attivo.id)
+            if self.evento_attivo is not None
+            and self.evento_attivo.modules.get("game_library", False)
+            else lending.SituazioneChiusura(0, ())
+        )
+        attivi = situazione.documenti_attivi
 
         if attivi > 0:
-            with get_db() as db:
-                token = db.execute("""
-                    SELECT token
-                    FROM documenti
-                    WHERE uscita IS NULL
-                    ORDER BY token
-                """).fetchall()
-
             token_str = ", ".join(
-                str(row["token"])
-                for row in token
+                str(token)
+                for token in situazione.token
             )
 
             conferma = messagebox.askyesno(
