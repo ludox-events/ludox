@@ -9,12 +9,9 @@
 > dell'utente. I marker `TBD` e `QUESTION` restano decisioni aperte e non
 > autorizzano Codex a scegliere autonomamente una soluzione.
 
-Questo documento raccoglie i principi dello schema dati di LudoX e descrive lo
-schema implementato fino alla versione `v3`.
-
-Le parti relative a funzionalità future, come identificazione operativa delle
-copie tramite QR/barcode e modulo `activities`, restano specifiche di progetto
-non ancora completamente implementate.
+Questo documento raccoglie i principi dello schema dati di LudoX, descrive lo
+schema implementato fino alla versione `v3` e definisce il target strutturale
+della issue #4.
 
 ## Motore locale
 
@@ -26,28 +23,16 @@ Ogni connessione deve abilitare l'integrità referenziale:
 PRAGMA foreign_keys = ON;
 ```
 
-Il modello logico non deve dipendere da caratteristiche che rendano
+Il modello logico non deve però dipendere da caratteristiche che rendano
 inutilmente difficile una futura implementazione server con un database
 differente.
 
-## Workspace
+## Workspace e gerarchia
 
 Un file SQLite rappresenta un workspace/database LudoX.
 
-Un singolo database può contenere:
-
-- più Organization;
-- più Event per ciascuna Organization;
-- i dati event-specific dei moduli abilitati.
-
-LudoX deve continuare a permettere la creazione e l'apertura di database
-differenti.
-
-Il file database non coincide quindi necessariamente con un singolo Event.
-
-## Gerarchia dati
-
-La gerarchia concettuale è:
+Un singolo database può contenere più Organization e più Event. La gerarchia
+concettuale è:
 
 ```text
 Organization
@@ -57,45 +42,36 @@ Event
 Module data
 ```
 
-I dati del modulo `game_library` appartengono all'Event e non a un catalogo
-globale dell'Organization.
+I dati del modulo `game_library`, comprese le copie fisiche e i loro
+identificatori, appartengono all'Event.
+
+Non esiste un'identità globale obbligatoria della scatola condivisa tra Event.
 
 ## Versione dello schema
 
-LudoX utilizza `PRAGMA user_version` per registrare la versione dello schema
-SQLite.
+LudoX utilizza `PRAGMA user_version`.
 
-Le versioni implementate sono:
+Versioni correnti:
 
 ```text
 user_version = 0   schema legacy / sperimentale
 user_version = 1   Organizations
 user_version = 2   Events + Event Modules
 user_version = 3   game_library event-specific
-user_version = 4+  successive modifiche strutturali
 ```
 
-La versione `0` identifica lo schema precedente all'introduzione della nuova
-architettura versionata.
+La issue #4 introduce una modifica strutturale agli identificatori delle copie
+e deve quindi implementare una migration esplicita:
 
-La migration `0 → 1` introduce `organizations`.
+```text
+v3 → v4
+```
 
-La migration `1 → 2` introduce `events` e `event_modules`.
-
-La migration `2 → 3` introduce il modello event-specific del modulo
-`game_library`.
-
-Ogni numero di versione identifica uno stato preciso e completo dello schema.
-Una versione non deve essere costruita progressivamente da più modifiche
-strutturali indipendenti senza incremento di `user_version`.
-
-Ogni futura modifica strutturale deve prevedere una migration esplicita. Le
-versioni dello schema usano numeri interi progressivi, indipendenti dalla
-versione applicativa di LudoX.
+La numerazione successiva non viene riservata in anticipo.
 
 ## Schema implementato in v3
 
-Lo schema applicativo corrente comprende:
+Lo schema applicativo comprende:
 
 ```text
 organizations
@@ -111,27 +87,18 @@ game_library_sessions
 game_library_loans
 ```
 
-Le vecchie tabelle del modello Prestiti legacy vengono preservate durante la
-migration e non vengono automaticamente reinterpretate come dati di un Event.
+Le tabelle legacy precedenti restano preservate come archivio e non vengono
+mischiate automaticamente con i nuovi dati event-specific.
 
 ### `organizations`
 
-Contenitore logico principale.
-
-Campi implementati minimi:
+Campi minimi implementati:
 
 - `id`;
 - `name`;
 - `active`.
 
-Una Organization viene normalmente disattivata invece di essere eliminata.
-
-Gli eventuali campi descrittivi aggiuntivi restano estensioni future del
-modello Organization.
-
 ### `events`
-
-Ogni Event appartiene a una sola Organization.
 
 Campi implementati:
 
@@ -144,91 +111,64 @@ Campi implementati:
 - `timezone`;
 - `status`.
 
-Lo slug usa `a-z`, `0-9`, `-` e `_` ed è univoco all'interno della
-Organization.
-
-Organization e slug dell'Event sono immutabili dopo la creazione.
+Ogni Event appartiene a una sola Organization. Organization e slug sono
+immutabili dopo la creazione.
 
 ### `event_modules`
 
-Registra quali moduli sono abilitati per un Event.
+Registra i moduli abilitati per Event.
 
-Gli identificatori riconosciuti sono:
+Identificatori riconosciuti:
 
-- `game_library` — Prestiti Ludoteca / Game Library;
-- `activities` — Attività / Activities.
-
-La coppia Event/modulo è unica.
-
-La disabilitazione di un modulo non deve cancellare automaticamente i dati già
-presenti.
+- `game_library`;
+- `activities`.
 
 ### `game_library_settings`
-
-Configurazione event-specific del modulo `game_library`.
 
 Comprende:
 
 - `event_id`;
-- `max_slots`, con valore iniziale `50`;
+- `max_slots`, default `50`;
 - `identification_mode`.
 
-Le modalità previste nello schema sono:
+Valori previsti:
 
-- `token`;
-- `copy_identifier`.
+```text
+token
+copy_identifier
+```
 
-La modalità attualmente operativa è `token`.
+La scelta è event-specific. Le due modalità sono alternative.
 
 ### `game_library_owner_labels`
 
-Etichette operative dei proprietari delle copie.
-
 Campi principali:
 
 - `id`;
 - `event_id`;
 - `name`;
-- `name_key` normalizzata;
+- `name_key`;
 - `active`.
-
-Le owner label appartengono a un singolo Event e non rappresentano anagrafiche
-di persone o soggetti giuridici.
 
 ### `game_library_games`
 
-Rappresenta il titolo del gioco, non la singola scatola.
-
 Campi principali:
 
 - `id`;
 - `event_id`;
 - `name`;
-- `name_key` normalizzata;
+- `name_key`;
 - `active`;
 - `external_id` opzionale;
 - `difficulty` opzionale;
 - `difficulty_source` opzionale;
-- `notes` opzionale.
+- `notes` opzionali.
 
-All'interno dello stesso Event, il nome normalizzato è univoco.
-
-La normalizzazione minima comprende almeno:
-
-- rimozione degli spazi iniziali/finali;
-- confronto case-insensitive.
-
-Nomi soltanto simili non vengono fusi automaticamente.
+Il nome normalizzato è univoco nello stesso Event.
 
 ### `game_library_game_copies`
 
-Una riga rappresenta una scatola fisica.
-
-Ogni copia appartiene a:
-
-- un Event;
-- un gioco;
-- una owner label.
+Una riga rappresenta una scatola fisica appartenente allo specifico Event.
 
 Campi principali:
 
@@ -238,38 +178,117 @@ Campi principali:
 - `owner_label_id`;
 - `active`.
 
-La quantità di un titolo non viene memorizzata come unico valore aggregato:
-viene ricavata contando le copie fisiche.
+La stessa scatola eventualmente usata in Event differenti non viene collegata
+automaticamente attraverso un record globale: ogni Event possiede le proprie
+copie.
 
-### `game_library_copy_identifiers`
+### `game_library_copy_identifiers` in v3
 
-Una copia può avere zero, uno o più identificativi opzionali.
+La tabella v3 è già predisposta per identificatori multipli e distingue
+`LUDOX_QR` / `EXTERNAL_BARCODE`, ma questa semantica viene sostituita dalla
+issue #4.
 
-Campi principali:
+## Target schema v4 per gli identificatori delle copie
 
-- `id`;
-- `event_id`;
-- `copy_id`;
-- `identifier_type`;
-- `value`.
+Nella V1 operativa una copia può avere **zero o un solo identificatore
+operativo**.
 
-Tipi inizialmente riconosciuti:
+QR code e barcode sono soltanto rappresentazioni fisiche dello stesso concetto
+`copy_identifier`. Lo schema registra l'origine del valore, non la simbologia.
 
-- `LUDOX_QR`;
-- `EXTERNAL_BARCODE`.
+La struttura target di `game_library_copy_identifiers` deve rappresentare
+almeno:
 
-Lo schema è predisposto per l'identificazione individuale delle copie, ma la
-modalità QR/barcode non è ancora operativa.
+```text
+id
+event_id
+copy_id
+source
+value
+```
 
-- TBD: Definire formato, vincoli e regole di unicità dei valori
-  `LUDOX_QR`, `EXTERNAL_BARCODE` e degli eventuali identificativi esterni dei
-  giochi.
+con:
 
-- TBD: Definire i formati fisici supportati per la stampa delle etichette QR.
+```text
+source ∈ {external, ludox}
+```
+
+### Vincoli richiesti
+
+Lo schema v4 deve garantire:
+
+- `value` non vuoto;
+- una sola riga identificatore per copia nello stesso Event;
+- `value` univoco nello stesso Event;
+- lo stesso `value` consentito in Event differenti;
+- coerenza `event_id + copy_id` tramite foreign key verso la copia;
+- eliminazione dell'identificatore in cascata quando una copia eliminabile
+  viene eliminata;
+- nessun vincolo globale tra copie appartenenti a Event diversi.
+
+Forma logica indicativa dei vincoli:
+
+```text
+UNIQUE(event_id, copy_id)
+UNIQUE(event_id, value)
+FOREIGN KEY(event_id, copy_id)
+    → game_library_game_copies(event_id, id)
+```
+
+Il confronto del valore è esatto dopo il trim applicativo. Non viene applicato
+case folding.
+
+### Migration v3 → v4
+
+La migration deve preservare eventuali identificatori già presenti:
+
+```text
+LUDOX_QR         → source = ludox
+EXTERNAL_BARCODE → source = external
+```
+
+La versione v3 dell'app non espone normalmente una UI per creare più
+identificatori sulla stessa copia. Se tuttavia il database contiene dati che
+violano i nuovi vincoli, la migration non deve scegliere o cancellare valori
+silenziosamente: deve fallire in modo comprensibile e lasciare intatto il
+database originale, secondo il normale flusso backup + rollback.
+
+## Generazione di un identificatore LudoX
+
+Dopo la creazione della copia, LudoX può generare un valore:
+
+```text
+LX-C-<copy_id a almeno 6 cifre>
+```
+
+Esempio:
+
+```text
+copy_id = 123
+→ LX-C-000123
+```
+
+La generazione deve comunque verificare il vincolo di unicità nell'Event prima
+del salvataggio.
+
+Il valore generato viene memorizzato con:
+
+```text
+source = ludox
+```
+
+Un codice fornito dall'utente/scanner viene memorizzato con:
+
+```text
+source = external
+```
+
+salvo import esplicito di un codice già marcato `ludox` nel file di
+interoperabilità.
+
+## Prestiti e copie
 
 ### `game_library_sessions`
-
-Rappresenta una sessione anonima di prestito.
 
 Campi principali:
 
@@ -279,20 +298,10 @@ Campi principali:
 - `opened_at`;
 - `closed_at` opzionale.
 
-Lo slot corrisponde alla posizione fisica del documento.
-
-In modalità token:
-
-```text
-token N = slot N
-```
-
 Uno slot può avere al massimo una sessione aperta alla volta nello stesso
 Event.
 
 ### `game_library_loans`
-
-Rappresenta un singolo prestito all'interno di una sessione.
 
 Campi principali:
 
@@ -304,58 +313,33 @@ Campi principali:
 - `checked_out_at`;
 - `returned_at` opzionale.
 
-In modalità token il gioco è noto, ma la copia fisica può non esserlo.
+In modalità `token`, `copy_id` può essere `NULL`.
 
-In modalità QR/barcode la copia specifica potrà essere registrata.
+In modalità `copy_identifier`, ogni nuovo prestito deve avere `copy_id`
+valorizzato.
 
-Una sessione può avere una sequenza di prestiti, ma al massimo un prestito
-aperto alla volta.
+La relazione storica usa `copy_id`, non il testo del `copy_identifier`.
+Cambiare successivamente il codice operativo di una copia non cambia i
+prestiti storici.
 
 ## Isolamento per Event
 
-La scelta implementata in v3 è di materializzare `event_id` nelle principali
-tabelle operative del modulo `game_library`, comprese le relazioni figlie dove
-questo permette di controllare esplicitamente la coerenza tra record.
+`event_id` è materializzato nelle principali tabelle operative del modulo
+`game_library`, incluse le relazioni figlie dove serve a impedire riferimenti
+incrociati accidentali.
 
-In particolare `event_id` è presente in:
+Le foreign key composite che includono `event_id` devono continuare a impedire
+collegamenti tra dati di Event differenti.
 
-- settings;
-- owner label;
-- giochi;
-- copie;
-- identificativi delle copie;
-- sessioni;
-- prestiti.
+La regola di unicità dei `copy_identifier` è coerente con questo modello:
 
-Le foreign key composite che includono `event_id` impediscono collegamenti
-accidentali tra dati appartenenti a Event differenti.
+```text
+Event A: BIB-123 → consentito
+Event B: BIB-123 → consentito
+Event A: seconda copia BIB-123 → vietato
+```
 
-Questa ridondanza controllata semplifica inoltre:
-
-- query event-scoped;
-- import/export;
-- validazioni;
-- futura architettura client/server.
-
-## Integrità referenziale e cancellazione
-
-Le regole strutturali implementate in v3 combinano foreign key SQLite e
-controlli applicativi.
-
-In sintesi:
-
-- `events.organization_id` riferisce `organizations`;
-- `event_modules` viene eliminato in cascata con un Event eliminabile;
-- `game_library_settings`, owner label e giochi sono event-scoped;
-- le copie usano riferimenti coerenti per Event verso gioco e owner label;
-- gli identificativi delle copie vengono eliminati insieme alla copia;
-- sessioni e prestiti usano `ON DELETE RESTRICT` nei punti in cui lo storico
-  operativo deve impedire cancellazioni distruttive;
-- esistono indici univoci parziali per impedire più sessioni aperte sullo
-  stesso slot e più prestiti aperti nella stessa sessione.
-
-Il service layer aggiunge le regole funzionali che non sono esprimibili o non
-conviene esprimere esclusivamente tramite foreign key.
+## Integrità e cancellazione
 
 Principio generale:
 
@@ -367,89 +351,75 @@ dato entrato nello storico operativo
 → non eliminabile; disattivabile quando applicabile
 ```
 
-Nel modulo `game_library`, sessioni e prestiti costituiscono storico operativo.
+Sessioni e prestiti costituiscono storico operativo.
 
-Un Event che contiene storico operativo non può essere eliminato.
+Un Event con storico operativo non può essere eliminato.
 
-La ludoteca non può essere azzerata dopo che è stato registrato almeno un
-prestito.
+La ludoteca non può essere azzerata dopo il primo prestito registrato.
 
 Il modulo `game_library` non può essere disabilitato con sessioni o prestiti
 aperti.
 
-Per prudenza, se un titolo è stato prestato in modalità token e quindi non è
-nota la scatola fisica utilizzata, le sue copie non devono essere considerate
-automaticamente estranee allo storico.
+L'identificatore di una copia non può essere rimosso o sostituito mentre
+esiste un prestito aperto per quella copia.
 
-- TBD: Confermare la regola definitiva di cancellazione/disattivazione delle
-  singole copie dopo prestiti effettuati in modalità token.
+Quando una copia possiede soltanto storico chiuso, il suo identificatore può
+essere sostituito: lo storico resta collegato al `copy_id`.
+
+Per i prestiti storici effettuati in modalità `token`, la specifica scatola
+fisica può essere ignota. In tali casi le regole esistenti di prudenza sulla
+cancellazione delle copie devono essere preservate.
+
+- TBD: Definire in futuro una politica più fine di cancellazione delle singole
+  copie dopo prestiti storici effettuati in modalità token, se emergerà un
+  caso d'uso concreto.
+
+## Import/export e identificatori
+
+Il formato minimo a tre colonne resta supportato:
+
+```text
+game_name,owner_label,quantity
+```
+
+La issue #4 estende il formato con colonne opzionali:
+
+```text
+copy_identifier
+identifier_source
+```
+
+Regole strutturali:
+
+- riga con `copy_identifier` → `quantity = 1`;
+- riga senza identificatore → `quantity >= 1`;
+- `identifier_source ∈ {external, ludox}` quando valorizzato;
+- identificatore duplicato nello stesso Event → errore;
+- identificatore duplicato solo in un altro Event → consentito;
+- import ed export devono preservare il valore dell'identificatore e la sua
+  sorgente;
+- l'import deve essere validato completamente prima di applicare modifiche.
+
+Le regole funzionali complete sono definite in [LENDING.md](LENDING.md).
 
 ## Compatibilità richiesta all'avvio
 
 LudoX può operare soltanto su un database con lo schema richiesto dalla
 versione corrente dell'applicazione.
 
-All'apertura del database l'applicazione ispeziona lo schema **prima** di
-inizializzare i servizi operativi.
+Per un database precedente:
 
-Il comportamento dipende dallo stato rilevato:
-
-- database nuovo o realmente vuoto → inizializzazione diretta allo schema
-  corrente;
-- schema già corrente → avvio normale;
-- schema precedente su database esistente → migration necessaria;
-- schema futuro/non supportato → errore e chiusura dell'applicazione.
-
-Un database esistente con schema precedente non viene migrato silenziosamente.
-
-Prima della migration LudoX deve:
-
-1. informare l'utente della versione attuale e di quella richiesta;
-2. chiedere autorizzazione esplicita;
-3. creare automaticamente una copia completa di backup;
-4. eseguire le migration necessarie soltanto dopo il completamento del backup.
-
-Se l'utente rifiuta la migration, il backup fallisce o la migration fallisce,
-LudoX non prosegue l'avvio operativo sul database incompatibile.
+1. viene determinata la migration necessaria;
+2. viene richiesta autorizzazione esplicita;
+3. viene creato il backup obbligatorio;
+4. le migration vengono applicate in ordine e in transazione;
+5. in caso di errore viene eseguito rollback e l'applicazione non prosegue.
 
 Il comportamento completo è definito in [MIGRATIONS.md](MIGRATIONS.md).
 
-## Backup delle migration
-
-Il backup è obbligatorio prima di qualsiasi migration di un database esistente,
-anche se la modifica è semplice o puramente additiva.
-
-Per una sequenza composta da più migration pendenti viene creato un unico
-backup prima dell'intera sequenza.
-
-Il backup viene salvato normalmente accanto al database originale con un nome
-leggibile che include versione di origine, versione di destinazione e
-Timestamp.
-
-Esempio:
-
-```text
-ludox.backup-v0-to-v3-20260912-175900.db
-```
-
-Il nome non deve sovrascrivere backup già esistenti.
-
-## Esecuzione e rollback
-
-Le migration vengono applicate in ordine crescente e senza saltare versioni.
-La sequenza viene eseguita in transazione.
-
-`PRAGMA user_version` viene aggiornato insieme alle modifiche dello schema e
-non deve rimanere avanzato se la migration fallisce.
-
-Se manca una migration intermedia, l'aggiornamento deve fallire prima di
-modificare il database.
-
 ## Service layer
 
-La separazione minima tra UI, logica applicativa e persistenza è implementata.
-
-La direzione corrente è:
+La separazione minima implementata è:
 
 ```text
 UI
@@ -459,67 +429,22 @@ Domain / service modules
 Database access / migrations
 ```
 
-La logica funzionale è distribuita in moduli dedicati, tra cui:
-
-- `organizations`;
-- `events`;
-- `catalog`;
-- `lending`;
-- `library_transfer`;
-- `reporting`.
-
-La UI non deve eseguire direttamente query SQL per implementare i casi d'uso
-del dominio.
-
-Questa separazione permette di mantenere la logica funzionale stabile anche se
-in futuro SQLite locale viene affiancato o sostituito da un servizio LAN/web.
-
-## Timestamp e timezone
-
-Ogni Event possiede una timezone esplicita basata su identificatori IANA, per
-esempio `Europe/Rome`.
-
-I timestamp delle transazioni devono avere una rappresentazione non ambigua e
-coerente con le regole del dominio. La conversione nella timezone dell'Event
-avviene per visualizzazione, input e report.
-
-Le decisioni sul formato persistente devono rimanere compatibili con una futura
-architettura multi-client/server.
-
-## Identificatori
-
-Ogni entità persistente possiede un identificativo interno.
-
-Event possiede inoltre uno slug obbligatorio. Lo slug utilizza `a-z`, `0-9`,
-`-` e `_` ed è univoco all'interno della Organization.
-
-Giochi e copie possono avere identificativi esterni opzionali. Gli
-identificativi delle copie vengono mantenuti in una relazione separata, così
-una stessa copia può avere più codici contemporaneamente.
-
-Le regole operative e di unicità dei codici visibili restano da definire con la
-feature QR/barcode.
+La UI non deve introdurre query SQL dirette per implementare la issue #4.
+Risoluzione degli identificatori, validazioni, prestiti e import/export devono
+passare attraverso service testabili senza Tkinter.
 
 ## Evoluzione futura
 
-Lo schema v3 implementa Organization, Event, Event Modules e il modulo
-`game_library` event-specific.
+La issue #26 potrà aggiungere una sorgente camera/webcam per decodificare QR e
+barcode, ma dovrà produrre lo stesso valore testuale usato dagli scanner HID e
+riutilizzare i service definiti dalla #4.
 
-Le future evoluzioni strutturali devono usare versioni successive dello schema,
-per esempio per:
-
-- funzionalità operative QR/barcode;
-- eventuali ulteriori vincoli sugli identificativi delle copie;
-- modulo `activities`;
-- altri moduli event-specific.
-
-Non devono essere riservati numeri di versione in anticipo: ogni migration
-viene introdotta quando esiste una modifica strutturale concreta e testabile.
+Il networking multi-postazione resta una futura evoluzione separata e non deve
+portare alla condivisione diretta del file SQLite.
 
 ## Scope della configurazione
 
-La persistenza delle impostazioni deve rispettare gli scope definiti in
-[CONFIGURATION.md](CONFIGURATION.md).
+`max_slots` e `identification_mode` appartengono al modulo `game_library`
+dell'Event e non a `config.ini`.
 
-In particolare, `max_slots` appartiene al modulo `game_library` dell'Event e
-non alla configurazione locale della postazione.
+Le regole complete sono in [CONFIGURATION.md](CONFIGURATION.md).

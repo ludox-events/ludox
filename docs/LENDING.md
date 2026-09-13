@@ -16,7 +16,9 @@ Nell'interfaccia italiana il modulo è denominato **Prestiti Ludoteca**.
 Nell'interfaccia inglese il termine di riferimento è **Game Library**.
 
 La procedura pratica della modalità token attualmente disponibile è descritta
-in [OPERATION.md](OPERATION.md).
+in [OPERATION.md](OPERATION.md). Al completamento della issue #4,
+`OPERATION.md` deve essere aggiornato per descrivere anche la modalità
+`copy_identifier`.
 
 ## Stato di implementazione
 
@@ -33,22 +35,23 @@ Sono implementati:
 - import/export CSV e XLSX;
 - struttura dati predisposta per identificatori delle copie.
 
-Non è ancora implementata la modalità operativa basata su QR code/barcode delle
-singole copie. Per questo il documento resta **PARTIALLY IMPLEMENTED**.
+Non è ancora implementata la modalità operativa `copy_identifier`. Per questo
+il documento resta **PARTIALLY IMPLEMENTED**.
 
 ## Ambito
 
 Il modulo `game_library` appartiene a un singolo Event e gestisce:
 
-- ludoteca dell'evento;
+- ludoteca dell'Event;
 - giochi;
 - copie fisiche;
 - owner label;
+- identificatori delle copie;
 - sessioni anonime;
 - slot fisici dei documenti;
 - prestiti e cambi gioco;
 - configurazione del modulo;
-- statistiche e report dell'evento.
+- statistiche e report dell'Event.
 
 Non esiste un catalogo giochi globale obbligatorio dell'Organization.
 
@@ -67,15 +70,15 @@ permanente tra ludoteche di Event differenti.
 
 ## Giochi
 
-Un gioco rappresenta un titolo presente nella ludoteca di quell'Event.
+Un gioco rappresenta un titolo presente nella ludoteca di uno specifico Event.
 
 Dati funzionali principali:
 
 - nome;
 - stato attivo/disattivo;
-- copie disponibili;
+- copie fisiche;
 - owner label associate alle copie;
-- identificativo esterno opzionale;
+- identificativo esterno opzionale del titolo;
 - difficoltà e relativa sorgente opzionali;
 - note opzionali.
 
@@ -83,27 +86,18 @@ Le copie non vengono memorizzate soltanto come quantità aggregata: ogni scatola
 fisica è rappresentata da un record distinto.
 
 All'interno dello stesso Event, titoli identici dopo una normalizzazione minima
-vengono considerati lo stesso gioco.
-
-La normalizzazione minima comprende:
+vengono considerati lo stesso gioco. La normalizzazione minima comprende:
 
 - rimozione degli spazi iniziali/finali;
 - confronto case-insensitive.
 
-Esempi equivalenti:
-
-```text
-Kingdomino
-KINGDOMINO
- kingdomino 
-```
-
-Nomi soltanto simili, come `Kingdomino` e `King Domino`, sono considerati
-distinti.
+Nomi soltanto simili, come `Kingdomino` e `King Domino`, restano distinti. Non
+viene eseguito fuzzy matching automatico.
 
 ## Copie fisiche
 
-Ogni scatola fisica è una copia distinta del gioco.
+Ogni scatola fisica è una copia distinta del gioco e appartiene esclusivamente
+alla ludoteca di uno specifico Event.
 
 Esempio:
 
@@ -116,19 +110,15 @@ Kingdomino
 └── copia 5 — Matteo
 ```
 
-L'interfaccia può mostrare le copie in forma aggregata:
-
-```text
-Kingdomino — 5 copie
-LAM          2
-Biblioteca   2
-Matteo       1
-```
+L'interfaccia può continuare a mostrare quantità aggregate, ma la persistenza
+rimane a livello della singola copia.
 
 Una copia può essere attiva o disattivata.
 
-La quantità disponibile di un titolo viene ricavata dalle copie fisiche
-utilizzabili e dai prestiti aperti.
+Non esiste un'identità globale della scatola condivisa automaticamente tra
+Event. Se una ludoteca viene esportata e reimportata in un altro Event, le
+copie del nuovo Event sono nuovi record event-specific; gli eventuali
+`copy_identifier` possono però essere conservati dal file di interoperabilità.
 
 ## Owner label
 
@@ -144,158 +134,324 @@ Non costituisce un'anagrafica e non deve essere collegato obbligatoriamente a:
 Il suo scopo è sapere a chi o a quale gruppo devono tornare le copie al termine
 dell'evento.
 
-Esempio: l'etichetta `Biblioteca` può rappresentare più biblioteche reali se
-tutte le relative scatole vengono gestite insieme.
+## Identificatore operativo della copia
 
-## Identificatori delle copie
+Un `copy_identifier` è un codice che identifica **una sola scatola fisica
+all'interno dello stesso Event**.
 
-Ogni gioco e ogni copia possiedono sempre un identificativo interno LudoX,
-indipendente dai codici visibili all'utente.
+QR code e barcode non sono concetti differenti per il dominio LudoX: sono
+soltanto rappresentazioni fisiche diverse di una stringa identificativa.
+LudoX lavora sul valore decodificato.
 
-Una singola copia fisica può avere più identificativi opzionali
-contemporaneamente.
-
-I tipi previsti nello schema corrente sono:
-
-- `LUDOX_QR` — QR code generato da LudoX;
-- `EXTERNAL_BARCODE` — barcode già presente sulla scatola o proveniente da un
-  sistema esterno.
-
-Esempio concettuale:
+Esempi validi:
 
 ```text
-copia #102
-├── LUDOX_QR          LX-C-000102
-└── EXTERNAL_BARCODE  8001234567890
+BIB-000123
+4711085941237
+LX-C-000123
 ```
 
-La struttura dati è già predisposta, ma l'assegnazione operativa, la scansione,
-la generazione dei QR e la stampa delle etichette appartengono alla futura
-feature #4.
+L'unicità fisica del codice esterno è responsabilità di chi prepara la
+ludoteca. Un EAN di prodotto uguale su più scatole non è un valido
+`copy_identifier`; un barcode inventariale di biblioteca che identifica una
+singola copia lo è.
 
-- TBD: Definire formato e vincoli dei valori `LUDOX_QR` e
-  `EXTERNAL_BARCODE`, incluse le relative regole di unicità.
+### Un solo identificatore operativo per copia
 
-- TBD: Definire i formati fisici supportati per la stampa delle etichette QR,
-  ad esempio fogli A4, stampanti termiche o dimensioni personalizzabili.
+Nella V1 ogni copia può avere **al massimo un identificatore operativo
+attivo**.
+
+L'identificatore può essere:
+
+- `external` — codice già applicato alla scatola e dichiarato univoco da chi
+  prepara la ludoteca;
+- `ludox` — codice generato da LudoX quando la scatola non possiede un codice
+  utilizzabile.
+
+La distinzione riguarda l'origine del valore, non la simbologia QR/barcode.
+
+Un identificatore può essere sostituito dal Backoffice. La sostituzione cambia
+il codice operativo della copia; i prestiti storici restano collegati alla
+copia tramite il suo ID interno e non dipendono dal vecchio valore.
+
+Non è consentito rimuovere o sostituire l'identificatore di una copia mentre
+quella copia è coinvolta in un prestito aperto.
+
+### Regole del valore
+
+Il valore viene normalizzato soltanto rimuovendo spazi e terminatori alle
+estremità. Il contenuto interno e il case vengono preservati.
+
+Il valore:
+
+- deve essere non vuoto;
+- non deve contenere ritorni a capo interni;
+- deve essere univoco nello stesso Event;
+- può essere riutilizzato in Event differenti;
+- viene confrontato esattamente dopo il trim esterno.
+
+### Codici generati da LudoX
+
+Quando viene richiesto un nuovo identificatore LudoX, il formato V1 è:
+
+```text
+LX-C-<copy_id a almeno 6 cifre>
+```
+
+Esempio:
+
+```text
+LX-C-000123
+```
+
+Il valore usa l'ID interno della copia già creata. Poiché l'ID della copia è
+univoco nel database, il codice generato è deterministico e non richiede UUID,
+hash o registri aggiuntivi.
+
+LudoX deve poter rappresentare il valore generato come QR code e permettere
+l'esportazione di una semplice immagine PNG contenente QR e valore leggibile,
+così da poter stampare e applicare il codice alla scatola.
+
+Layout avanzati per fogli di etichette, stampanti termiche o altri formati di
+stampa non fanno parte della V1 della issue #4.
+
+## Modalità operative del modulo
+
+Il modulo `game_library` possiede una sola modalità operativa attiva per Event:
+
+```text
+identification_mode = token
+```
+
+oppure:
+
+```text
+identification_mode = copy_identifier
+```
+
+Le modalità sono alternative. Non vengono usate contemporaneamente nello
+stesso Event.
+
+Il cambio di modalità è consentito soltanto quando nell'Event non esistono
+sessioni o prestiti aperti.
+
+Gli identificatori possono comunque essere preparati, importati o modificati
+anche mentre l'Event usa la modalità `token`.
+
+## Modalità token
+
+In modalità `token`:
+
+```text
+slot 23 ↔ token fisico 23
+```
+
+Il token identifica la sessione. Non identifica la copia fisica.
+
+Il sistema conosce il titolo prestato ma la specifica scatola può rimanere
+sconosciuta. In questo caso il prestito non viene attribuito automaticamente a
+una specifica owner label.
+
+## Modalità `copy_identifier`
+
+In modalità `copy_identifier` non viene utilizzato il token fisico per
+identificare la sessione.
+
+Lo slot continua invece a esistere e identifica la posizione fisica del
+documento custodito.
+
+Una copia attiva priva di identificatore può essere mantenuta nel Backoffice
+come dato preparatorio, ma **non è prestabile** finché non riceve un
+`copy_identifier` valido.
+
+### Input dello scanner
+
+La prima implementazione usa scanner USB/Bluetooth HID che si comportano come
+una tastiera:
+
+```text
+scanner
+→ scrive il valore
+→ ENTER
+→ LudoX
+```
+
+Lo stesso flusso deve funzionare digitando manualmente il valore e premendo
+Enter. Questo costituisce anche il metodo minimo di test senza hardware.
+
+L'uso di webcam/camera per decodificare QR o barcode è fuori scope e viene
+tracciato separatamente nella issue #26. La futura camera dovrà produrre lo
+stesso valore testuale e riutilizzare i medesimi service della #4.
+
+### Nuovo prestito
+
+Flusso approvato:
+
+```text
+scan copy_identifier
+→ trova una copia dell'Event corrente
+→ verifica copia/gioco attivi e non già in prestito
+→ assegna il primo slot libero
+→ apre sessione anonima
+→ apre prestito con copy_id valorizzato
+→ mostra lo slot in cui custodire il documento
+```
+
+Non viene consegnato un token fisico.
+
+Un identificatore sconosciuto, appartenente solo a un altro Event, associato a
+una copia inattiva o già in prestito produce un errore comprensibile e non
+modifica i dati.
+
+### Cambio gioco
+
+Il gioco restituito identifica direttamente la sessione:
+
+```text
+scan copia restituita
+→ trova il prestito aperto
+→ trova la sessione e lo slot
+→ scan nuova copia
+→ validazione
+→ conferma
+→ chiude vecchio prestito e apre il nuovo sulla stessa sessione
+```
+
+La modifica deve essere applicata in transazione soltanto dopo che entrambe le
+copie sono state identificate e validate. Se il flusso viene annullato prima
+della conferma, il database resta invariato.
+
+Lo slot del documento non cambia.
+
+### Restituzione finale
+
+Flusso approvato:
+
+```text
+scan copia restituita
+→ trova prestito aperto e sessione
+→ mostra lo slot del documento
+→ operatore recupera e restituisce fisicamente il documento
+→ conferma DOCUMENTO RESTITUITO
+→ chiude prestito e sessione
+→ libera lo slot
+```
+
+Prestito e sessione vengono chiusi solo alla conferma finale, così lo slot non
+può essere riassegnato prima della restituzione fisica del documento.
+
+## Prestiti e storico
+
+Ogni prestito appartiene a una sessione e a un gioco.
+
+Il riferimento alla copia fisica è opzionale nel modello generale:
+
+```text
+prestito
+├── sessione
+├── gioco
+└── copia fisica opzionale
+```
+
+In modalità `token` la copia può essere sconosciuta.
+
+In modalità `copy_identifier` ogni nuovo prestito deve avere `copy_id`
+valorizzato.
+
+Quando la copia è nota, storico e viste amministrative possono mostrare anche:
+
+- `copy_identifier` corrente;
+- owner label della copia;
+- riferimento interno della copia.
+
+La modifica successiva dell'identificatore non cambia l'identità storica della
+copia associata al prestito.
 
 ## Formato di interoperabilità della ludoteca
 
-La composizione della ludoteca può essere esportata e reimportata senza
-dipendere dagli identificativi interni del database.
+CSV UTF-8 resta il formato canonico. XLSX rappresenta gli stessi campi logici
+come formato di comodità.
 
-Il formato canonico minimo è un CSV UTF-8 con le colonne tecniche stabili:
+### Formato minimo legacy/aggregato
+
+Il formato a tre colonne resta valido:
 
 ```text
 game_name,owner_label,quantity
 Azul,Biblioteca,3
 Azul,LAM,2
-Azul,Matteo,1
 ```
 
-Una riga rappresenta una combinazione gioco + owner label con quantità maggiore
-di zero.
+Una riga senza identificatore può rappresentare più copie aggregate.
 
-Il formato canonico non contiene:
+### Formato esteso con copie identificate
 
-- ID interni SQLite;
-- prestiti;
-- token;
-- sessioni/documenti;
-- timestamp operativi;
-- storico dei prestiti.
+Il formato esteso aggiunge colonne opzionali:
 
-I valori CSV usano il normale quoting quando contengono virgole, virgolette o
-altri caratteri che lo richiedono.
+```text
+game_name,owner_label,quantity,copy_identifier,identifier_source
+Azul,Biblioteca,1,BIB-000123,external
+Azul,Biblioteca,1,BIB-000124,external
+Azul,LAM,1,LX-C-000451,ludox
+Cascadia,LAM,3,,
+```
 
-CSV è il formato di interoperabilità di riferimento. XLSX rappresenta le stesse
-colonne logiche come formato di comodità.
+Regole:
 
-Campi ulteriori potranno essere aggiunti in futuro come colonne opzionali,
-senza rendere incompatibile il formato minimo a tre colonne.
+- se `copy_identifier` è vuoto, `quantity` può essere maggiore di `1`;
+- se `copy_identifier` è presente, `quantity` deve essere esattamente `1`;
+- `identifier_source` può essere `external` oppure `ludox`;
+- se un identificatore è presente e `identifier_source` è vuoto durante un
+  import esterno, il valore viene interpretato come `external`;
+- `identifier_source` senza `copy_identifier` non è valido;
+- l'export scrive sempre `identifier_source` per le copie identificate;
+- le copie identificate vengono esportate una per riga;
+- le copie senza identificatore possono essere aggregate per gioco + owner
+  label;
+- un identificatore duplicato nello stesso file o già presente nell'Event di
+  destinazione è un conflitto e blocca l'import;
+- lo stesso valore presente in un altro Event non è un conflitto;
+- l'import non deve associare automaticamente lo stesso identificatore a due
+  copie.
 
-## Export legacy
-
-LudoX mantiene un export read-only della ludoteca legacy per consentire di
-preservare la composizione dei vecchi database.
-
-L'export legge le tabelle legacy `giochi`, `proprietari` e `copie_gioco` e
-produce il formato CSV canonico.
-
-Questa operazione:
-
-- non modifica il database;
-- non esegue migration;
-- non esporta lo storico dei prestiti;
-- permette di trasferire la composizione della ludoteca nel nuovo modello
-  event-specific.
-
-## Importazione della ludoteca
-
-L'importazione lavora sul solo Event corrente.
-
-`quantity = N` genera N copie fisiche distinte.
-
-È possibile anche importare un elenco senza owner label nel file e assegnare
-un'unica owner label all'intero import.
-
-L'import è additivo: importazioni successive aggiungono copie e nuovi titoli
-senza azzerare automaticamente la ludoteca esistente.
-
-### Corrispondenza dei titoli
-
-Il comportamento approvato è intenzionalmente semplice e deterministico:
-
-- un titolo identico dopo trim + confronto case-insensitive viene associato al
-  gioco già presente;
-- un titolo soltanto simile viene trattato come un gioco distinto;
-- non viene eseguito fuzzy matching;
-- non vengono proposte fusioni automatiche basate sulla somiglianza del nome.
+Il round-trip export → import deve conservare gli identificatori delle copie.
 
 Esempio:
 
 ```text
-KINGDOMINO       → stesso gioco di Kingdomino
- kingdomino      → stesso gioco di Kingdomino
-King Domino      → gioco distinto
-```
-
-Se in futuro verrà introdotta una funzione di suggerimento per nomi simili,
-dovrà essere una feature esplicita e non dovrà mai fondere automaticamente i
-dati.
-
-### Preview e applicazione
-
-L'import viene preparato tramite una preview/validazione prima della scrittura.
-
-Righe non valide devono impedire una scrittura parziale dell'import. In caso di
-errore database l'operazione deve mantenere la coerenza dei dati tramite
-transazione/rollback.
-
-## Esportazione della ludoteca event-specific
-
-L'esportazione del nuovo modello produce lo stesso formato logico usato
-dall'importazione.
-
-Le copie fisiche vengono aggregate per gioco + owner label e il risultato
-contiene almeno:
-
-- `game_name`;
-- `owner_label`;
-- `quantity`.
-
-Lo storico dei prestiti non viene esportato.
-
-L'obiettivo è consentire il round-trip:
-
-```text
 Event A
-→ export ludoteca
-→ CSV/XLSX
+  Azul / Biblioteca / BIB-000123
+  Azul / Biblioteca / BIB-000124
+
+→ export CSV/XLSX
 → import in Event B
+
+Event B
+  Azul / Biblioteca / BIB-000123
+  Azul / Biblioteca / BIB-000124
 ```
 
-Gli Event restano dataset indipendenti dopo l'importazione.
+I record di copia di Event A e Event B restano indipendenti.
+
+### Importazione
+
+L'import lavora sul solo Event corrente ed è additivo.
+
+Per i titoli:
+
+- trim + confronto case-insensitive identifica un titolo già esistente;
+- nomi soltanto simili restano distinti;
+- non viene eseguito fuzzy matching.
+
+L'import deve produrre una preview/validazione prima della scrittura. Errori,
+identificatori duplicati o righe incoerenti devono impedire scritture parziali.
+L'applicazione finale avviene in transazione.
+
+### Esportazione
+
+L'export non contiene prestiti, sessioni, token, timestamp operativi o storico.
+Serve a trasferire la composizione della ludoteca e, quando presenti, gli
+identificatori delle scatole.
 
 ## Reset della ludoteca
 
@@ -305,139 +461,10 @@ stato registrato alcun prestito.
 Dopo la presenza di storico operativo non deve essere disponibile un reset
 distruttivo della ludoteca.
 
-## Transizione dai dati Prestiti legacy
-
-La transizione al modello event-specific non esegue una conversione semantica
-automatica dei vecchi prestiti verso un Event.
-
-Durante la migration:
-
-- le tabelle e i dati legacy vengono preservati;
-- non viene creato automaticamente un Event generico o `Legacy Event`;
-- i dati legacy non vengono assegnati automaticamente a un Event;
-- ogni nuovo `game_library` event-specific parte vuoto;
-- i nuovi servizi operativi usano soltanto il nuovo modello event-specific.
-
-La composizione della ludoteca da conservare può essere trasferita tramite:
-
-```text
-ludoteca legacy
-→ export CSV
-→ nuovo game_library event-specific
-→ import CSV
-```
-
-Lo storico dei prestiti legacy non viene convertito automaticamente.
-
-## Sessione anonima e documento
-
-Una sessione rappresenta la permanenza anonima di una persona nel flusso di
-prestito.
-
-Durante la sessione:
-
-- viene custodito fisicamente un documento;
-- il documento viene collocato in uno slot numerato;
-- la sessione rimane anonima nel software;
-- possono avvenire più prestiti sequenziali tramite cambio gioco;
-- può esistere un solo prestito aperto alla volta.
-
-La sessione termina soltanto dopo la restituzione finale e la riconsegna fisica
-del documento.
-
-## Slot
-
-Lo **slot** è la posizione fisica numerata in cui viene custodito il documento.
-
-Gli slot vanno da `1` a `max_slots` dello specifico modulo `game_library`.
-
-Lo slot rimane invariato per tutta la sessione e riparte da `1` in ogni Event.
-
-L'assegnazione automatica usa il primo slot libero partendo dal numero più
-basso.
-
-Il valore predefinito iniziale di `max_slots` è `50` e può essere modificato dal
-Backoffice del modulo, rispettando i vincoli imposti dalle sessioni aperte.
-
-## Modalità token
-
-La modalità attualmente operativa usa token fisici numerati.
-
-In questa modalità:
-
-```text
-slot 23 ↔ token fisico 23
-```
-
-Il token identifica la sessione per chi opera al banco e per la persona. Non
-identifica la copia fisica del gioco.
-
-Il sistema conosce il titolo prestato ma, se la copia non viene identificata
-individualmente, non attribuisce il singolo prestito a uno specifico
-proprietario/owner label.
-
-## Modalità QR code / barcode
-
-La futura modalità `copy_identifier` utilizzerà l'identificazione della singola
-copia.
-
-Lo slot continuerà a identificare la posizione fisica del documento, mentre il
-QR/barcode della copia diventerà la chiave operativa usata durante prestito e
-restituzione.
-
-Esempio:
-
-```text
-QR KDM-002
-   ↓
-copia fisica #102
-   ↓
-prestito aperto
-   ↓
-sessione anonima
-   ↓
-slot documento 23
-```
-
-Quando il gioco viene cambiato:
-
-```text
-KDM-002 rientra
-→ sessione e slot 23 restano aperti
-→ viene consegnata AZUL-014
-→ AZUL-014 viene associata al nuovo prestito della stessa sessione
-```
-
-Il QR/barcode non sostituisce lo slot fisico del documento. Sostituisce il
-token come mezzo operativo per identificare la copia e risalire alla sessione.
-
-## Prestiti
-
-Ogni prestito appartiene a una sessione e a un gioco.
-
-Il modello può rappresentare opzionalmente anche la copia fisica specifica:
-
-```text
-prestito
-├── sessione
-├── gioco
-└── copia fisica opzionale
-```
-
-In modalità token la copia specifica può essere sconosciuta.
-
-In modalità QR/barcode la copia specifica sarà identificata.
-
-Una sessione può avere un solo prestito aperto alla volta.
-
 ## Cambio Event durante prestiti aperti
 
 Un client può cambiare Event anche se nell'Event precedente esistono sessioni o
-prestiti aperti.
-
-Le sessioni appartengono all'Event e possono essere recuperate tornando
-successivamente su quell'Event o, in una futura architettura multi-client,
-gestite da un altro client.
+prestiti aperti. I dati restano associati all'Event di appartenenza.
 
 ## Disabilitazione del modulo
 
@@ -451,11 +478,10 @@ La disabilitazione, quando consentita, non cancella lo storico.
 
 ## Statistiche e report
 
-Statistiche e report del modulo Prestiti Ludoteca sono sempre riferiti
-all'Event corrente.
-
-Non vengono aggregate automaticamente informazioni provenienti da Event
-differenti.
+Statistiche e report sono sempre riferiti all'Event corrente.
 
 Quando la copia fisica non è identificata, i prestiti restano attribuiti al
 titolo e non automaticamente a una specifica owner label.
+
+Quando `copy_id` è noto, report e storico possono attribuire il movimento alla
+specifica copia e alla relativa owner label.
