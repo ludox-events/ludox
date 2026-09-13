@@ -635,6 +635,22 @@ def prestito_aperto_sessione(event_id, session_id):
         """, (event_id, session_id)).fetchone()
 
 
+def prestito_aperto_per_copia(event_id, copy_id):
+    with get_db() as db:
+        return db.execute("""
+            SELECT l.id AS loan_id, l.event_id, l.session_id,
+                   l.game_id, l.copy_id, l.checked_out_at,
+                   s.slot, s.opened_at, g.name AS game_name
+            FROM game_library_loans l
+            JOIN game_library_sessions s
+              ON s.event_id = l.event_id AND s.id = l.session_id
+            JOIN game_library_games g
+              ON g.event_id = l.event_id AND g.id = l.game_id
+            WHERE l.event_id = ? AND l.copy_id = ?
+              AND l.returned_at IS NULL AND s.closed_at IS NULL
+        """, (event_id, copy_id)).fetchone()
+
+
 def copie_totali_gioco_evento(event_id, game_id):
     with get_db() as db:
         return db.execute("""
@@ -1035,6 +1051,21 @@ def copia_da_identificatore_in_transazione(db, event_id, value):
     """, (event_id, value)).fetchone()
 
 
+def copia_evento_per_id_in_transazione(db, event_id, copy_id):
+    return db.execute("""
+        SELECT c.id AS copy_id, c.event_id, c.game_id,
+               c.active AS copy_active,
+               g.name AS game_name, g.active AS game_active,
+               i.value AS copy_identifier, i.source AS identifier_source
+        FROM game_library_game_copies c
+        JOIN game_library_games g
+          ON g.event_id = c.event_id AND g.id = c.game_id
+        LEFT JOIN game_library_copy_identifiers i
+          ON i.event_id = c.event_id AND i.copy_id = c.id
+        WHERE c.event_id = ? AND c.id = ?
+    """, (event_id, copy_id)).fetchone()
+
+
 def copia_in_prestito_in_transazione(db, event_id, copy_id):
     return bool(db.execute("""
         SELECT EXISTS(
@@ -1073,7 +1104,7 @@ def sessione_per_cambio(db, event_id, session_id, slot):
 
 def prestito_evento_per_cambio(db, event_id, loan_id, session_id):
     return db.execute("""
-        SELECT game_id AS gioco_id FROM game_library_loans
+        SELECT game_id AS gioco_id, copy_id FROM game_library_loans
         WHERE event_id = ? AND id = ? AND session_id = ?
           AND returned_at IS NULL
     """, (event_id, loan_id, session_id)).fetchone()

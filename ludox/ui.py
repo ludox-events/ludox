@@ -859,6 +859,10 @@ class PrestitiApp(ttk.Window):
     # ========================================================
 
     def show_cambio_token(self):
+        settings = catalog.impostazioni_modulo(self._game_library_event_id())
+        if settings["identification_mode"] == "copy_identifier":
+            self.show_cambio_copia_restituita()
+            return
         frame = self.clear()
 
         self.pulsante_indietro(
@@ -944,6 +948,128 @@ class PrestitiApp(ttk.Window):
             "<Return>",
             lambda event: continua()
         )
+
+    def show_cambio_copia_restituita(self):
+        frame = self.clear()
+        self.pulsante_indietro(frame, self.show_home)
+        self.titolo_pagina(
+            frame, "copy_change.title", "copy_change.scan_returned"
+        )
+        identifier_var = tk.StringVar()
+        entry = ttk.Entry(
+            frame, textvariable=identifier_var, font=("Arial", 28, "bold"),
+            justify=CENTER, bootstyle="primary"
+        )
+        entry.pack(fill=X, padx=170, pady=(45, 15), ipady=10)
+        entry.focus_set()
+
+        def continua():
+            try:
+                corrente = lending.consulta_copia_in_prestito(
+                    identifier_var.get(), event_id=self._game_library_event_id()
+                )
+            except (
+                copy_identifiers.CopyIdentifierError,
+                lending.PrestitoCopiaAssente,
+                lending.ModalitaIdentificazioneNonValida,
+            ) as exc:
+                messagebox.showwarning(tr("copy_change.title"), tr(str(exc)))
+                identifier_var.set("")
+                entry.focus_set()
+                return
+            self.show_cambio_copia_nuova(corrente)
+
+        ttk.Button(
+            frame, text=tr("CONTINUA"), command=continua, bootstyle="primary"
+        ).pack(ipadx=35, ipady=10)
+        entry.bind("<Return>", lambda event: continua())
+
+    def show_cambio_copia_nuova(self, corrente):
+        frame = self.clear()
+        self.pulsante_indietro(frame, self.show_cambio_copia_restituita)
+        self.titolo_pagina(
+            frame,
+            "copy_change.title",
+            tr("copy_change.current_tpl", game=corrente.game_name, slot=corrente.slot),
+        )
+        identifier_var = tk.StringVar()
+        entry = ttk.Entry(
+            frame, textvariable=identifier_var, font=("Arial", 28, "bold"),
+            justify=CENTER, bootstyle="success"
+        )
+        entry.pack(fill=X, padx=170, pady=(45, 15), ipady=10)
+        entry.focus_set()
+
+        def prepara_e_conferma():
+            try:
+                prepared = lending.prepara_cambio_copia(
+                    corrente.copy_identifier,
+                    identifier_var.get(),
+                    event_id=self._game_library_event_id(),
+                )
+            except (
+                copy_identifiers.CopyIdentifierError,
+                lending.PrestitoCopiaAssente,
+                lending.CopiaInattiva,
+                lending.GiocoInattivo,
+                lending.CopiaGiaInPrestito,
+                lending.ModalitaIdentificazioneNonValida,
+            ) as exc:
+                messagebox.showwarning(tr("copy_change.title"), tr(str(exc)))
+                identifier_var.set("")
+                entry.focus_set()
+                return
+            if not messagebox.askyesno(
+                tr("copy_change.confirm"),
+                tr(
+                    "copy_change.confirm_tpl",
+                    old=prepared.corrente.game_name,
+                    new=prepared.new_game_name,
+                    slot=prepared.corrente.slot,
+                ),
+            ):
+                return
+            try:
+                lending.conferma_cambio_copia(prepared)
+            except (
+                lending.CambioNonValido,
+                lending.CopiaGiaInPrestito,
+                lending.ModalitaIdentificazioneNonValida,
+                lending.ErrorePersistenza,
+            ) as exc:
+                messagebox.showerror(tr("copy_change.title"), tr(str(exc)))
+                return
+            self.show_cambio_copia_completato(prepared)
+
+        ttk.Button(
+            frame, text=tr("copy_change.confirm"), command=prepara_e_conferma,
+            bootstyle="success"
+        ).pack(ipadx=35, ipady=10)
+        entry.bind("<Return>", lambda event: prepara_e_conferma())
+
+    def show_cambio_copia_completato(self, prepared):
+        frame = self.clear()
+        self.titolo_pagina(frame, "CAMBIO REGISTRATO")
+        card = ttk.Labelframe(frame, padding=30, bootstyle="primary")
+        card.pack(fill=X, padx=120, pady=30)
+        ttk.Label(
+            card,
+            text=tr("copy_change.completed_tpl", slot=prepared.corrente.slot),
+            font=("Arial", 28, "bold"), bootstyle="primary",
+        ).pack(pady=10)
+        ttk.Label(
+            card,
+            text=tr(f"Restituito: {prepared.corrente.game_name}"),
+            font=("Arial", 16),
+        ).pack(pady=5)
+        ttk.Label(
+            card, text=tr(f"Consegnare: {prepared.new_game_name}"),
+            font=("Arial", 22, "bold"),
+        ).pack(pady=10)
+        ttk.Button(
+            frame, text=tr("TORNA ALLA HOME"), command=self.show_home,
+            bootstyle="primary"
+        ).pack(ipadx=30, ipady=10)
 
     def show_cambio_gioco(
         self,

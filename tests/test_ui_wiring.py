@@ -114,6 +114,8 @@ def test_pulsanti_indietro_tornano_alla_schermata_prevista():
         "show_nuovo_prestito": "self.show_home",
         "show_nuovo_prestito_copia": "self.show_home",
         "show_cambio_token": "self.show_home",
+        "show_cambio_copia_restituita": "self.show_home",
+        "show_cambio_copia_nuova": "self.show_cambio_copia_restituita",
         "show_cambio_gioco": "self.show_cambio_token",
         "show_restituzione": "self.show_home",
         "show_statistiche": "self.show_home",
@@ -252,6 +254,33 @@ def test_nuovo_prestito_per_copia_usa_input_hid_e_service_dedicato():
     assert len(chiamate(
         "show_nuovo_prestito_copia",
         "lending.nuovo_prestito_da_identificatore",
+    )) == 1
+
+
+def test_cambio_copia_usa_due_input_hid_preview_e_conferma():
+    cambio = metodo("show_cambio_token")
+    assert len([
+        node for node in ast.walk(cambio)
+        if isinstance(node, ast.Call)
+        and ast.unparse(node.func) == "self.show_cambio_copia_restituita"
+    ]) == 1
+    assert_command("show_cambio_copia_restituita", {"continua"})
+    assert_command("show_cambio_copia_nuova", {"prepara_e_conferma"})
+    assert_command("show_cambio_copia_completato", {"self.show_home"})
+    for method, callback in (
+        ("show_cambio_copia_restituita", "continua"),
+        ("show_cambio_copia_nuova", "prepara_e_conferma"),
+    ):
+        assert any(
+            ast.unparse(node.args[0]) == "'<Return>'"
+            and ast.unparse(node.args[1]) == f"lambda event: {callback}()"
+            for node in chiamate(method, "entry.bind")
+        )
+    assert len(chiamate(
+        "show_cambio_copia_nuova", "lending.prepara_cambio_copia"
+    )) == 1
+    assert len(chiamate(
+        "show_cambio_copia_nuova", "lending.conferma_cambio_copia"
     )) == 1
 
 

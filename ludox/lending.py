@@ -52,6 +52,10 @@ class CopiaGiaInPrestito(Exception):
     pass
 
 
+class PrestitoCopiaAssente(Exception):
+    pass
+
+
 @dataclass(frozen=True)
 class SituazionePrestito:
     documento: dict
@@ -83,6 +87,27 @@ class RiepilogoHome:
 class SituazioneChiusura:
     documenti_attivi: int
     token: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class SituazionePrestitoCopia:
+    event_id: int
+    session_id: int
+    loan_id: int
+    slot: int
+    copy_id: int
+    copy_identifier: str
+    game_id: int
+    game_name: str
+
+
+@dataclass(frozen=True)
+class CambioCopiaPreparato:
+    corrente: SituazionePrestitoCopia
+    new_copy_id: int
+    new_copy_identifier: str
+    new_game_id: int
+    new_game_name: str
 
 
 def riepilogo_home(*, event_id=None) -> RiepilogoHome:
@@ -245,6 +270,116 @@ def nuovo_prestito_da_identificatore(
         copy["copy_id"],
         copy["copy_identifier"],
     )
+
+
+def consulta_copia_in_prestito(
+    copy_identifier: str, *, event_id: int
+) -> SituazionePrestitoCopia:
+    settings = data.impostazioni_game_library(event_id)
+    if settings is None:
+        raise ErrorePersistenza("Il modulo Prestiti Ludoteca non è configurato.")
+    if settings["identification_mode"] != "copy_identifier":
+        raise ModalitaIdentificazioneNonValida(
+            "L'Event corrente usa la modalità token."
+        )
+    copy = copy_identifiers.resolve(event_id, copy_identifier)
+    loan = data.prestito_aperto_per_copia(event_id, copy["copy_id"])
+    if loan is None:
+        raise PrestitoCopiaAssente(
+            "La copia identificata non risulta in un prestito aperto."
+        )
+    return SituazionePrestitoCopia(
+        event_id,
+        loan["session_id"],
+        loan["loan_id"],
+        loan["slot"],
+        copy["copy_id"],
+        copy["copy_identifier"],
+        loan["game_id"],
+        loan["game_name"],
+    )
+
+
+def prepara_cambio_copia(
+    returned_identifier: str, new_identifier: str, *, event_id: int
+) -> CambioCopiaPreparato:
+    corrente = consulta_copia_in_prestito(
+        returned_identifier, event_id=event_id
+    )
+    new_copy = copy_identifiers.resolve(event_id, new_identifier)
+    if not new_copy["copy_active"]:
+        raise CopiaInattiva("La nuova copia identificata non è attiva.")
+    if not new_copy["game_active"]:
+        raise GiocoInattivo("Il gioco associato alla nuova copia non è attivo.")
+    if data.copia_ha_prestito_aperto(event_id, new_copy["copy_id"]):
+        raise CopiaGiaInPrestito("La nuova copia risulta già in prestito.")
+    return CambioCopiaPreparato(
+        corrente,
+        new_copy["copy_id"],
+        new_copy["copy_identifier"],
+        new_copy["game_id"],
+        new_copy["game_name"],
+    )
+
+
+def conferma_cambio_copia(prepared: CambioCopiaPreparato) -> str:
+    """Apply a fully prepared copy change in one immediate transaction."""
+    timestamp = data.now_iso()
+    corrente = prepared.corrente
+    with data.transazione_prestiti(immediata=True) as db:
+        settings = data.impostazioni_game_library_in_transazione(
+            db, corrente.event_id
+        )
+        if settings is None or settings["identification_mode"] != "copy_identifier":
+            raise ModalitaIdentificazioneNonValida(
+                "La modalità operativa dell'Event è cambiata."
+            )
+        session = data.sessione_per_cambio(
+            db, corrente.event_id, corrente.session_id, corrente.slot
+        )
+        loan = data.prestito_evento_per_cambio(
+            db, corrente.event_id, corrente.loan_id, corrente.session_id
+        )
+        if not session or not loan or loan["copy_id"] != corrente.copy_id:
+            raise CambioNonValido(
+                "Il prestito restituito è cambiato o è già stato chiuso."
+            )
+        new_copy = data.copia_evento_per_id_in_transazione(
+            db, corrente.event_id, prepared.new_copy_id
+        )
+        if (
+            new_copy is None
+            or new_copy["copy_identifier"] != prepared.new_copy_identifier
+            or new_copy["game_id"] != prepared.new_game_id
+            or not new_copy["copy_active"]
+            or not new_copy["game_active"]
+        ):
+            raise CambioNonValido(
+                "La nuova copia non è più valida o disponibile."
+            )
+        if data.copia_in_prestito_in_transazione(
+            db, corrente.event_id, prepared.new_copy_id
+        ):
+            raise CopiaGiaInPrestito("La nuova copia risulta già in prestito.")
+        if data.chiudi_prestito_evento_per_cambio(
+            db,
+            corrente.event_id,
+            corrente.loan_id,
+            corrente.session_id,
+            timestamp,
+        ) != 1:
+            raise CambioNonValido(
+                "Non è stato possibile chiudere il prestito precedente."
+            )
+        data.inserisci_prestito_evento(
+            db,
+            corrente.event_id,
+            corrente.session_id,
+            prepared.new_game_id,
+            timestamp,
+            copy_id=prepared.new_copy_id,
+        )
+    return prepared.new_game_name
 
 
 def cambia_gioco(
