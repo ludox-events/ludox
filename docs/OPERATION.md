@@ -11,11 +11,24 @@
 
 
 
-Questo documento descrive come organizzare fisicamente la postazione di prestito e come utilizzare LudoX nella modalità basata su token numerati.
+Questo documento descrive come organizzare fisicamente la postazione di
+prestito e come utilizzare LudoX nelle due modalità operative alternative:
+`token` e `copy_identifier`.
 
 L'obiettivo è permettere di gestire i prestiti senza registrare nel software dati identificativi delle persone.
 
 ## Principio generale
+
+Ogni Event usa una sola modalità alla volta. La modalità si seleziona dal
+Backoffice del modulo Prestiti Ludoteca insieme al numero massimo di slot.
+Il passaggio da una modalità all'altra è consentito soltanto quando non
+esistono sessioni o prestiti aperti nell'Event.
+
+In entrambe le modalità LudoX assegna uno slot fisico al documento e non
+registra nominativo, numero del documento o altri dati identificativi della
+persona.
+
+### Modalità token
 
 La modalità token utilizza:
 
@@ -42,6 +55,17 @@ Per la postazione servono:
 - token fisici numerati;
 - uno schedario/raccoglitore con slot numerati per custodire i documenti;
 - una postazione non accessibile liberamente al pubblico.
+
+Per la modalità `copy_identifier` servono inoltre codici univoci applicati alle
+singole scatole. Lo scanner è opzionale: se presente deve funzionare come una
+tastiera e inviare:
+
+```text
+codice → ENTER
+```
+
+Non sono richiesti camera, webcam o servizi di rete. Ogni codice può essere
+digitato manualmente per verifica o emergenza.
 
 ## Organizzazione degli slot
 
@@ -72,6 +96,8 @@ Lo schedario deve essere accessibile soltanto alle persone incaricate e non libe
 
 ## Nuovo prestito
 
+### Procedura con token
+
 1. la persona sceglie un gioco;
 2. l'operatore seleziona **NUOVO PRESTITO**;
 3. LudoX verifica la disponibilità del gioco;
@@ -88,6 +114,8 @@ Gioco     → persona
 ```
 
 ## Cambio gioco
+
+### Procedura con token
 
 1. la persona restituisce il gioco utilizzato;
 2. comunica o consegna temporaneamente il proprio token;
@@ -114,6 +142,8 @@ Gioco     → Cascadia
 
 ## Restituzione finale
 
+### Procedura con token
+
 1. la persona restituisce il gioco;
 2. comunica o consegna il token;
 3. l'operatore seleziona **RESTITUZIONE FINALE**;
@@ -126,6 +156,95 @@ Gioco     → Cascadia
 10. lo slot/token torna disponibile.
 
 La conferma finale deve avvenire soltanto dopo la restituzione fisica del documento, per evitare di riassegnare lo stesso slot mentre il documento precedente è ancora custodito.
+
+## Preparazione delle copie identificate
+
+Dal Backoffice, nella gestione delle singole copie, è possibile:
+
+- vedere gioco, owner label, stato e disponibilità di ogni scatola;
+- assegnare o sostituire un codice esterno;
+- generare un codice LudoX nel formato `LX-C-000123`;
+- rimuovere un identificatore quando la copia non è in prestito;
+- attivare o disattivare una copia quando non è in prestito;
+- esportare in PNG il QR di un identificatore generato da LudoX.
+
+Il valore è confrontato esattamente dopo la rimozione degli spazi esterni:
+maiuscole e minuscole restano differenti. Un codice deve identificare una sola
+copia nello stesso Event; lo stesso valore può essere usato in Event diversi.
+Una copia senza codice può restare in inventario, ma non è prestabile nella
+modalità `copy_identifier`.
+
+## Operatività con `copy_identifier`
+
+### Nuovo prestito tramite copia
+
+1. la persona sceglie una specifica scatola;
+2. l'operatore seleziona **NUOVO PRESTITO**;
+3. scansiona il codice della scatola o lo digita e preme Invio;
+4. LudoX verifica Event, copia, gioco e disponibilità;
+5. LudoX apre il prestito della copia e assegna il primo slot libero;
+6. il documento viene inserito nello slot mostrato;
+7. viene consegnata la scatola, senza token fisico.
+
+```text
+Scatola FIRST-COPY → prestito aperto
+Documento          → slot 12
+Token fisico       → non usato
+```
+
+Un codice sconosciuto, appartenente soltanto a un altro Event, associato a una
+copia inattiva o già in prestito non modifica il database.
+
+### Cambio gioco tramite copie
+
+1. scansionare la copia restituita;
+2. verificare gioco e slot mostrati;
+3. scansionare la nuova copia;
+4. verificare il riepilogo e confermare;
+5. consegnare la nuova scatola.
+
+Il vecchio prestito viene chiuso e il nuovo viene aperto sulla stessa sessione
+in un'unica operazione. Lo slot del documento non cambia. Se si annulla prima
+della conferma, il prestito precedente resta aperto senza modifiche.
+
+### Restituzione finale tramite copia
+
+1. scansionare la copia restituita;
+2. verificare gioco e slot mostrati;
+3. recuperare fisicamente il documento dallo slot;
+4. restituire il documento alla persona;
+5. soltanto allora selezionare **DOCUMENTO RESTITUITO** e confermare.
+
+Prestito e sessione vengono chiusi insieme solo alla conferma finale. Annullare
+la schermata lascia lo slot occupato e il prestito aperto.
+
+## Importazione ed esportazione
+
+L'import CSV UTF-8 o XLSX accetta il formato aggregato storico:
+
+```text
+game_name,owner_label,quantity
+```
+
+e il formato esteso:
+
+```text
+game_name,owner_label,quantity,copy_identifier,identifier_source
+```
+
+Una riga identificata deve avere `quantity = 1`; `identifier_source` vale
+`external` o `ludox` e, se omesso per un codice presente, assume `external`.
+Una sorgente senza codice non è valida. Un duplicato nel file o nell'Event
+blocca l'intero import. L'export event-specific scrive una riga per copia
+identificata e può aggregare le copie senza codice per gioco e owner label.
+
+## Storico e report
+
+Quando il prestito conosce la copia, lo storico mostra l'ID interno della
+copia, il suo identificatore operativo corrente e la relativa owner label. Il
+report utilizzo elenca le copie note coinvolte nei prestiti del titolo. I
+prestiti creati in modalità token restano correttamente attribuiti al titolo e
+mostrano i dettagli copia come non disponibili.
 
 ## Riutilizzo
 
@@ -151,6 +270,10 @@ Se risultano sessioni/documenti ancora aperti al momento della chiusura, verific
 - confermare la chiusura soltanto dopo la restituzione fisica del documento;
 - controllare periodicamente che token e slot siano completi e ordinati;
 - a fine evento verificare che non risultino sessioni ancora aperte.
+- verificare che ogni codice esterno identifichi davvero una sola scatola;
+- nella modalità `copy_identifier`, scansionare sempre la scatola fisica che
+  entra o esce dal banco;
+- tenere disponibile la digitazione manuale come procedura di riserva.
 
 ## Numero di slot
 
@@ -165,4 +288,5 @@ Token disponibili: 1–50
 Slot fisici:        1–50
 ```
 
-La futura modalità QR code/barcode è descritta a livello concettuale in [LENDING.md](LENDING.md), ma non fa parte di questa procedura operativa finché non sarà implementata.
+In modalità `copy_identifier` gli stessi slot `1-max_slots` restano posizioni
+fisiche dei documenti, ma i token fisici non vengono consegnati.
