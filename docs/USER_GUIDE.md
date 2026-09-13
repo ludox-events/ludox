@@ -10,6 +10,10 @@ Questa guida descrive la versione **0.1.0-alpha** e il suo flusso principale: pr
 >
 > LudoX è ancora in sviluppo. Prima di utilizzarlo durante un evento reale è consigliato fare una prova completa della postazione, verificare i token fisici e controllare che il database selezionato sia quello corretto.
 
+> **Limitazione nota del commit di release**
+>
+> Nel commit `da56b9fe33e35527a8d871e7891c31139e303133` il Backoffice non si apre dopo l'accesso a causa di un errore nel collegamento della schermata **IMPOSTAZIONI**. Di conseguenza, in questa build non sono utilizzabili dalla UI la preparazione della ludoteca, gli storici, i report e le impostazioni. I flussi operativi della Home possono essere provati soltanto con un database già configurato con giochi e copie.
+
 ---
 
 ## 1. Come funziona LudoX
@@ -80,7 +84,9 @@ Quando hai terminato premi:
 
 **SALVA CONFIGURAZIONE E AVVIA / SAVE CONFIGURATION AND START**
 
-[SCREENSHOT 01 — Configurazione iniziale]
+![Configurazione iniziale di LudoX](user-guide/images/01-first-run.png)
+
+_Configurazione iniziale: lingua, numero di token e database._
 
 > Conserva con attenzione il file del database. Contiene i dati operativi e lo storico della postazione.
 
@@ -105,7 +111,9 @@ In fondo trovi:
 
 - **⚙ BACKOFFICE**
 
-[SCREENSHOT 02 — Home]
+![Home di LudoX](user-guide/images/02-home.png)
+
+_Home con contatori e operazioni principali._
 
 ---
 
@@ -121,11 +129,11 @@ La password predefinita della versione alpha è:
 ludox
 ```
 
-Premi **ACCEDI**.
+Nella versione `0.1.0-alpha`, premendo **ACCEDI** con la password corretta il Backoffice non si apre a causa della limitazione nota indicata all'inizio della guida.
 
 La password serve a evitare accessi accidentali alla parte amministrativa, ma **non è una protezione di sicurezza forte**.
 
-Nel Backoffice trovi:
+La schermata prevista contiene:
 
 - **GESTIONE GIOCHI**
 - **GESTIONE PROPRIETARI**
@@ -142,11 +150,13 @@ Nel Backoffice trovi:
 
 ## 5. Gestire i proprietari
 
+> Questa funzione è implementata, ma non è raggiungibile dalla UI nel commit di release a causa del problema del Backoffice.
+
 Un proprietario indica la persona o l'ente che mette a disposizione una o più copie di un gioco.
 
 Un nuovo database contiene già un proprietario iniziale generico, normalmente **Organizzazione**.
 
-Per aggiungerne altri:
+Il flusso previsto per aggiungerne altri è:
 
 1. apri **GESTIONE PROPRIETARI**;
 2. premi **＋ AGGIUNGI PROPRIETARIO**;
@@ -170,19 +180,21 @@ Un proprietario può essere disattivato. Se ha ancora copie associate, LudoX chi
 
 ## 6. Aggiungere i giochi
 
+> Questa funzione non è utilizzabile correttamente nel commit di release: il Backoffice non è raggiungibile e la schermata **MODIFICA GIOCO** viene sostituita erroneamente dalla schermata delle impostazioni.
+
 Prima di iniziare i prestiti devi inserire i giochi e indicare quante copie sono disponibili.
 
 Apri:
 
 **BACKOFFICE → GESTIONE GIOCHI**
 
-Poi:
+Il flusso previsto è:
 
 1. premi **＋ AGGIUNGI GIOCO**;
 2. inserisci il nome del gioco;
 3. premi **SALVA E ASSEGNA COPIE**.
 
-LudoX apre la schermata **MODIFICA GIOCO**.
+Al termine dovrebbe aprirsi la schermata **MODIFICA GIOCO**, ma nel commit di release questa schermata viene sostituita erroneamente dalle impostazioni.
 
 ### Assegnare le copie
 
@@ -217,6 +229,8 @@ Un gioco disattivato non viene proposto nei nuovi prestiti. LudoX non permette d
 
 # Durante l'evento
 
+I flussi seguenti funzionano con un database che contiene già giochi attivi e copie disponibili. Un database nuovo non può essere preparato interamente dalla UI di questa build a causa della limitazione nota del Backoffice.
+
 ## 7. Nuovo prestito
 
 Quando una persona vuole prendere un gioco:
@@ -250,7 +264,9 @@ Token 27  → persona
 Gioco     → persona
 ```
 
-[SCREENSHOT 05 — Prestito registrato e posizione documento]
+![Prestito registrato in LudoX](user-guide/images/05-loan-created.png)
+
+_Prestito registrato con posizione del documento e gioco da consegnare._
 
 ### Se non ci sono token liberi
 
@@ -298,7 +314,9 @@ Gioco     → Cascadia
 
 Consegna nuovamente il token e il nuovo gioco alla persona.
 
-[SCREENSHOT 06 — Cambio gioco]
+![Cambio gioco registrato in LudoX](user-guide/images/06-game-change.png)
+
+_Cambio registrato mantenendo invariati token e posizione del documento._
 
 ---
 
@@ -341,7 +359,9 @@ Token 27 libero
 
 Questa doppia conferma evita di riassegnare un token mentre il documento precedente è ancora nello schedario.
 
-[SCREENSHOT 07 — Restituzione documento]
+![Restituzione del documento in LudoX](user-guide/images/07-final-return.png)
+
+_Posizione da cui recuperare il documento prima della conferma finale._
 
 ---
 
@@ -386,13 +406,17 @@ Le risoluzioni disponibili sono comprese tra **5 e 30 minuti**.
 
 Premi **APPLICA** per aggiornare la visualizzazione oppure **ADESSO** per riportare il riferimento al momento corrente.
 
-[SCREENSHOT 08 — Statistiche]
+![Statistiche di LudoX](user-guide/images/08-statistics.png)
+
+_Statistiche con periodo, riferimento temporale, risoluzione e grafico._
 
 ---
 
 ## 12. Storico e report
 
-Nel Backoffice sono disponibili diverse viste di controllo.
+Nel Backoffice sono previste diverse viste di controllo.
+
+> Nel commit di release queste viste non sono raggiungibili dalla UI a causa della limitazione nota del Backoffice.
 
 ### TUTTI I PRESTITI
 
@@ -452,11 +476,13 @@ Anche questo report può essere esportato con **ESPORTA CSV**.
 
 ## 13. Modificare lingua, token e database
 
+> Nel commit di release la schermata **IMPOSTAZIONI** non è raggiungibile dalla UI. Le operazioni descritte in questa sezione non sono quindi utilizzabili in questa build.
+
 Apri:
 
 **BACKOFFICE → IMPOSTAZIONI**
 
-Puoi modificare:
+La schermata è progettata per modificare:
 
 - lingua;
 - numero massimo di token;
@@ -514,6 +540,12 @@ e controllare che nello schedario non siano rimasti documenti.
 ---
 
 # Problemi comuni
+
+## Non riesco ad accedere al Backoffice
+
+Nel commit di release `da56b9fe33e35527a8d871e7891c31139e303133`, anche con la password corretta, un errore nel collegamento della schermata **IMPOSTAZIONI** impedisce l'apertura del Backoffice. Non è un errore della password o del database.
+
+---
 
 ## Non vedo un gioco nell'elenco dei prestiti
 
@@ -653,14 +685,10 @@ Non allegare database reali contenenti informazioni che non vuoi condividere.
 
 # Screenshot da acquisire prima del PDF finale
 
-1. **Configurazione iniziale** — lingua, numero token e scelta database.
-2. **Home** — contatori e quattro operazioni principali.
-3. **Backoffice** — schermata principale dopo l'accesso.
-4. **Modifica gioco** — copie per proprietario.
-5. **Prestito registrato** — posizione documento/token assegnato.
-6. **Cambio registrato** — vecchio gioco, nuovo gioco e token invariato.
-7. **Restituzione documento** — posizione da cui recuperare il documento.
-8. **Statistiche** — selettori temporali e grafico.
-9. **Impostazioni** — lingua, numero token e database.
+Restano da acquisire dopo la correzione del problema del Backoffice nel software:
+
+1. **Backoffice** — schermata principale dopo l'accesso (`03-backoffice.png`).
+2. **Modifica gioco** — copie per proprietario (`04-game-edit.png`).
+3. **Impostazioni** — lingua, numero token e database (`09-settings.png`).
 
 Prima del PDF definitivo, rimuovere questa sezione tecnica e sostituire i placeholder `[SCREENSHOT ...]` con le immagini corrispondenti.
