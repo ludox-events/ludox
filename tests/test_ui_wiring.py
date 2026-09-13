@@ -221,17 +221,13 @@ def test_gestione_eventi_usa_picker_e_timezone_selezionabile_per_create_update()
     assert [ast.unparse(call.args[1]) for call in picker_calls] == [
         "'events.start'", "'events.end'"
     ]
-    timezone = next(
-        call for call in chiamate("show_gestione_eventi", "ttk.Combobox")
-        if any(
-            keyword.arg == "values" and ast.unparse(keyword.value) == "TIMEZONE_VALUES"
-            for keyword in call.keywords
-        )
-    )
-    assert any(
-        keyword.arg == "state" and ast.unparse(keyword.value) == "'readonly'"
-        for keyword in timezone.keywords
-    )
+    timezone = chiamate("show_gestione_eventi", "SearchableTimezoneCombobox")
+    assert len(timezone) == 1
+    assert {
+        keyword.arg: ast.unparse(keyword.value)
+        for keyword in timezone[0].keywords
+    }["values"] == "TIMEZONE_VALUES"
+    assert len(chiamate("show_gestione_eventi", "detect_local_timezone")) == 1
 
     gestione = metodo("show_gestione_eventi")
     carica = next(
@@ -258,7 +254,7 @@ def test_gestione_eventi_usa_picker_e_timezone_selezionabile_per_create_update()
     for keywords in service_calls.values():
         assert keywords["start_datetime"] == "start_datetime"
         assert keywords["end_datetime"] == "end_datetime"
-        assert keywords["timezone"] == "timezone_var.get()"
+        assert keywords["timezone"] == "timezone"
 
 
 def test_avvio_risolve_il_contesto_prima_di_creare_la_ui():

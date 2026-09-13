@@ -4,7 +4,7 @@
 """Small presentation helpers that do not depend on Tkinter."""
 
 from datetime import date, datetime, time
-from zoneinfo import available_timezones
+from zoneinfo import ZoneInfo, available_timezones
 
 
 HOUR_VALUES = tuple(f"{value:02d}" for value in range(24))
@@ -18,6 +18,62 @@ _PREFERRED_TIMEZONES = tuple(
 TIMEZONE_VALUES = _PREFERRED_TIMEZONES + tuple(
     sorted(_KNOWN_TIMEZONES.difference(_PREFERRED_TIMEZONES))
 )
+_TIMEZONE_BY_CASEFOLD = {
+    timezone.casefold(): timezone for timezone in TIMEZONE_VALUES
+}
+
+
+def _system_offset_at(value):
+    return value.astimezone().utcoffset()
+
+
+def _local_timezone_key():
+    return getattr(datetime.now().astimezone().tzinfo, "key", None)
+
+
+def detect_local_timezone():
+    """Return the local IANA timezone, including on Windows when possible."""
+    local_key = _local_timezone_key()
+    if local_key in _KNOWN_TIMEZONES:
+        return local_key
+
+    current_year = datetime.now().year
+    probes = tuple(
+        datetime(year, month, 15, 12)
+        for year in range(current_year - 1, current_year + 2)
+        for month in range(1, 13)
+    )
+    system_offsets = tuple(_system_offset_at(probe) for probe in probes)
+    for timezone in TIMEZONE_VALUES:
+        candidate = ZoneInfo(timezone)
+        candidate_offsets = tuple(
+            probe.replace(tzinfo=candidate).utcoffset() for probe in probes
+        )
+        if candidate_offsets == system_offsets:
+            return timezone
+    return "UTC"
+
+
+def filter_timezone_values(query):
+    normalized = str(query or "").strip().casefold()
+    if not normalized:
+        return TIMEZONE_VALUES
+    starts_with = tuple(
+        timezone for timezone in TIMEZONE_VALUES
+        if timezone.casefold().startswith(normalized)
+    )
+    contains = tuple(
+        timezone for timezone in TIMEZONE_VALUES
+        if normalized in timezone.casefold() and timezone not in starts_with
+    )
+    return starts_with + contains
+
+
+def canonical_timezone(value):
+    try:
+        return _TIMEZONE_BY_CASEFOLD[str(value).strip().casefold()]
+    except KeyError as exc:
+        raise ValueError("Select a valid timezone") from exc
 
 
 def compose_picker_datetime(selected_date, hour, minute):

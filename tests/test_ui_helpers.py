@@ -12,7 +12,10 @@ from ludox.ui_helpers import (
     HOUR_VALUES,
     MINUTE_VALUES,
     TIMEZONE_VALUES,
+    canonical_timezone,
     compose_picker_datetime,
+    detect_local_timezone,
+    filter_timezone_values,
     split_picker_datetime,
 )
 
@@ -48,6 +51,29 @@ def test_timezone_selector_uses_the_system_iana_catalog_with_common_choices_firs
     assert TIMEZONE_VALUES[:2] == ("Europe/Rome", "UTC")
     assert "America/New_York" in TIMEZONE_VALUES
     assert len(TIMEZONE_VALUES) > 100
+
+
+def test_timezone_search_filters_and_canonicalizes_valid_choices():
+    assert filter_timezone_values("rome") == ("Europe/Rome",)
+    europe = filter_timezone_values("europe/")
+    assert europe[0] == "Europe/Rome"
+    assert "Europe/Amsterdam" in europe
+    assert canonical_timezone(" europe/rome ") == "Europe/Rome"
+    with pytest.raises(ValueError, match="valid timezone"):
+        canonical_timezone("Rome")
+
+
+def test_local_timezone_detection_matches_windows_offsets(monkeypatch):
+    from ludox import ui_helpers
+
+    rome = ui_helpers.ZoneInfo("Europe/Rome")
+    monkeypatch.setattr(
+        ui_helpers,
+        "_system_offset_at",
+        lambda value: value.replace(tzinfo=rome).utcoffset(),
+    )
+    monkeypatch.setattr(ui_helpers, "_local_timezone_key", lambda: None)
+    assert detect_local_timezone() == "Europe/Rome"
 
 
 def test_composed_picker_values_create_update_and_validate_event(db):

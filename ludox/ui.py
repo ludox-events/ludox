@@ -35,7 +35,10 @@ from .ui_helpers import (
     HOUR_VALUES,
     MINUTE_VALUES,
     TIMEZONE_VALUES,
+    canonical_timezone,
     compose_picker_datetime,
+    detect_local_timezone,
+    filter_timezone_values,
     split_picker_datetime,
 )
 
@@ -76,6 +79,26 @@ class VerticalScrolledFrame(ttk.Frame):
         else:
             steps = -1 if getattr(event, "num", None) == 4 else 1
         self.canvas.yview_scroll(steps, "units")
+
+
+class SearchableTimezoneCombobox(ttk.Combobox):
+    """Combobox that narrows its selectable values as the user types."""
+
+    def __init__(self, parent, *, values, **kwargs):
+        self._all_values = tuple(values)
+        super().__init__(
+            parent,
+            values=self._all_values,
+            state="normal",
+            **kwargs,
+        )
+        self.bind("<KeyRelease>", self._filter_values, add="+")
+
+    def _filter_values(self, event):
+        if event.keysym in {"Up", "Down", "Return", "Escape", "Tab"}:
+            return
+        self.configure(values=filter_timezone_values(self.get()))
+
 
 class PrestitiApp(ttk.Window):
 
@@ -2393,7 +2416,8 @@ class PrestitiApp(ttk.Window):
         form.pack(fill=X)
         name_var = tk.StringVar()
         slug_var = tk.StringVar()
-        timezone_var = tk.StringVar(value="UTC")
+        local_timezone = detect_local_timezone()
+        timezone_var = tk.StringVar(value=local_timezone)
         status_var = tk.StringVar(value="draft")
         game_library_var = tk.BooleanVar()
         activities_var = tk.BooleanVar()
@@ -2416,11 +2440,11 @@ class PrestitiApp(ttk.Window):
         ttk.Label(form, text=tr("events.timezone")).grid(
             row=4, column=0, sticky=W
         )
-        ttk.Combobox(
+        SearchableTimezoneCombobox(
             form,
             textvariable=timezone_var,
             values=TIMEZONE_VALUES,
-            state="readonly",
+            height=15,
         ).grid(row=4, column=1, sticky=EW, padx=8, pady=2)
         ttk.Label(form, text=tr("events.status")).grid(row=5, column=0, sticky=W)
         ttk.Combobox(
@@ -2448,7 +2472,7 @@ class PrestitiApp(ttk.Window):
             self.imposta_datetime_picker(
                 end_picker, (start + timedelta(hours=1)).isoformat()
             )
-            timezone_var.set("UTC")
+            timezone_var.set(local_timezone)
             status_var.set("draft")
             game_library_var.set(False)
             activities_var.set(False)
@@ -2477,6 +2501,7 @@ class PrestitiApp(ttk.Window):
             try:
                 start_datetime = self.leggi_datetime_picker(start_picker)
                 end_datetime = self.leggi_datetime_picker(end_picker)
+                timezone = canonical_timezone(timezone_var.get())
                 if selected_id is None:
                     saved = events.create_event(
                         organization_id,
@@ -2484,7 +2509,7 @@ class PrestitiApp(ttk.Window):
                         slug=slug_var.get() or events.suggested_slug(name_var.get()),
                         start_datetime=start_datetime,
                         end_datetime=end_datetime,
-                        timezone=timezone_var.get(),
+                        timezone=timezone,
                         modules=tuple(
                             module_id for module_id, enabled in (
                                 ("game_library", game_library_var.get()),
@@ -2498,7 +2523,7 @@ class PrestitiApp(ttk.Window):
                         name=name_var.get(),
                         start_datetime=start_datetime,
                         end_datetime=end_datetime,
-                        timezone=timezone_var.get(),
+                        timezone=timezone,
                         status=status_var.get(),
                     )
                     events.set_module_enabled(
