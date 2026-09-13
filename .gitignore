@@ -23,3 +23,8 @@ Thumbs.db
 
 # Local exports
 *.csv
+build/
+build-linux/
+dist/
+dist-linux/LudoX-0.1.1-alpha-linux-x64.tar.gz
+dist-linux/

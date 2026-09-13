@@ -1,11 +1,16 @@
 from __future__ import annotations
-
+import sys
 import configparser
 import os
 from dataclasses import dataclass
 from pathlib import Path
 
-PROJECT_DIR = Path(__file__).resolve().parent.parent
+
+if getattr(sys, "frozen", False):
+    PROJECT_DIR = Path(sys.executable).resolve().parent
+else:
+    PROJECT_DIR = Path(__file__).resolve().parent.parent
+    
 CONFIG_PATH = PROJECT_DIR / "config.ini"
 DEFAULT_LANGUAGE = "it"
 DEFAULT_MAX_TOKENS = 50
