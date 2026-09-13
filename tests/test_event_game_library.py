@@ -7,7 +7,15 @@ from datetime import datetime
 
 import pytest
 
-from ludox import catalog, database, events, lending, organizations, reporting
+from ludox import (
+    catalog,
+    copy_identifiers,
+    database,
+    events,
+    lending,
+    organizations,
+    reporting,
+)
 
 
 def create_event(organization_id, slug):
@@ -148,22 +156,87 @@ def test_max_slots_is_event_specific_and_cannot_hide_an_occupied_slot(
 
 def test_reporting_and_history_are_event_scoped(event_pair, monkeypatch):
     first, second = event_pair
-    _, first_game = populate(first.id)
+    first_owner, first_game = populate(first.id)
     _, second_game = populate(second.id, game_name="Cascadia")
-    timestamps = iter(("2026-09-13T10:00:00", "2026-09-13T11:00:00"))
+    first_copy = copy_identifiers.list_copies(first.id)[0]["copy_id"]
+    copy_identifiers.assign_external(first.id, first_copy, "FIRST-COPY")
+    catalog.modifica_impostazioni_modulo(
+        first.id, 50, "copy_identifier"
+    )
+    timestamps = iter((
+        "2026-09-13T10:00:00",
+        "2026-09-13T11:00:00",
+        "2026-09-13T12:00:00",
+    ))
     monkeypatch.setattr(database, "now_iso", lambda: next(timestamps))
-    lending.nuovo_prestito(first_game, event_id=first.id)
+    first_loan = lending.nuovo_prestito_da_identificatore(
+        "FIRST-COPY", event_id=first.id
+    )
     lending.nuovo_prestito(second_game, event_id=second.id)
 
     first_history = reporting.storico_prestiti(event_id=first.id)
     second_history = reporting.storico_prestiti(event_id=second.id)
     assert [row["gioco"] for row in first_history.righe] == ["Azul"]
     assert [row["gioco"] for row in second_history.righe] == ["Cascadia"]
+    assert (
+        first_history.righe[0]["copy_id"],
+        first_history.righe[0]["copy_identifier"],
+        first_history.righe[0]["owner_label"],
+    ) == (first_copy, "FIRST-COPY", "Biblioteca")
+    assert second_history.righe[0]["copy_id"] is None
     report = reporting.report_utilizzo(
         datetime(2026, 9, 13), datetime(2026, 9, 13), event_id=first.id
     )
     assert report.totale_prestiti == 1
     assert [row["gioco"] for row in report.righe] == ["Azul"]
+    assert report.righe[0]["copie_prestito"] == (
+        f"#{first_copy} · FIRST-COPY · Biblioteca"
+    )
+    lending.conferma_restituzione_copia(
+        lending.consulta_copia_in_prestito("FIRST-COPY", event_id=first.id)
+    )
+    copy_identifiers.replace(first.id, first_copy, "CURRENT-CODE")
+    assert reporting.storico_prestiti(event_id=first.id).righe[0][
+        "copy_identifier"
+    ] == "CURRENT-CODE"
+
+
+def test_identification_mode_change_requires_no_open_sessions_or_loans(
+    event_pair, monkeypatch,
+):
+    first, second = event_pair
+    _, first_game = populate(first.id, quantity=2)
+    _, second_game = populate(second.id, quantity=1)
+    monkeypatch.setattr(database, "now_iso", lambda: "2026-09-13T10:00:00")
+    first_loan = lending.nuovo_prestito(first_game, event_id=first.id)
+
+    catalog.modifica_impostazioni_modulo(first.id, 60, "token")
+    with pytest.raises(catalog.CambioModalitaBloccato):
+        catalog.modifica_impostazioni_modulo(first.id, 60, "copy_identifier")
+    assert catalog.impostazioni_modulo(first.id)["identification_mode"] == "token"
+
+    lending.restituzione_finale(
+        documento_id=first_loan.documento_id,
+        prestito_id=first_loan.prestito_id,
+        event_id=first.id,
+    )
+    before_copies = copy_identifiers.list_copies(first.id)
+    catalog.modifica_impostazioni_modulo(first.id, 60, "copy_identifier")
+    assert catalog.impostazioni_modulo(first.id)["identification_mode"] == (
+        "copy_identifier"
+    )
+    assert copy_identifiers.list_copies(first.id) == before_copies
+
+    second_loan = lending.nuovo_prestito(second_game, event_id=second.id)
+    with database.get_db() as connection:
+        connection.execute("""
+            UPDATE game_library_sessions SET closed_at = ?
+            WHERE event_id = ? AND id = ?
+        """, ("2026-09-13T10:05:00", second.id, second_loan.documento_id))
+    with pytest.raises(catalog.CambioModalitaBloccato):
+        catalog.modifica_impostazioni_modulo(
+            second.id, 50, "copy_identifier"
+        )
 
 
 def test_open_session_blocks_module_disable_and_history_blocks_event_delete(

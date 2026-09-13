@@ -148,11 +148,13 @@ def test_report_utilizzo_include_aperti_e_calcola_durate_solo_sui_chiusi(catalog
     assert azul["prestiti"] == 2
     assert azul["tempo_totale_secondi"] == 3600
     assert azul["media_secondi"] == 3600
+    assert azul["copie_prestito"] == reporting.formatta_durata(None)
     assert report.totale_prestiti == 3
     assert report.titoli_utilizzati == 2
     assert report.durata_mediana_prestito_secondi == 75 * 60
     assert reporting.righe_csv_utilizzo(report)[0] == [
-        "Azul", "Biblioteca (2), Privato (1)", 3, 2,
+        "Azul", "Biblioteca (2), Privato (1)",
+        reporting.formatta_durata(None), 3, 2,
         "1h 00m", "60,00", "1h 00m", "60,00", "0m", "0,00",
     ]
 

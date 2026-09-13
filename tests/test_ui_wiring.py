@@ -315,6 +315,41 @@ def test_restituzione_copia_scansiona_e_scrive_solo_alla_conferma_finale():
     assert_command("show_restituzione_copia_completata", {"self.show_home"})
 
 
+def test_impostazioni_ludoteca_espongono_entrambe_le_modalita():
+    settings = metodo("show_impostazioni_ludoteca")
+    clear_calls = chiamate("show_impostazioni_ludoteca", "self.clear")
+    assert {
+        keyword.arg: ast.unparse(keyword.value)
+        for keyword in clear_calls[0].keywords
+    } == {"scrollable": "True"}
+    assert len(chiamate("show_impostazioni_ludoteca", "ttk.Combobox")) == 1
+    assert any(
+        isinstance(node, ast.Dict)
+        and {ast.literal_eval(key) for key in node.keys} == {
+            "token", "copy_identifier"
+        }
+        for node in ast.walk(settings)
+    )
+    save = next(
+        node for node in ast.walk(settings)
+        if isinstance(node, ast.FunctionDef) and node.name == "salva"
+    )
+    handlers = {
+        ast.unparse(handler.type) for handler in save.body[0].handlers
+    }
+    assert "catalog.CambioModalitaBloccato" in handlers
+
+
+def test_storico_e_report_mostrano_i_dettagli_della_copia():
+    history = metodo("show_tutti_prestiti")
+    history_source = ast.unparse(history)
+    for field in ("copy_id", "copy_identifier", "owner_label"):
+        assert f"row['{field}']" in history_source
+    report_source = ast.unparse(metodo("show_report_utilizzo_ludoteca"))
+    assert "row['copie_prestito']" in report_source
+    assert "tr('usage.loaned_copies')" in report_source
+
+
 def test_gestione_eventi_usa_picker_e_timezone_selezionabile_per_create_update():
     assert len(chiamate("crea_datetime_picker", "DateEntry")) == 1
     picker_values = {

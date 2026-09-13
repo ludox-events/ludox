@@ -48,6 +48,10 @@ class ConfigurazioneNonValida(Exception):
     pass
 
 
+class CambioModalitaBloccato(Exception):
+    pass
+
+
 def _nome_valido(nome):
     nome = nome.strip()
     if not nome:
@@ -226,6 +230,13 @@ def modifica_impostazioni_modulo(event_id, max_slots, identification_mode="token
         raise ConfigurazioneNonValida() from exc
     if max_slots <= 0 or identification_mode not in ("token", "copy_identifier"):
         raise ConfigurazioneNonValida()
+    current = data.impostazioni_game_library(event_id)
+    if (
+        current is not None
+        and current["identification_mode"] != identification_mode
+        and data.game_library_ha_sessioni_o_prestiti_aperti(event_id)
+    ):
+        raise CambioModalitaBloccato()
     if data.conta_sessioni_attive_evento(event_id):
         massimo_occupato = max(
             (row["token"] for row in data.slot_sessioni_aperte(event_id)),

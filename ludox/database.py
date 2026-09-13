@@ -1155,6 +1155,21 @@ def game_library_ha_aperti(event_id):
     return conta_sessioni_attive_evento(event_id) > 0
 
 
+def game_library_ha_sessioni_o_prestiti_aperti(event_id):
+    with get_db() as db:
+        return bool(db.execute("""
+            SELECT
+                EXISTS(
+                    SELECT 1 FROM game_library_sessions
+                    WHERE event_id = ? AND closed_at IS NULL
+                )
+                OR EXISTS(
+                    SELECT 1 FROM game_library_loans
+                    WHERE event_id = ? AND returned_at IS NULL
+                )
+        """, (event_id, event_id)).fetchone()[0])
+
+
 def righe_export_ludoteca_evento(event_id):
     with get_db() as db:
         return db.execute("""
@@ -1618,12 +1633,20 @@ def storico_prestiti_evento(event_id):
         righe = db.execute("""
             SELECT l.id AS prestito_id, s.id AS documento_id,
                    s.slot AS token, g.name AS gioco,
+                   l.copy_id, i.value AS copy_identifier,
+                   o.name AS owner_label,
                    l.checked_out_at AS uscita, l.returned_at AS rientro
             FROM game_library_loans l
             JOIN game_library_sessions s
               ON s.event_id = l.event_id AND s.id = l.session_id
             JOIN game_library_games g
               ON g.event_id = l.event_id AND g.id = l.game_id
+            LEFT JOIN game_library_game_copies c
+              ON c.event_id = l.event_id AND c.id = l.copy_id
+            LEFT JOIN game_library_copy_identifiers i
+              ON i.event_id = c.event_id AND i.copy_id = c.id
+            LEFT JOIN game_library_owner_labels o
+              ON o.event_id = c.event_id AND o.id = c.owner_label_id
             WHERE l.event_id = ?
             ORDER BY l.checked_out_at DESC, l.id DESC
         """, (event_id,)).fetchall()
@@ -1710,9 +1733,18 @@ def owner_dei_giochi_evento(event_id):
 def prestiti_usciti_periodo_evento(event_id, inizio, fine):
     with get_db() as db:
         return db.execute("""
-            SELECT game_id AS gioco_id, checked_out_at AS uscita,
-                   returned_at AS rientro
-            FROM game_library_loans
-            WHERE event_id = ? AND checked_out_at >= ? AND checked_out_at < ?
-            ORDER BY checked_out_at
+            SELECT l.game_id AS gioco_id, l.copy_id,
+                   i.value AS copy_identifier,
+                   o.name AS owner_label,
+                   l.checked_out_at AS uscita, l.returned_at AS rientro
+            FROM game_library_loans l
+            LEFT JOIN game_library_game_copies c
+              ON c.event_id = l.event_id AND c.id = l.copy_id
+            LEFT JOIN game_library_copy_identifiers i
+              ON i.event_id = c.event_id AND i.copy_id = c.id
+            LEFT JOIN game_library_owner_labels o
+              ON o.event_id = c.event_id AND o.id = c.owner_label_id
+            WHERE l.event_id = ?
+              AND l.checked_out_at >= ? AND l.checked_out_at < ?
+            ORDER BY l.checked_out_at
         """, (event_id, inizio, fine)).fetchall()

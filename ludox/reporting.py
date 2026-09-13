@@ -298,6 +298,15 @@ def report_utilizzo(data_inizio, data_fine, *, proprietario_id=None,
         totale = sum(durate)
         media = totale / len(durate) if durate else None
         deviazione = pstdev(durate) if durate else None
+        copie_note = set()
+        for prestito in prestiti_gioco:
+            if "copy_id" not in prestito.keys() or prestito["copy_id"] is None:
+                continue
+            identifier = prestito["copy_identifier"] or formatta_durata(None)
+            owner = prestito["owner_label"] or formatta_durata(None)
+            copie_note.add(
+                f'#{prestito["copy_id"]} · {identifier} · {owner}'
+            )
         righe.append({
             "gioco": gioco["nome"],
             "proprietari": ", ".join(f'{p["nome"]} ({p["quantita"]})'
@@ -307,6 +316,9 @@ def report_utilizzo(data_inizio, data_fine, *, proprietario_id=None,
             "media_secondi": media, "media": formatta_durata(media),
             "deviazione_secondi": deviazione, "deviazione": formatta_durata(deviazione),
             "durate_prestiti": durate,
+            "copie_prestito": (
+                ", ".join(sorted(copie_note)) or formatta_durata(None)
+            ),
         })
     if escludi_tempo_zero:
         righe = [row for row in righe if row["tempo_totale_secondi"] > 0]
@@ -347,7 +359,8 @@ def righe_csv_documenti(report, stato_aperto, stato_chiuso):
 
 def righe_csv_utilizzo(report):
     return [[
-        row["gioco"], row["proprietari"], row["copie_totali"], row["prestiti"],
+        row["gioco"], row["proprietari"], row["copie_prestito"],
+        row["copie_totali"], row["prestiti"],
         row["tempo_totale"], minuti_csv(row["tempo_totale_secondi"]),
         row["media"], minuti_csv(row["media_secondi"]),
         row["deviazione"], minuti_csv(row["deviazione_secondi"]),

@@ -2510,7 +2510,7 @@ class PrestitiApp(ttk.Window):
     def show_impostazioni_ludoteca(self):
         event_id = self._game_library_event_id()
         settings = catalog.impostazioni_modulo(event_id)
-        frame = self.clear()
+        frame = self.clear(scrollable=True)
         self.pulsante_indietro(frame, self.show_backoffice)
         self.titolo_pagina(
             frame, "game_library.settings", "game_library.settings_subtitle"
@@ -2523,15 +2523,38 @@ class PrestitiApp(ttk.Window):
             anchor=W, pady=(5, 20)
         )
         ttk.Label(
-            card, text=tr("game_library.identification_token"),
+            card, text=tr("game_library.identification_mode"),
             bootstyle="secondary",
-        ).pack(anchor=W, pady=(0, 20))
+        ).pack(anchor=W)
+        mode_labels = {
+            "token": tr("game_library.identification_token"),
+            "copy_identifier": tr("game_library.identification_copy"),
+        }
+        mode_by_label = {label: mode for mode, label in mode_labels.items()}
+        mode_var = tk.StringVar(
+            value=mode_labels[settings["identification_mode"]]
+        )
+        ttk.Combobox(
+            card,
+            textvariable=mode_var,
+            values=list(mode_by_label),
+            state="readonly",
+            width=42,
+        ).pack(anchor=W, pady=(5, 20))
 
         def salva():
             try:
                 catalog.modifica_impostazioni_modulo(
-                    event_id, max_slots_var.get(), "token"
+                    event_id,
+                    max_slots_var.get(),
+                    mode_by_label[mode_var.get()],
                 )
+            except catalog.CambioModalitaBloccato:
+                messagebox.showwarning(
+                    tr("game_library.settings"),
+                    tr("game_library.mode_change_blocked"),
+                )
+                return
             except catalog.ConfigurazioneNonValida:
                 messagebox.showwarning(
                     tr("game_library.settings"),
@@ -3316,6 +3339,9 @@ class PrestitiApp(ttk.Window):
                 "token",
                 "documento",
                 "gioco",
+                "copy",
+                "identifier",
+                "owner",
                 "uscita",
                 "rientro",
                 "stato"
@@ -3329,6 +3355,9 @@ class PrestitiApp(ttk.Window):
         tree.heading("token", text=tr("TOKEN"))
         tree.heading("documento", text=tr("DOC."))
         tree.heading("gioco", text=tr("GIOCO"))
+        tree.heading("copy", text=tr("copies.id"))
+        tree.heading("identifier", text=tr("copies.identifier"))
+        tree.heading("owner", text=tr("copies.owner"))
         tree.heading("uscita", text=tr("INIZIO PRESTITO"))
         tree.heading("rientro", text=tr("RIENTRO"))
         tree.heading("stato", text=tr("STATO"))
@@ -3336,7 +3365,10 @@ class PrestitiApp(ttk.Window):
         tree.column("id", width=65, anchor=CENTER)
         tree.column("token", width=80, anchor=CENTER)
         tree.column("documento", width=75, anchor=CENTER)
-        tree.column("gioco", width=300)
+        tree.column("gioco", width=230)
+        tree.column("copy", width=70, anchor=CENTER)
+        tree.column("identifier", width=180)
+        tree.column("owner", width=150)
         tree.column("uscita", width=165, anchor=CENTER)
         tree.column("rientro", width=165, anchor=CENTER)
         tree.column("stato", width=105, anchor=CENTER)
@@ -3346,19 +3378,21 @@ class PrestitiApp(ttk.Window):
             orient=VERTICAL,
             command=tree.yview
         )
+        scrollbar_x = ttk.Scrollbar(
+            tabella_frame,
+            orient=HORIZONTAL,
+            command=tree.xview,
+        )
         tree.configure(
-            yscrollcommand=scrollbar.set
+            yscrollcommand=scrollbar.set,
+            xscrollcommand=scrollbar_x.set,
         )
 
-        tree.pack(
-            side=LEFT,
-            fill=BOTH,
-            expand=YES
-        )
-        scrollbar.pack(
-            side=RIGHT,
-            fill=Y
-        )
+        tree.grid(row=0, column=0, sticky=NSEW)
+        scrollbar.grid(row=0, column=1, sticky=NS)
+        scrollbar_x.grid(row=1, column=0, sticky=EW)
+        tabella_frame.rowconfigure(0, weight=1)
+        tabella_frame.columnconfigure(0, weight=1)
 
         for row in righe:
             tree.insert(
@@ -3369,6 +3403,9 @@ class PrestitiApp(ttk.Window):
                     row["token"],
                     row["documento_id"],
                     row["gioco"],
+                    row["copy_id"] or "—",
+                    row["copy_identifier"] or "—",
+                    row["owner_label"] or "—",
                     row["uscita_testo"],
                     row["rientro_testo"],
                     tr("common.active") if row["rientro"] is None else tr("common.closed")
@@ -4987,6 +5024,7 @@ class PrestitiApp(ttk.Window):
             columns=(
                 "gioco",
                 "proprietari",
+                "copie_prestito",
                 "copie",
                 "prestiti",
                 "tempo_totale",
@@ -5005,6 +5043,10 @@ class PrestitiApp(ttk.Window):
         tree.heading(
             "proprietari",
             text=tr("PROPRIETARI")
+        )
+        tree.heading(
+            "copie_prestito",
+            text=tr("usage.loaned_copies")
         )
         tree.heading(
             "copie",
@@ -5034,6 +5076,10 @@ class PrestitiApp(ttk.Window):
         tree.column(
             "proprietari",
             width=330
+        )
+        tree.column(
+            "copie_prestito",
+            width=290
         )
         tree.column(
             "copie",
@@ -5110,6 +5156,7 @@ class PrestitiApp(ttk.Window):
                 values=(
                     row["gioco"],
                     row["proprietari"],
+                    row["copie_prestito"],
                     row["copie_totali"],
                     row["prestiti"],
                     row["tempo_totale"],
@@ -5152,6 +5199,7 @@ class PrestitiApp(ttk.Window):
             intestazioni = [
                 tr("usage.sort_game"),
                 tr("usage.csv_owners"),
+                tr("usage.loaned_copies"),
                 tr("usage.csv_total_copies"),
                 tr("usage.csv_loans"),
                 tr("usage.csv_total_time"),
