@@ -6076,7 +6076,9 @@ class PrestitiApp(ttk.Window):
 
     # ========================================================
     # BACKOFFICE - IMPOSTAZIONI
-    # =================================    def show_impostazioni(self):
+    # ========================================================
+
+    def show_impostazioni(self):
         frame = self.clear()
 
         self.pulsante_indietro(
