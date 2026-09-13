@@ -38,10 +38,10 @@ def test_database_nuovo_viene_inizializzato_senza_backup(isolated_files):
 
     assert result.plan.state.kind is migrations.DatabaseKind.EMPTY_UNVERSIONED
     assert result.plan.migration_required is False
-    assert result.migration_result.applied_versions == (1, 2, 3)
+    assert result.migration_result.applied_versions == (1, 2, 3, 4)
     assert result.backup_path is None
     with sqlite3.connect(path) as connection:
-        assert migrations.schema_version(connection) == 3
+        assert migrations.schema_version(connection) == 4
 
 
 def test_database_legacy_richiede_consenso_senza_modificarlo(isolated_files):
@@ -52,7 +52,7 @@ def test_database_legacy_richiede_consenso_senza_modificarlo(isolated_files):
         database.init_db(now=MOMENT)
 
     assert request.value.plan.state.version == 0
-    assert request.value.plan.target_version == 3
+    assert request.value.plan.target_version == 4
     with sqlite3.connect(path) as connection:
         assert migrations.schema_version(connection) == 0
         assert connection.execute(
@@ -71,7 +71,7 @@ def test_consenso_crea_backup_prima_della_migration(isolated_files):
     result = database.init_db(migration_authorized=True, now=MOMENT)
 
     assert result.backup_path == path.with_name(
-        "test.backup-v0-to-v3-20260912-175900.db"
+        "test.backup-v0-to-v4-20260912-175900.db"
     )
     with sqlite3.connect(result.backup_path) as backup:
         assert migrations.schema_version(backup) == 0
@@ -79,7 +79,7 @@ def test_consenso_crea_backup_prima_della_migration(isolated_files):
             "SELECT name FROM sqlite_schema WHERE name = 'organizations'"
         ).fetchone() is None
     with sqlite3.connect(path) as connection:
-        assert migrations.schema_version(connection) == 3
+        assert migrations.schema_version(connection) == 4
         assert connection.execute(
             "SELECT name FROM sqlite_schema WHERE name = 'organizations'"
         ).fetchone() is not None
@@ -136,13 +136,13 @@ def test_schema_futuro_viene_rifiutato_senza_inizializzazione(isolated_files):
     path = database.get_db_path()
     with sqlite3.connect(path) as connection:
         connection.execute("CREATE TABLE future_data(value TEXT)")
-        connection.execute("PRAGMA user_version = 4")
+        connection.execute("PRAGMA user_version = 5")
 
     with pytest.raises(migrations.UnsupportedSchemaVersion):
         database.init_db()
 
     with sqlite3.connect(path) as connection:
-        assert migrations.schema_version(connection) == 4
+        assert migrations.schema_version(connection) == 5
         assert connection.execute(
             "SELECT name FROM sqlite_schema WHERE name = 'proprietari'"
         ).fetchone() is None

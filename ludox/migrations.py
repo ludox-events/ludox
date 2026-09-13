@@ -12,7 +12,7 @@ from typing import Callable, Iterable
 
 
 LEGACY_SCHEMA_VERSION = 0
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 
 class MigrationError(sqlite3.DatabaseError):
@@ -236,10 +236,84 @@ def _migrate_to_version_3(connection):
         connection.execute(statement)
 
 
+def _migrate_to_version_4(connection):
+    """Consolidate copy identifiers to the single operational V1 model."""
+    source_by_legacy_type = {
+        "LUDOX_QR": "ludox",
+        "EXTERNAL_BARCODE": "external",
+    }
+    migrated_rows = []
+    copies_seen = set()
+    values_seen = set()
+    rows = connection.execute("""
+        SELECT id, event_id, copy_id, identifier_type, value
+        FROM game_library_copy_identifiers
+        ORDER BY id
+    """).fetchall()
+    for identifier_id, event_id, copy_id, identifier_type, value in rows:
+        source = source_by_legacy_type.get(identifier_type)
+        normalized = value.strip() if isinstance(value, str) else ""
+        if source is None:
+            raise MigrationError(
+                f"Unsupported copy identifier type for row {identifier_id}: "
+                f"{identifier_type!r}"
+            )
+        if not normalized or "\n" in normalized or "\r" in normalized:
+            raise MigrationError(
+                f"Invalid copy identifier value for row {identifier_id}"
+            )
+        copy_key = (event_id, copy_id)
+        value_key = (event_id, normalized)
+        if copy_key in copies_seen:
+            raise MigrationError(
+                "Multiple copy identifiers exist for the same copy in event "
+                f"{event_id} (copy {copy_id})"
+            )
+        if value_key in values_seen:
+            raise MigrationError(
+                f"Duplicate copy identifier {normalized!r} in event {event_id}"
+            )
+        copies_seen.add(copy_key)
+        values_seen.add(value_key)
+        migrated_rows.append(
+            (identifier_id, event_id, copy_id, source, normalized)
+        )
+
+    connection.execute("""
+        CREATE TABLE game_library_copy_identifiers_v4 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER NOT NULL,
+            copy_id INTEGER NOT NULL,
+            source TEXT NOT NULL CHECK(source IN ('external', 'ludox')),
+            value TEXT NOT NULL CHECK(
+                length(trim(value)) > 0
+                AND instr(value, char(10)) = 0
+                AND instr(value, char(13)) = 0
+            ),
+            FOREIGN KEY(event_id, copy_id)
+                REFERENCES game_library_game_copies(event_id, id)
+                ON DELETE CASCADE,
+            UNIQUE(event_id, copy_id),
+            UNIQUE(event_id, value)
+        )
+    """)
+    connection.executemany("""
+        INSERT INTO game_library_copy_identifiers_v4(
+            id, event_id, copy_id, source, value
+        ) VALUES (?, ?, ?, ?, ?)
+    """, migrated_rows)
+    connection.execute("DROP TABLE game_library_copy_identifiers")
+    connection.execute("""
+        ALTER TABLE game_library_copy_identifiers_v4
+        RENAME TO game_library_copy_identifiers
+    """)
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, _migrate_to_version_1),
     Migration(2, _migrate_to_version_2),
     Migration(3, _migrate_to_version_3),
+    Migration(4, _migrate_to_version_4),
 )
 
 

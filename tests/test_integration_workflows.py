@@ -52,7 +52,7 @@ def test_migration_legacy_preserva_catalogo_e_avvia_contesto_organizzazione(
         now=datetime(2026, 9, 12, 18, 30),
     )
 
-    assert risultato.migration_result.applied_versions == (1, 2, 3)
+    assert risultato.migration_result.applied_versions == (1, 2, 3, 4)
     assert risultato.backup_path.is_file()
     assert organizations.elenco_organizzazioni() == []
     assert [row["nome"] for row in catalog.elenco_proprietari()] == [

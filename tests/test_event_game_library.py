@@ -40,7 +40,7 @@ def populate(event_id, game_name="Azul", owner_name="Biblioteca", quantity=2):
     return owner_id, game_id
 
 
-def test_schema_v3_preserves_legacy_tables_and_starts_new_library_empty(
+def test_schema_v4_preserves_legacy_tables_and_starts_new_library_empty(
     isolated_files,
 ):
     database.initialize_current_schema("Legacy owner")

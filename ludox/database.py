@@ -831,6 +831,114 @@ def aggiorna_quantita_copie_evento(event_id, game_id, owner_id, quantita):
             )
 
 
+class DuplicateCopyIdentifierValue(Exception):
+    pass
+
+
+def copia_evento_per_id(event_id, copy_id):
+    with get_db() as db:
+        return db.execute("""
+            SELECT c.id AS copy_id, c.event_id, c.game_id,
+                   c.owner_label_id, c.active AS copy_active,
+                   g.name AS game_name, g.active AS game_active,
+                   o.name AS owner_label
+            FROM game_library_game_copies c
+            JOIN game_library_games g
+              ON g.event_id = c.event_id AND g.id = c.game_id
+            JOIN game_library_owner_labels o
+              ON o.event_id = c.event_id AND o.id = c.owner_label_id
+            WHERE c.event_id = ? AND c.id = ?
+        """, (event_id, copy_id)).fetchone()
+
+
+def identificatore_copia(event_id, copy_id):
+    with get_db() as db:
+        return db.execute("""
+            SELECT id, event_id, copy_id, source, value
+            FROM game_library_copy_identifiers
+            WHERE event_id = ? AND copy_id = ?
+        """, (event_id, copy_id)).fetchone()
+
+
+def identificatore_per_valore(event_id, value):
+    with get_db() as db:
+        return db.execute("""
+            SELECT id, event_id, copy_id, source, value
+            FROM game_library_copy_identifiers
+            WHERE event_id = ? AND value = ?
+        """, (event_id, value)).fetchone()
+
+
+def copia_da_identificatore(event_id, value):
+    with get_db() as db:
+        return db.execute("""
+            SELECT c.id AS copy_id, c.event_id, c.game_id,
+                   c.owner_label_id, c.active AS copy_active,
+                   g.name AS game_name, g.active AS game_active,
+                   o.name AS owner_label,
+                   i.id AS identifier_id, i.value AS copy_identifier,
+                   i.source AS identifier_source
+            FROM game_library_copy_identifiers i
+            JOIN game_library_game_copies c
+              ON c.event_id = i.event_id AND c.id = i.copy_id
+            JOIN game_library_games g
+              ON g.event_id = c.event_id AND g.id = c.game_id
+            JOIN game_library_owner_labels o
+              ON o.event_id = c.event_id AND o.id = c.owner_label_id
+            WHERE i.event_id = ? AND i.value = ?
+        """, (event_id, value)).fetchone()
+
+
+def inserisci_identificatore_copia(event_id, copy_id, source, value):
+    try:
+        with get_db() as db:
+            return db.execute("""
+                INSERT INTO game_library_copy_identifiers(
+                    event_id, copy_id, source, value
+                ) VALUES (?, ?, ?, ?)
+            """, (event_id, copy_id, source, value)).lastrowid
+    except sqlite3.IntegrityError as exc:
+        if "UNIQUE" in str(exc).upper():
+            raise DuplicateCopyIdentifierValue(
+                "L'identificatore è già in uso nell'Event corrente."
+            ) from exc
+        raise
+
+
+def aggiorna_identificatore_copia(event_id, copy_id, source, value):
+    try:
+        with get_db() as db:
+            return db.execute("""
+                UPDATE game_library_copy_identifiers
+                SET source = ?, value = ?
+                WHERE event_id = ? AND copy_id = ?
+            """, (source, value, event_id, copy_id)).rowcount
+    except sqlite3.IntegrityError as exc:
+        if "UNIQUE" in str(exc).upper():
+            raise DuplicateCopyIdentifierValue(
+                "L'identificatore è già in uso nell'Event corrente."
+            ) from exc
+        raise
+
+
+def elimina_identificatore_copia(event_id, copy_id):
+    with get_db() as db:
+        return db.execute("""
+            DELETE FROM game_library_copy_identifiers
+            WHERE event_id = ? AND copy_id = ?
+        """, (event_id, copy_id)).rowcount
+
+
+def copia_ha_prestito_aperto(event_id, copy_id):
+    with get_db() as db:
+        return bool(db.execute("""
+            SELECT EXISTS(
+                SELECT 1 FROM game_library_loans
+                WHERE event_id = ? AND copy_id = ? AND returned_at IS NULL
+            )
+        """, (event_id, copy_id)).fetchone()[0])
+
+
 def giochi_per_owner_evento(event_id, owner_id):
     with get_db() as db:
         return db.execute("""
