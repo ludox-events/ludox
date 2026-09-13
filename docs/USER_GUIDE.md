@@ -58,7 +58,8 @@ database mantengono quindi ludoteche separate.
 3. Apri **GESTIONE ORGANIZZAZIONI**, crea l'Organization e rendila corrente.
 4. Apri **GESTIONE EVENTI** e crea l'Event con nome, date, orari, fuso orario e
    stato.
-5. Nella configurazione dell'Event abilita **Game Library**.
+5. Nella configurazione dell'Event abilita **Prestiti Ludoteca** (Game
+   Library).
 6. Torna alla Home e verifica che Organization ed Event corretti siano
    indicati in alto.
 
@@ -75,7 +76,7 @@ quando l'Event corrente ha la Game Library abilitata.
 
 ### Impostazioni della ludoteca
 
-Apri **IMPOSTAZIONI LUDOTECA** e configura:
+Apri **IMPOSTAZIONI PRESTITI LUDOTECA** e configura:
 
 - **numero di posizioni**: deve corrispondere alle posizioni fisiche in cui
   custodirai i documenti;
@@ -123,7 +124,7 @@ codice.
 ### Generare ed esportare un QR LudoX
 
 1. Seleziona una copia senza codice.
-2. Usa **GENERA IDENTIFICATORE LUDOX**.
+2. Usa **GENERA CODICE LUDOX**.
 3. Usa **ESPORTA QR PNG** e scegli dove salvare l'immagine.
 4. Stampa l'immagine e applicala alla scatola corretta.
 
@@ -176,6 +177,9 @@ Per entrambe le modalità servono:
 - uno schedario o contenitore con posizioni numerate;
 - una postazione custodita, non accessibile al pubblico;
 - una posizione fisica per ogni numero configurato nell'Event.
+
+Il registro è anonimo: LudoX non richiede il nome della persona né il numero
+del documento. Custodisci comunque i documenti fuori dalla vista del pubblico.
 
 In modalità `token` servono anche token fisici numerati. In modalità
 `copy_identifier`, applica un codice a ogni copia che verrà prestata e collega
@@ -278,10 +282,10 @@ prestati dello stesso Event.
 
 Nel Backoffice sono disponibili, tra le altre, queste viste:
 
-- **TUTTI PRESTITI**: storico dei movimenti;
+- **TUTTI I PRESTITI**: storico dei movimenti;
 - **DOCUMENTI / PERSONE**: sessioni aperte e concluse;
 - **GIOCHI PER PROPRIETARIO**: composizione della ludoteca;
-- **REPORT UTILIZZO**: utilizzo delle copie;
+- **REPORT UTILIZZO LUDOTECA**: utilizzo delle copie;
 - **REPORT PERSONE / DOCUMENTI**: riepilogo delle sessioni;
 - gestioni di Organization, Event, giochi, proprietari e singole copie.
 
