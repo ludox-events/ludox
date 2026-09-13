@@ -206,6 +206,61 @@ def test_azioni_locali_importanti_hanno_il_command_previsto():
     assert_command("show_selezione_evento", {"conferma"})
 
 
+def test_gestione_eventi_usa_picker_e_timezone_selezionabile_per_create_update():
+    assert len(chiamate("crea_datetime_picker", "DateEntry")) == 1
+    picker_values = {
+        ast.unparse(keyword.value)
+        for call in chiamate("crea_datetime_picker", "ttk.Combobox")
+        for keyword in call.keywords
+        if keyword.arg == "values"
+    }
+    assert picker_values == {"HOUR_VALUES", "MINUTE_VALUES"}
+
+    picker_calls = chiamate("show_gestione_eventi", "self.crea_datetime_picker")
+    assert len(picker_calls) == 2
+    assert [ast.unparse(call.args[1]) for call in picker_calls] == [
+        "'events.start'", "'events.end'"
+    ]
+    timezone = next(
+        call for call in chiamate("show_gestione_eventi", "ttk.Combobox")
+        if any(
+            keyword.arg == "values" and ast.unparse(keyword.value) == "TIMEZONE_VALUES"
+            for keyword in call.keywords
+        )
+    )
+    assert any(
+        keyword.arg == "state" and ast.unparse(keyword.value) == "'readonly'"
+        for keyword in timezone.keywords
+    )
+
+    gestione = metodo("show_gestione_eventi")
+    carica = next(
+        node for node in ast.walk(gestione)
+        if isinstance(node, ast.FunctionDef) and node.name == "carica"
+    )
+    assert len([
+        node for node in ast.walk(carica)
+        if isinstance(node, ast.Call)
+        and ast.unparse(node.func) == "self.imposta_datetime_picker"
+    ]) == 2
+    salva = next(
+        node for node in ast.walk(gestione)
+        if isinstance(node, ast.FunctionDef) and node.name == "salva"
+    )
+    service_calls = {
+        ast.unparse(node.func): {
+            keyword.arg: ast.unparse(keyword.value) for keyword in node.keywords
+        }
+        for node in ast.walk(salva)
+        if isinstance(node, ast.Call)
+        and ast.unparse(node.func) in {"events.create_event", "events.update_event"}
+    }
+    for keywords in service_calls.values():
+        assert keywords["start_datetime"] == "start_datetime"
+        assert keywords["end_datetime"] == "end_datetime"
+        assert keywords["timezone"] == "timezone_var.get()"
+
+
 def test_avvio_risolve_il_contesto_prima_di_creare_la_ui():
     main = next(
         node

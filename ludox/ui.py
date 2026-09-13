@@ -31,6 +31,13 @@ from . import (
     workspace,
 )
 from .i18n import tr, set_language, get_language, language_display_names
+from .ui_helpers import (
+    HOUR_VALUES,
+    MINUTE_VALUES,
+    TIMEZONE_VALUES,
+    compose_picker_datetime,
+    split_picker_datetime,
+)
 
 APP_THEME = "flatly"
 BACKOFFICE_PASSWORD = "ludox"
@@ -226,6 +233,55 @@ class PrestitiApp(ttk.Window):
             font=("Arial", 11, "bold"),
             bootstyle="secondary"
         ).pack(pady=(4, 0))
+
+    def crea_datetime_picker(self, parent, label, initial_value, row):
+        selected_date, hour, minute = split_picker_datetime(initial_value)
+        ttk.Label(parent, text=tr(label)).grid(row=row, column=0, sticky=W)
+        controls = ttk.Frame(parent)
+        controls.grid(row=row, column=1, sticky=W, padx=8, pady=2)
+        date_picker = DateEntry(
+            controls,
+            startdate=selected_date,
+            dateformat="%Y-%m-%d",
+            bootstyle="primary",
+        )
+        date_picker.pack(side=LEFT)
+        hour_var = tk.StringVar(value=hour)
+        minute_var = tk.StringVar(value=minute)
+        ttk.Combobox(
+            controls,
+            textvariable=hour_var,
+            values=HOUR_VALUES,
+            state="readonly",
+            width=3,
+        ).pack(side=LEFT, padx=(10, 2))
+        ttk.Label(controls, text=":").pack(side=LEFT)
+        ttk.Combobox(
+            controls,
+            textvariable=minute_var,
+            values=MINUTE_VALUES,
+            state="readonly",
+            width=3,
+        ).pack(side=LEFT, padx=(2, 0))
+        return {
+            "date": date_picker,
+            "hour": hour_var,
+            "minute": minute_var,
+        }
+
+    def imposta_datetime_picker(self, picker, value):
+        selected_date, hour, minute = split_picker_datetime(value)
+        picker["date"].entry.delete(0, END)
+        picker["date"].entry.insert(0, selected_date.strftime("%Y-%m-%d"))
+        picker["hour"].set(hour)
+        picker["minute"].set(minute)
+
+    def leggi_datetime_picker(self, picker):
+        return compose_picker_datetime(
+            picker["date"].get_date(),
+            picker["hour"].get(),
+            picker["minute"].get(),
+        )
 
     # ========================================================
     # HOME
@@ -2300,7 +2356,7 @@ class PrestitiApp(ttk.Window):
     # ========================================================
 
     def show_gestione_eventi(self):
-        frame = self.clear()
+        frame = self.clear(scrollable=True)
         self.pulsante_indietro(frame, self.show_backoffice)
         self.titolo_pagina(frame, "events.manage", "events.manage_subtitle")
         if self.organizzazione_attiva is None:
@@ -2337,8 +2393,6 @@ class PrestitiApp(ttk.Window):
         form.pack(fill=X)
         name_var = tk.StringVar()
         slug_var = tk.StringVar()
-        start_var = tk.StringVar()
-        end_var = tk.StringVar()
         timezone_var = tk.StringVar(value="UTC")
         status_var = tk.StringVar(value="draft")
         game_library_var = tk.BooleanVar()
@@ -2348,13 +2402,26 @@ class PrestitiApp(ttk.Window):
         for row, (key, label, variable) in enumerate((
             ("name", "events.name", name_var),
             ("slug", "events.slug", slug_var),
-            ("start", "events.start", start_var),
-            ("end", "events.end", end_var),
-            ("timezone", "events.timezone", timezone_var),
         )):
             ttk.Label(form, text=tr(label)).grid(row=row, column=0, sticky=W)
             entries[key] = ttk.Entry(form, textvariable=variable, width=52)
             entries[key].grid(row=row, column=1, sticky=EW, padx=8, pady=2)
+        initial_start = datetime.now().replace(second=0, microsecond=0)
+        start_picker = self.crea_datetime_picker(
+            form, "events.start", initial_start.isoformat(), 2
+        )
+        end_picker = self.crea_datetime_picker(
+            form, "events.end", (initial_start + timedelta(hours=1)).isoformat(), 3
+        )
+        ttk.Label(form, text=tr("events.timezone")).grid(
+            row=4, column=0, sticky=W
+        )
+        ttk.Combobox(
+            form,
+            textvariable=timezone_var,
+            values=TIMEZONE_VALUES,
+            state="readonly",
+        ).grid(row=4, column=1, sticky=EW, padx=8, pady=2)
         ttk.Label(form, text=tr("events.status")).grid(row=5, column=0, sticky=W)
         ttk.Combobox(
             form, textvariable=status_var, values=events.EVENT_STATES,
@@ -2374,8 +2441,13 @@ class PrestitiApp(ttk.Window):
             nonlocal selected_id
             selected_id = None
             tree.selection_remove(tree.selection())
-            for variable in (name_var, slug_var, start_var, end_var):
+            for variable in (name_var, slug_var):
                 variable.set("")
+            start = datetime.now().replace(second=0, microsecond=0)
+            self.imposta_datetime_picker(start_picker, start.isoformat())
+            self.imposta_datetime_picker(
+                end_picker, (start + timedelta(hours=1)).isoformat()
+            )
             timezone_var.set("UTC")
             status_var.set("draft")
             game_library_var.set(False)
@@ -2393,8 +2465,8 @@ class PrestitiApp(ttk.Window):
                 return
             name_var.set(selected.name)
             slug_var.set(selected.slug)
-            start_var.set(selected.start_datetime)
-            end_var.set(selected.end_datetime)
+            self.imposta_datetime_picker(start_picker, selected.start_datetime)
+            self.imposta_datetime_picker(end_picker, selected.end_datetime)
             timezone_var.set(selected.timezone)
             status_var.set(selected.status)
             game_library_var.set(selected.modules["game_library"])
@@ -2403,13 +2475,15 @@ class PrestitiApp(ttk.Window):
 
         def salva():
             try:
+                start_datetime = self.leggi_datetime_picker(start_picker)
+                end_datetime = self.leggi_datetime_picker(end_picker)
                 if selected_id is None:
                     saved = events.create_event(
                         organization_id,
                         name=name_var.get(),
                         slug=slug_var.get() or events.suggested_slug(name_var.get()),
-                        start_datetime=start_var.get(),
-                        end_datetime=end_var.get(),
+                        start_datetime=start_datetime,
+                        end_datetime=end_datetime,
                         timezone=timezone_var.get(),
                         modules=tuple(
                             module_id for module_id, enabled in (
@@ -2422,8 +2496,8 @@ class PrestitiApp(ttk.Window):
                     saved = events.update_event(
                         selected_id,
                         name=name_var.get(),
-                        start_datetime=start_var.get(),
-                        end_datetime=end_var.get(),
+                        start_datetime=start_datetime,
+                        end_datetime=end_datetime,
                         timezone=timezone_var.get(),
                         status=status_var.get(),
                     )
@@ -2434,7 +2508,7 @@ class PrestitiApp(ttk.Window):
                         saved.id, "activities", activities_var.get()
                     )
                 self._rivalida_contesto_evento()
-            except (events.EventError, sqlite3.Error) as exc:
+            except (ValueError, events.EventError, sqlite3.Error) as exc:
                 messagebox.showwarning(tr("events.invalid"), str(exc))
                 return
             self.show_gestione_eventi()
