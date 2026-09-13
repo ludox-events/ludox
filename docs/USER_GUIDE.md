@@ -1,666 +1,390 @@
 # LudoX — Guida rapida
 
-**Versione 0.1.0-alpha**
+**Versione candidata 0.2.0-alpha**
 
-LudoX è un'applicazione locale per gestire il prestito di giochi durante eventi, serate ludiche, biblioteche e ludoteche.
+LudoX è un'applicazione locale per gestire il prestito di giochi durante un
+evento. La postazione lavora su un file database scelto dall'operatore e non
+richiede una connessione di rete.
 
-Questa guida descrive la versione **0.1.0-alpha** e il suo flusso principale: preparare la ludoteca, consegnare un gioco, gestire eventuali cambi e chiudere correttamente il prestito restituendo il documento.
+Questa guida accompagna dalla prima configurazione alla chiusura del banco. Le
+due modalità disponibili sono alternative:
+
+- **token**: la persona riceve un token numerato, collegato alla posizione del
+  documento custodito;
+- **identificatore copia** (`copy_identifier`): l'operatore legge il codice
+  della singola scatola e LudoX assegna soltanto una posizione al documento.
 
 > **Versione alpha**
 >
-> LudoX è ancora in sviluppo. Prima di utilizzarlo durante un evento reale è consigliato fare una prova completa della postazione, verificare i token fisici e controllare che il database selezionato sia quello corretto.
+> Prima di un evento reale, esegui una prova completa con un database di test,
+> controlla il materiale fisico e verifica la modalità scelta per l'Event.
 
-## 1. Come funziona LudoX
+## 1. Primo avvio e database
 
-LudoX usa un sistema anonimo basato su **token numerati**.
+Al primo avvio scegli:
 
-Quando una persona prende un gioco:
+1. la **lingua**;
+2. il file **database**;
+3. **SALVA CONFIGURAZIONE E AVVIA**.
 
-1. consegna un documento alla postazione;
-2. LudoX assegna automaticamente un token libero;
-3. il documento viene custodito nella posizione fisica con lo stesso numero;
-4. il token numerato viene consegnato alla persona;
-5. LudoX registra il gioco in prestito.
+Puoi usare **NUOVO…** per creare un database oppure **APRI ESISTENTE…** per
+selezionarne uno già disponibile. Un database nuovo viene preparato
+automaticamente. La quantità di posizioni non si imposta in questa schermata:
+è una configurazione specifica della ludoteca di ciascun Event.
 
-Esempio:
+Il database contiene configurazioni, cataloghi, prestiti e storico. Conservalo
+in una cartella nota e sottoposta a backup.
 
-```text
-LudoX assegna TOKEN 27
+## 2. Organization, Event e Game Library
 
-Documento → posizione 27
-Token 27  → persona
-Gioco     → persona
-```
-
-LudoX **non registra nel database il nome della persona, il numero del documento o altri dati identificativi**.
-
-Il numero del token serve soltanto a collegare temporaneamente il prestito alla posizione fisica in cui è custodito il documento.
-
-### Materiale consigliato
-
-Per utilizzare il sistema servono:
-
-- un PC con LudoX;
-- i giochi disponibili;
-- token fisici numerati;
-- uno schedario, portalistini o porta-carte con posizioni numerate;
-- una postazione custodita e non liberamente accessibile al pubblico.
-
-Il numero di token configurato in LudoX deve corrispondere alle posizioni fisiche realmente disponibili.
-
----
-
-## 2. Avvio e configurazione iniziale
-
-Al primo avvio LudoX mostra la schermata **Configurazione iniziale / Initial setup**.
-
-Devi scegliere:
-
-- **Lingua / Language**;
-- **Numero di token / Number of tokens**;
-- **Database**.
-
-Il valore proposto per i token è **50**.
-
-### Scelta del database
-
-Il database contiene giochi, proprietari, prestiti e storico.
-
-Puoi:
-
-- scrivere direttamente un nome, per esempio `AMIGO2026.db`;
-- premere **NUOVO… / NEW…** per scegliere dove creare un nuovo database;
-- premere **APRI ESISTENTE… / OPEN EXISTING…** per utilizzare un database LudoX già esistente.
-
-Se inserisci soltanto un nome, LudoX crea il database nella cartella dell'applicazione.
-
-Quando hai terminato premi:
-
-**SALVA CONFIGURAZIONE E AVVIA / SAVE CONFIGURATION AND START**
-
-![Configurazione iniziale di LudoX](user-guide/images/01-first-run.png)
-
-_Configurazione iniziale: lingua, numero di token e database._
-
-> Conserva con attenzione il file del database. Contiene i dati operativi e lo storico della postazione.
-
----
-
-## 3. La schermata principale
-
-La Home mostra tre contatori:
-
-- **PRESTITI EFFETTUATI** — numero complessivo dei prestiti registrati;
-- **PERSONE / DOCUMENTI** — numero delle sessioni/documenti gestiti;
-- **PRESTITI ATTIVI** — documenti attualmente depositati.
-
-Le quattro azioni principali sono:
-
-- **＋ NUOVO PRESTITO**
-- **↔ CAMBIO GIOCO**
-- **✓ RESTITUZIONE FINALE**
-- **▥ STATISTICHE**
-
-In fondo trovi:
-
-- **⚙ BACKOFFICE**
-
-![Home di LudoX](user-guide/images/02-home.png)
-
-_Home con contatori e operazioni principali._
-
----
-
-# Preparazione della ludoteca
-
-## 4. Entrare nel Backoffice
-
-Dalla Home premi **⚙ BACKOFFICE**.
-
-La password predefinita della versione alpha è:
+Ogni operazione avviene nel contesto seguente:
 
 ```text
-ludox
+database/workspace → Organization → Event → Game Library
 ```
 
-Premi **ACCEDI**.
+- una **Organization** rappresenta l'organizzazione che gestisce gli eventi;
+- un **Event** è una specifica manifestazione o sessione operativa;
+- la **Game Library** è il modulo di prestito dell'Event.
 
-La password serve a evitare accessi accidentali alla parte amministrativa, ma **non è una protezione di sicurezza forte**.
+Giochi, proprietari, copie, modalità operativa, prestiti e statistiche della
+Game Library appartengono all'Event corrente. Event diversi nello stesso
+database mantengono quindi ludoteche separate.
 
-Nel Backoffice trovi:
+### Preparare il primo Event
 
-- **GESTIONE GIOCHI**
-- **GESTIONE PROPRIETARI**
-- **TUTTI I PRESTITI**
-- **DOCUMENTI / PERSONE**
-- **GIOCHI PER PROPRIETARIO**
-- **IMPOSTAZIONI**
-- **REPORT UTILIZZO LUDOTECA**
-- **REPORT PERSONE / DOCUMENTI**
+1. Dalla Home apri **BACKOFFICE**.
+2. Inserisci la password iniziale `ludox` e premi **ACCEDI**.
+3. Apri **GESTIONE ORGANIZZAZIONI**, crea l'Organization e rendila corrente.
+4. Apri **GESTIONE EVENTI** e crea l'Event con nome, date, orari, fuso orario e
+   stato.
+5. Nella configurazione dell'Event abilita **Game Library**.
+6. Torna alla Home e verifica che Organization ed Event corretti siano
+   indicati in alto.
 
-![Backoffice di LudoX](user-guide/images/03-backoffice.png)
+Se esistono più Event selezionabili, usa **CAMBIA EVENT**. Cambiare Event cambia
+anche la ludoteca e i dati operativi visualizzati.
 
-_Backoffice con le funzioni di gestione, storico, report e impostazioni._
+> **Screenshot release da acquisire:** Home 0.2.0-alpha con Organization ed
+> Event visibili, più schermata di selezione Event.
 
----
+## 3. Preparare la ludoteca dell'Event
 
-## 5. Gestire i proprietari
+Nel Backoffice, le funzioni della ludoteca diventano disponibili soltanto
+quando l'Event corrente ha la Game Library abilitata.
 
-Un proprietario indica la persona o l'ente che mette a disposizione una o più copie di un gioco.
+### Impostazioni della ludoteca
 
-Un nuovo database contiene già un proprietario iniziale generico, normalmente **Organizzazione**.
+Apri **IMPOSTAZIONI LUDOTECA** e configura:
 
-Per aggiungerne altri:
+- **numero di posizioni**: deve corrispondere alle posizioni fisiche in cui
+  custodirai i documenti;
+- **modalità operativa**: `token` oppure `copy_identifier`.
 
-1. apri **GESTIONE PROPRIETARI**;
-2. premi **＋ AGGIUNGI PROPRIETARIO**;
-3. inserisci il nome;
-4. premi **SALVA PROPRIETARIO**.
+La modalità può essere cambiata soltanto quando non ci sono sessioni o prestiti
+aperti. Anche la riduzione delle posizioni viene bloccata se renderebbe non
+valida una sessione ancora attiva.
 
-Esempi:
+### Proprietari, giochi e quantità
+
+1. In **GESTIONE PROPRIETARI** inserisci le etichette dei proprietari dei
+   giochi, per esempio `Associazione`, `Biblioteca` o un nome concordato.
+2. In **GESTIONE GIOCHI** crea i titoli e assegna le copie ai proprietari.
+3. Controlla quantità, copie disponibili e stato attivo dei giochi.
+
+I proprietari dei giochi sono semplici etichette della ludoteca e non sono le
+Organization.
+
+## 4. Singole copie e codici
+
+Apri **GESTIONE SINGOLE COPIE** per vedere ogni scatola fisica con gioco,
+proprietario, stato e identificatore. Una copia può non avere un codice oppure
+avere un solo `copy_identifier`.
+
+I codici sono di due tipi:
+
+- **external**: barcode, QR o altro codice già presente sulla scatola;
+- **ludox**: codice creato da LudoX, per esempio `LX-C-000001`.
+
+Il codice identifica una copia soltanto all'interno dello stesso Event. Non
+crea un'identità globale tra Event diversi.
+
+### Assegnare o sostituire un codice external
+
+1. Seleziona la copia.
+2. Porta il cursore nel campo del codice.
+3. Leggi il codice con lo scanner oppure digitalo.
+4. Premi **Invio** o usa **ASSEGNA / SOSTITUISCI ESTERNO**.
+
+Il confronto è esatto: dopo la rimozione degli spazi iniziali e finali,
+maiuscole e minuscole restano differenti. Evita quindi varianti dello stesso
+codice.
+
+### Generare ed esportare un QR LudoX
+
+1. Seleziona una copia senza codice.
+2. Usa **GENERA IDENTIFICATORE LUDOX**.
+3. Usa **ESPORTA QR PNG** e scegli dove salvare l'immagine.
+4. Stampa l'immagine e applicala alla scatola corretta.
+
+L'esportazione QR è disponibile per i codici generati da LudoX. Un codice
+external rimane quello applicato e gestito dalla sorgente esterna.
+
+Non rimuovere o sostituire un identificatore mentre la relativa copia è in
+prestito. Prima di stampare molte etichette, prova la lettura di un QR e
+controlla che restituisca esattamente il valore mostrato da LudoX.
+
+> **Screenshot release da acquisire:** Gestione singole copie con un codice
+> `external`, un codice `ludox` e il comando **ESPORTA QR PNG**.
+
+## 5. Importare ed esportare il catalogo
+
+Usa **IMPORTA LUDOTECA** ed **ESPORTA LUDOTECA EVENT** per trasferire il
+catalogo dell'Event in formato CSV o XLSX. L'importazione mostra un'anteprima:
+controllala prima di confermare, perché eventuali errori bloccano l'intero
+file.
+
+Le colonne supportate sono:
+
+| Colonna | Contenuto |
+| --- | --- |
+| `game_name` | Titolo del gioco |
+| `owner_label` | Proprietario della copia |
+| `quantity` | Quantità della riga |
+| `copy_identifier` | Codice opzionale della singola copia |
+| `identifier_source` | `external` oppure `ludox` |
+
+Regole principali:
+
+- una riga con `copy_identifier` rappresenta una sola scatola e richiede
+  `quantity = 1`;
+- senza identificatore, `quantity` può essere maggiore di 1;
+- un identificatore senza sorgente viene importato come `external`;
+- un codice duplicato nello stesso Event rende il file non valido;
+- export e successivo import conservano codice e sorgente delle copie
+  identificate.
+
+Se la colonna del proprietario manca, LudoX chiede un proprietario comune per
+le righe importate. Il vecchio export legacy serve soltanto per compatibilità
+con cataloghi precedenti; per il lavoro corrente usa l'export dell'Event.
+
+## 6. Preparare il banco prestiti
+
+Per entrambe le modalità servono:
+
+- un PC con LudoX e il database corretto;
+- uno schedario o contenitore con posizioni numerate;
+- una postazione custodita, non accessibile al pubblico;
+- una posizione fisica per ogni numero configurato nell'Event.
+
+In modalità `token` servono anche token fisici numerati. In modalità
+`copy_identifier`, applica un codice a ogni copia che verrà prestata e collega
+lo scanner HID al PC.
+
+Uno scanner HID si comporta come una tastiera:
 
 ```text
-Organizzazione
-Biblioteca
-Mario
-Associazione ABC
+codice → Invio
 ```
 
-Dalla stessa schermata puoi selezionare un proprietario e premere **MODIFICA PROPRIETARIO SELEZIONATO**.
+Non richiede rete, webcam o fotocamera. Ogni schermata di scansione può essere
+provata anche digitando manualmente il codice e premendo **Invio**. Configura lo
+scanner perché invii automaticamente Invio dopo il codice.
 
-Un proprietario può essere disattivato. Se ha ancora copie associate, LudoX chiede una conferma.
+## 7. Operazioni in modalità token
 
----
-
-## 6. Aggiungere i giochi
-
-Prima di iniziare i prestiti devi inserire i giochi e indicare quante copie sono disponibili.
-
-Apri:
-
-**BACKOFFICE → GESTIONE GIOCHI**
-
-Poi:
-
-1. premi **＋ AGGIUNGI GIOCO**;
-2. inserisci il nome del gioco;
-3. premi **SALVA E ASSEGNA COPIE**.
-
-LudoX apre la schermata **MODIFICA GIOCO**.
-
-### Assegnare le copie
-
-Nella sezione **COPIE PER PROPRIETARIO**:
-
-1. seleziona il proprietario;
-2. inserisci la quantità;
-3. premi **SALVA QUANTITÀ**.
-
-Puoi distribuire le copie dello stesso titolo tra più proprietari.
-
-Esempio:
+La regola fisica è sempre:
 
 ```text
-Azul
-
-Organizzazione → 2 copie
-Biblioteca     → 1 copia
-
-Totale         → 3 copie
+token N = posizione N del documento
 ```
 
-Una quantità pari a `0` rimuove l'associazione tra quel proprietario e il gioco.
+### Nuovo prestito
 
-Premi **SALVA GIOCO** per salvare eventuali modifiche al nome o allo stato del titolo.
+1. Ricevi il documento.
+2. Dalla Home premi **NUOVO PRESTITO** e scegli il gioco.
+3. LudoX assegna il primo token libero.
+4. Metti il documento nella posizione con lo stesso numero.
+5. Consegna alla persona il token e il gioco.
+6. Conferma l'operazione mostrata a schermo.
 
-Un gioco disattivato non viene proposto nei nuovi prestiti. LudoX non permette di disattivarlo se ci sono ancora copie di quel titolo in prestito.
+### Cambio gioco
 
-![Modifica di un gioco in LudoX](user-guide/images/04-game-edit.png)
+1. Ricevi il gioco restituito e il token.
+2. Premi **CAMBIO GIOCO** e inserisci il numero del token.
+3. Verifica il gioco corrente e scegli quello nuovo.
+4. Completa il cambio e consegna il nuovo gioco.
 
-_Modifica del gioco e assegnazione delle copie ai proprietari._
+Il documento resta nella stessa posizione e la persona conserva lo stesso
+token.
 
----
+### Restituzione finale
 
-# Durante l'evento
+1. Ricevi il gioco e il token.
+2. Premi **RESTITUZIONE FINALE** e inserisci il numero del token.
+3. Verifica il gioco restituito.
+4. Recupera il documento dalla posizione indicata.
+5. Restituisci fisicamente il documento.
+6. Solo allora premi **DOCUMENTO RESTITUITO**.
 
-## 7. Nuovo prestito
+La sessione si chiude e token, posizione e copia tornano disponibili.
 
-Quando una persona vuole prendere un gioco:
+## 8. Operazioni in modalità identificatore copia
 
-1. ricevi fisicamente il documento;
-2. dalla Home premi **＋ NUOVO PRESTITO**;
-3. cerca il gioco digitando parte del titolo;
-4. verifica la colonna **DISPONIBILITÀ**;
-5. seleziona il gioco;
-6. premi **CONFERMA** oppure fai doppio clic sul titolo.
+In questa modalità non si consegna alcun token fisico. La persona riceve il
+gioco; LudoX conserva il collegamento tra copia prestata e posizione del
+documento.
 
-LudoX assegna automaticamente il primo token libero.
+### Nuovo prestito
 
-La schermata **PRESTITO REGISTRATO** mostra in grande la **POSIZIONE DOCUMENTO**.
+1. Ricevi il documento.
+2. Premi **NUOVO PRESTITO**.
+3. Leggi il codice della copia con lo scanner oppure digitalo e premi
+   **Invio**.
+4. LudoX assegna una posizione libera.
+5. Metti il documento nella posizione indicata.
+6. Conferma e consegna il gioco.
 
-A questo punto:
+### Cambio gioco
 
-1. prendi il token fisico con quel numero;
-2. inserisci il documento nella posizione con lo stesso numero;
-3. consegna il token alla persona;
-4. consegna il gioco;
-5. premi **COMPLETATO — TORNA ALLA HOME**.
+1. Ricevi la copia restituita.
+2. Premi **CAMBIO GIOCO** e leggi il suo codice.
+3. Leggi il codice della nuova copia.
+4. Controlla il riepilogo e conferma.
+5. Consegna il nuovo gioco.
 
-Esempio:
+La stessa sessione e la stessa posizione del documento rimangono attive. Se
+annulli prima della conferma, il cambio non viene registrato.
 
-```text
-POSIZIONE DOCUMENTO: 27
+### Restituzione finale
 
-Documento → posizione 27
-Token 27  → persona
-Gioco     → persona
-```
+1. Ricevi la copia restituita.
+2. Premi **RESTITUZIONE FINALE** e leggi il suo codice.
+3. Recupera il documento dalla posizione mostrata.
+4. Restituisci fisicamente il documento.
+5. Solo allora premi **DOCUMENTO RESTITUITO**.
 
-![Prestito registrato in LudoX](user-guide/images/05-loan-created.png)
+La sessione si chiude e la copia e la posizione tornano disponibili.
 
-_Prestito registrato con posizione del documento e gioco da consegnare._
+> **Screenshot release da acquisire:** schermata di scansione con campo codice
+> e indicazione che è possibile digitare e premere **Invio**; riepilogo di un
+> cambio prima della conferma.
 
-### Se non ci sono token liberi
+## 9. Statistiche, storico e Backoffice
 
-LudoX mostra **Token esauriti**.
+La Home mostra i contatori dell'Event corrente: prestiti effettuati,
+persone/documenti e prestiti attivi. **STATISTICHE** mostra i giochi più
+prestati dello stesso Event.
 
-Prima di fare nuovi prestiti devi completare una o più restituzioni finali oppure aumentare il numero dei token, se disponi fisicamente delle relative posizioni.
+Nel Backoffice sono disponibili, tra le altre, queste viste:
 
----
+- **TUTTI PRESTITI**: storico dei movimenti;
+- **DOCUMENTI / PERSONE**: sessioni aperte e concluse;
+- **GIOCHI PER PROPRIETARIO**: composizione della ludoteca;
+- **REPORT UTILIZZO**: utilizzo delle copie;
+- **REPORT PERSONE / DOCUMENTI**: riepilogo delle sessioni;
+- gestioni di Organization, Event, giochi, proprietari e singole copie.
 
-## 8. Cambio gioco
+Quando disponibile, lo storico mostra identificatore e proprietario della
+copia. Per vecchi prestiti in modalità token questi dettagli possono risultare
+non disponibili. Usa i filtri e i report per il controllo operativo; non
+modificare manualmente il database.
 
-La persona può restituire il gioco e prenderne un altro mantenendo lo stesso token.
+## 10. Cambiare workspace e migration
 
-1. ricevi il gioco precedente;
-2. dalla Home premi **↔ CAMBIO GIOCO**;
-3. inserisci il numero del token;
-4. premi **CONTINUA**;
-5. controlla il **GIOCO ATTUALE** mostrato da LudoX;
-6. cerca e seleziona il nuovo gioco;
-7. premi **CONFERMA**.
+Da **BACKOFFICE → IMPOSTAZIONI** puoi cambiare lingua e database. Usa
+**NUOVO…** o **APRI ESISTENTE…**, quindi salva. Ogni database è un workspace
+separato: passando a un altro file cambiano Organization, Event, cataloghi,
+prestiti e storico visibili.
 
-LudoX chiude il prestito precedente e apre il nuovo prestito mantenendo lo stesso token.
+Prima del cambio:
 
-La schermata **CAMBIO REGISTRATO** indica:
+1. completa le restituzioni finali;
+2. verifica che i prestiti attivi siano zero;
+3. conserva una copia di sicurezza del database importante.
 
-- il token;
-- il gioco restituito;
-- il nuovo gioco da consegnare.
+LudoX impedisce il cambio se nel workspace corrente ci sono sessioni aperte.
+Se l'apertura del nuovo workspace non riesce o viene annullata, resta valido il
+workspace precedente.
 
-### Importante
+Quando un database esistente usa una versione precedente, LudoX chiede il
+consenso per la **migration** prima di renderlo operativo. Se autorizzi:
 
-Durante il cambio gioco **non spostare il documento**.
+1. crea automaticamente un backup accanto al database originale;
+2. applica in ordine gli aggiornamenti necessari;
+3. apre il workspace soltanto se l'aggiornamento termina correttamente.
 
-```text
-Prima:
-Token 27
-Documento → posizione 27
-Gioco     → Azul
+Se rifiuti, il backup non riesce o la migration fallisce, LudoX non usa il
+database incompatibile. Non interrompere il processo e non eliminare il backup
+finché non hai verificato cataloghi e storico. Un database creato da una
+versione più recente non viene retrocesso.
 
-Dopo:
-Token 27
-Documento → posizione 27
-Gioco     → Cascadia
-```
+## 11. Chiusura e controlli finali
 
-Consegna nuovamente il token e il nuovo gioco alla persona.
+Se chiudi LudoX con sessioni aperte, compare un avviso. I dati restano nel
+database e saranno ancora presenti al riavvio, ma devi sempre confrontarli con
+i documenti e i giochi fisici.
 
-![Cambio gioco registrato in LudoX](user-guide/images/06-game-change.png)
+A fine evento:
 
-_Cambio registrato mantenendo invariati token e posizione del documento._
+1. porta **PRESTITI ATTIVI** a zero;
+2. verifica che nello schedario non siano rimasti documenti;
+3. controlla token e posizioni, se usi la modalità token;
+4. esporta i report o il catalogo necessari;
+5. esegui il backup del database e chiudi LudoX.
 
----
+## 12. Problemi comuni
 
-## 9. Restituzione finale
+### Le azioni di prestito sono disabilitate
 
-Usa **RESTITUZIONE FINALE** quando la persona non vuole più prendere altri giochi e deve riavere il documento.
+Seleziona un Event con Game Library abilitata.
 
-1. ricevi il gioco;
-2. dalla Home premi **✓ RESTITUZIONE FINALE**;
-3. inserisci il numero del token;
-4. premi **CONTINUA**;
-5. LudoX mostra il gioco associato;
-6. conferma che il gioco è stato fisicamente restituito.
+### Un gioco o una copia non è disponibile
 
-LudoX apre quindi la schermata **RESTITUZIONE DOCUMENTO** e mostra in grande la posizione del documento.
+Controlla che sia attivo, assegnato al proprietario corretto e non già in
+prestito.
 
-### Recupera prima il documento
+### Il codice non viene riconosciuto
 
-1. vai alla posizione indicata;
-2. recupera fisicamente il documento;
-3. restituiscilo alla persona;
-4. soltanto dopo premi **✓ DOCUMENTO RESTITUITO**;
-5. conferma nuovamente la restituzione.
+Controlla Event corrente, caratteri maiuscoli/minuscoli e Invio finale. Prova a
+digitare manualmente il valore mostrato in Gestione singole copie.
 
-A questo punto LudoX chiude la sessione e il token torna disponibile.
+### Non posso sostituire o rimuovere un codice
 
-```text
-Gioco rientrato
-      ↓
-LudoX mostra POSIZIONE 27
-      ↓
-Recupera il documento
-      ↓
-Restituisci il documento
-      ↓
-DOCUMENTO RESTITUITO
-      ↓
-Token 27 libero
-```
+La copia potrebbe essere in prestito. Completa prima la restituzione finale.
 
-Questa doppia conferma evita di riassegnare un token mentre il documento precedente è ancora nello schedario.
+### Non posso cambiare modalità o numero di posizioni
 
-![Restituzione del documento in LudoX](user-guide/images/07-final-return.png)
+Chiudi tutte le sessioni e i prestiti dell'Event.
 
-_Posizione da cui recuperare il documento prima della conferma finale._
+### Non posso cambiare database
 
----
+Completa le sessioni ancora aperte nel workspace corrente.
 
-## 10. Se una persona perde il token
+### LudoX propone una migration
 
-Il token non identifica personalmente la persona.
+Verifica di aver scelto il file corretto, chiudi le altre applicazioni che
+potrebbero usarlo e autorizza soltanto se puoi conservare il backup creato.
 
-In caso di smarrimento **non restituire automaticamente un documento basandoti solo sulle indicazioni fornite dalla persona**.
+## Screenshot da completare prima della release
 
-Verifica la situazione secondo le procedure definite dalla tua organizzazione prima di consegnare qualsiasi documento.
+Gli screenshot esistenti non corrispondono alla UI 0.2.0-alpha e non sono
+usati in questo documento. Prima della release occorre
+acquisire dalla versione candidata, con dati dimostrativi e senza dati reali:
 
----
+1. primo avvio con lingua e database;
+2. Home con Organization ed Event e selezione Event;
+3. Backoffice e configurazione Game Library dell'Event;
+4. impostazioni ludoteca con scelta `token` / `copy_identifier`;
+5. Gestione singole copie con codici `external` e `ludox` ed export QR;
+6. inserimento codice tramite scanner/tastiera e riepilogo cambio;
+7. storico e report con i dati della copia;
+8. Impostazioni con cambio workspace e richiesta di migration.
 
-# Controllo e statistiche
+## Segnalare un problema
 
-## 11. Statistiche
+Il progetto è disponibile su <https://github.com/ludox-events/ludox>.
 
-Dalla Home premi **▥ STATISTICHE**.
-
-Puoi analizzare:
-
-- giochi consegnati;
-- nuove persone/documenti;
-- andamento nel tempo.
-
-Puoi scegliere rapidamente:
-
-- **12 ORE**
-- **6 ORE**
-- **4 ORE**
-- **2 ORE**
-- **1 ORA**
-
-Puoi inoltre impostare:
-
-- data tramite calendario;
-- ora;
-- minuti;
-- risoluzione del grafico.
-
-Le risoluzioni disponibili sono comprese tra **5 e 30 minuti**.
-
-Premi **APPLICA** per aggiornare la visualizzazione oppure **ADESSO** per riportare il riferimento al momento corrente.
-
-![Statistiche di LudoX](user-guide/images/08-statistics.png)
-
-_Statistiche con periodo, riferimento temporale, risoluzione e grafico._
-
----
-
-## 12. Storico e report
-
-Nel Backoffice sono disponibili diverse viste di controllo.
-
-### TUTTI I PRESTITI
-
-Mostra lo storico dei prestiti con:
-
-- token;
-- documento/sessione;
-- gioco;
-- inizio;
-- rientro;
-- stato.
-
-### DOCUMENTI / PERSONE
-
-Mostra il registro anonimo delle sessioni:
-
-- token;
-- deposito del documento;
-- restituzione;
-- numero di prestiti effettuati;
-- stato.
-
-Il software non contiene il nome della persona.
-
-### GIOCHI PER PROPRIETARIO
-
-Permette di scegliere un proprietario e vedere:
-
-- titoli associati;
-- copie del proprietario;
-- copie totali;
-- eventuali prestiti attivi del titolo.
-
-### REPORT UTILIZZO LUDOTECA
-
-Permette di analizzare l'utilizzo dei titoli in un intervallo di date, anche filtrando per proprietario.
-
-Il report include indicatori come numero di prestiti, utilizzo dei titoli e durata dei prestiti conclusi.
-
-Può essere esportato con **ESPORTA CSV**.
-
-### REPORT PERSONE / DOCUMENTI
-
-Analizza in forma anonima:
-
-- numero di prestiti per sessione;
-- tempo di permanenza del documento;
-- durata media dei prestiti conclusi.
-
-Anche questo report può essere esportato con **ESPORTA CSV**.
-
-> L'esportazione CSV presente in questa versione riguarda i report. La versione 0.1.0-alpha non include un comando dedicato all'importazione/esportazione completa del catalogo dei giochi.
-
----
-
-# Impostazioni
-
-## 13. Modificare lingua, token e database
-
-Apri:
-
-**BACKOFFICE → IMPOSTAZIONI**
-
-Puoi modificare:
-
-- lingua;
-- numero massimo di token;
-- database utilizzato.
-
-![Impostazioni di LudoX](user-guide/images/09-settings.png)
-
-_Impostazioni della postazione: lingua, numero massimo di token e database._
-
-### Numero massimo di token
-
-Il numero deve corrispondere alle posizioni fisiche disponibili.
-
-Esempio:
-
-```text
-Token configurati: 50
-Token fisici:       1–50
-Posizioni:          1–50
-```
-
-LudoX non permette di abbassare il limite sotto il numero di un token attualmente occupato.
-
-### Cambiare database
-
-Puoi:
-
-- inserire un nome/percorso;
-- creare un nuovo database;
-- aprire un database esistente.
-
-LudoX **non permette di cambiare database mentre ci sono documenti ancora depositati nel database corrente**.
-
-Questa protezione evita di abbandonare una sessione aperta passando accidentalmente a un altro archivio.
-
-> Prima di cambiare database verifica sempre quale archivio stai utilizzando e conserva una copia di sicurezza dei database importanti.
-
----
-
-## 14. Chiusura di LudoX
-
-Se provi a chiudere LudoX mentre risultano ancora documenti depositati, il programma mostra un avviso con:
-
-- numero dei documenti ancora aperti;
-- elenco dei token coinvolti.
-
-Prima di chiudere la postazione verifica fisicamente che la situazione corrisponda a quanto mostrato.
-
-A fine evento è consigliato arrivare a:
-
-```text
-PRESTITI ATTIVI = 0
-```
-
-e controllare che nello schedario non siano rimasti documenti.
-
----
-
-# Problemi comuni
-
-## Non vedo un gioco nell'elenco dei prestiti
-
-Controlla in **BACKOFFICE → GESTIONE GIOCHI** che:
-
-- il gioco sia attivo;
-- abbia almeno una copia assegnata;
-- ci siano copie disponibili.
-
----
-
-## Il gioco risulta non disponibile
-
-Tutte le copie configurate potrebbero essere già in prestito.
-
-La schermata di selezione mostra:
-
-```text
-copie disponibili / copie totali
-```
-
----
-
-## Il token risulta libero durante un cambio o una restituzione
-
-Verifica di aver inserito il numero corretto.
-
-Un token può essere riutilizzato dopo la chiusura completa della sessione precedente.
-
----
-
-## Non posso ridurre il numero dei token
-
-Potrebbe esserci una sessione aperta con un numero di token superiore al nuovo limite richiesto.
-
-Chiudi prima le sessioni interessate.
-
----
-
-## Non posso cambiare database
-
-LudoX blocca il cambio se nel database corrente risultano documenti ancora depositati.
-
-Completa prima le restituzioni finali.
-
----
-
-## Non posso disattivare un gioco
-
-Un titolo con copie attualmente in prestito non può essere disattivato.
-
-Completa prima i relativi prestiti.
-
----
-
-## Ho chiuso LudoX con prestiti ancora aperti
-
-I dati rimangono nel database.
-
-Al riavvio, utilizzando lo stesso database, le sessioni risultano ancora aperte.
-
-Verifica sempre anche la situazione fisica dei documenti e dei token.
-
----
-
-# Buone pratiche per la postazione
-
-- tieni i documenti fuori dalla vista del pubblico;
-- rendi lo schedario accessibile solo alle persone incaricate;
-- non scrivere nomi sui token;
-- usa sempre la regola `token = posizione documento`;
-- non spostare il documento durante un cambio gioco;
-- conferma **DOCUMENTO RESTITUITO** solo dopo la consegna fisica;
-- controlla periodicamente che token e posizioni siano completi;
-- conserva copie di sicurezza del database;
-- a fine evento verifica che non risultino prestiti attivi.
-
----
-
-# Promemoria operativo
-
-```text
-NUOVO PRESTITO
-
-ricevi documento
-→ scegli gioco
-→ LudoX assegna token N
-→ documento in posizione N
-→ token N alla persona
-→ gioco alla persona
-```
-
-```text
-CAMBIO GIOCO
-
-ricevi gioco A
-→ inserisci token N
-→ scegli gioco B
-→ documento resta in posizione N
-→ token resta N
-→ consegna gioco B
-```
-
-```text
-RESTITUZIONE FINALE
-
-ricevi gioco
-→ inserisci token N
-→ conferma rientro gioco
-→ recupera documento da posizione N
-→ restituisci documento
-→ DOCUMENTO RESTITUITO
-→ token N libero
-```
-
----
-
-# Segnalare un problema
-
-LudoX è un progetto open source in fase alpha.
-
-Per segnalare un bug o un comportamento inatteso utilizza il repository ufficiale:
-
-**https://github.com/ludox-events/ludox**
-
-Quando possibile indica:
-
-- versione utilizzata: `0.1.0-alpha`;
-- sistema operativo;
-- cosa stavi facendo;
-- cosa ti aspettavi;
-- cosa è successo.
-
-Non allegare database reali contenenti informazioni che non vuoi condividere.
+Indica la versione `0.2.0-alpha`, il sistema operativo, l'operazione eseguita,
+il risultato atteso e quello osservato. Non allegare database reali o immagini
+con dati che non vuoi condividere.
