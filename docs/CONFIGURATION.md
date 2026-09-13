@@ -180,18 +180,13 @@ La configurazione resta quindi:
 identification_mode = copy_identifier
 ```
 
-non:
-
-```text
-qr
-barcode
-```
+non con valori separati `qr` o `barcode`.
 
 Il cambio tra `token` e `copy_identifier` è consentito soltanto quando
 nell'Event non esistono sessioni o prestiti aperti.
 
-Gli identificatori delle copie sono dati della ludoteca, non impostazioni. Possono
-essere preparati anche mentre l'Event usa la modalità `token`.
+Gli identificatori delle copie sono dati della ludoteca, non impostazioni.
+Possono essere preparati anche mentre l'Event usa la modalità `token`.
 
 ## Modulo `activities`
 
