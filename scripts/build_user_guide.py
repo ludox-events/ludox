@@ -17,7 +17,7 @@ OUTPUT = DIST_DIR / "LudoX-Guida-rapida.pdf"
 CSS = r"""
 @page {
     size: A4;
-    margin: 16mm 16mm 20mm 16mm;
+    margin: 11mm 13mm 15mm 13mm;
 }
 
 html {
@@ -27,39 +27,47 @@ html {
 
 body {
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 10.5pt;
-    line-height: 1.45;
+    font-size: 9.5pt;
+    line-height: 1.3;
     color: #222;
-    max-width: 178mm;
+    max-width: 184mm;
     margin: 0 auto;
 }
 
 h1 {
-    font-size: 24pt;
+    font-size: 21pt;
     line-height: 1.15;
-    margin: 0 0 8mm;
+    margin: 0 0 4mm;
 }
 
 h2 {
-    font-size: 17pt;
+    font-size: 14.5pt;
     line-height: 1.2;
-    margin-top: 10mm;
-    margin-bottom: 4mm;
+    margin-top: 5mm;
+    margin-bottom: 2mm;
     break-after: avoid-page;
     page-break-after: avoid;
 }
 
 h3 {
-    font-size: 13pt;
-    margin-top: 7mm;
-    margin-bottom: 3mm;
+    font-size: 11.5pt;
+    margin-top: 3.5mm;
+    margin-bottom: 1.5mm;
     break-after: avoid-page;
     page-break-after: avoid;
 }
 
 p {
+    margin: 0 0 2.5mm;
     orphans: 3;
     widows: 3;
+}
+
+ul, ol {
+    margin: 1.5mm 0 2.5mm;
+    padding-left: 7mm;
+    break-inside: avoid;
+    page-break-inside: avoid;
 }
 
 img {
@@ -76,7 +84,8 @@ img {
 
 pre {
     background: #f3f3f3;
-    padding: 4mm;
+    padding: 3mm;
+    margin: 2.5mm 0;
     border-radius: 2mm;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -90,15 +99,15 @@ code {
 
 blockquote {
     border-left: 3px solid #888;
-    padding: 2mm 0 2mm 5mm;
-    margin: 5mm 0;
+    padding: 1.5mm 0 1.5mm 4mm;
+    margin: 3mm 0;
     color: #444;
     break-inside: avoid;
     page-break-inside: avoid;
 }
 
 li {
-    margin-bottom: 1.4mm;
+    margin-bottom: 0.7mm;
 }
 
 hr {
@@ -110,13 +119,13 @@ hr {
 table {
     width: 100%;
     border-collapse: collapse;
-    margin: 5mm 0;
+    margin: 3mm 0;
     break-inside: avoid;
 }
 
 th, td {
     border: 1px solid #bbb;
-    padding: 2.5mm;
+    padding: 1.5mm;
     vertical-align: top;
 }
 
@@ -198,10 +207,10 @@ def main() -> None:
             </div>
             """,
             margin={
-                "top": "16mm",
-                "right": "16mm",
-                "bottom": "20mm",
-                "left": "16mm",
+                "top": "11mm",
+                "right": "13mm",
+                "bottom": "15mm",
+                "left": "13mm",
             },
         )
         browser.close()
