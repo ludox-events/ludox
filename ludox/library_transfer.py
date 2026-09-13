@@ -9,10 +9,12 @@ from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 
+from . import copy_identifiers
 from . import database as data
 
 
-CSV_COLUMNS = ("game_name", "owner_label", "quantity")
+LEGACY_CSV_COLUMNS = ("game_name", "owner_label", "quantity")
+CSV_COLUMNS = LEGACY_CSV_COLUMNS + ("copy_identifier", "identifier_source")
 
 
 class ImportNotValid(Exception):
@@ -63,27 +65,27 @@ def legacy_library_rows():
     return [dict(row) for row in data.righe_export_ludoteca_legacy()]
 
 
-def write_library_csv(path, rows):
+def write_library_csv(path, rows, *, columns=CSV_COLUMNS):
     """Write canonical, comma-delimited UTF-8 library data."""
     with Path(path).open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=CSV_COLUMNS)
+        writer = csv.DictWriter(handle, fieldnames=columns)
         writer.writeheader()
         writer.writerows(rows)
 
 
-def write_library_xlsx(path, rows):
+def write_library_xlsx(path, rows, *, columns=CSV_COLUMNS):
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "game_library"
-    sheet.append(CSV_COLUMNS)
+    sheet.append(columns)
     for row in rows:
-        sheet.append(tuple(row[column] for column in CSV_COLUMNS))
+        sheet.append(tuple(row.get(column, "") for column in columns))
     workbook.save(path)
 
 
 def export_legacy_library_csv(path):
     rows = legacy_library_rows()
-    write_library_csv(path, rows)
+    write_library_csv(path, rows, columns=LEGACY_CSV_COLUMNS)
     return len(rows)
 
 
@@ -157,6 +159,8 @@ def preview_import(path, event_id, *, owner_label=None):
     valid_rows = []
     existing_titles = set()
     new_owners = set()
+    known_identifiers = data.valori_identificatori_copie_evento(event_id)
+    file_identifiers = set()
     if not problems:
         for row_number, source in enumerate(source_rows, start=2):
             game_name = str(source.get("game_name") or "").strip()
@@ -177,6 +181,52 @@ def preview_import(path, event_id, *, owner_label=None):
             if not owner_name:
                 problems.append(ImportProblem(row_number, "Owner label is required"))
                 continue
+            identifier = ""
+            identifier_source = ""
+            raw_identifier = source.get("copy_identifier", "")
+            if raw_identifier is not None and str(raw_identifier).strip():
+                try:
+                    identifier = copy_identifiers.normalize_identifier(
+                        raw_identifier
+                    )
+                except copy_identifiers.InvalidCopyIdentifier as exc:
+                    problems.append(ImportProblem(row_number, str(exc)))
+                    continue
+                raw_source = source.get("identifier_source", "")
+                identifier_source = str(raw_source or "").strip().casefold()
+                if not identifier_source:
+                    identifier_source = "external"
+                if identifier_source not in {"external", "ludox"}:
+                    problems.append(ImportProblem(
+                        row_number,
+                        "Identifier source must be external or ludox",
+                    ))
+                    continue
+                if quantity != 1:
+                    problems.append(ImportProblem(
+                        row_number,
+                        "An identified copy must have quantity 1",
+                    ))
+                    continue
+                if identifier in file_identifiers:
+                    problems.append(ImportProblem(
+                        row_number,
+                        "Copy identifier is duplicated in the import file",
+                    ))
+                    continue
+                if identifier in known_identifiers:
+                    problems.append(ImportProblem(
+                        row_number,
+                        "Copy identifier already exists in this Event",
+                    ))
+                    continue
+                file_identifiers.add(identifier)
+            elif str(source.get("identifier_source") or "").strip():
+                problems.append(ImportProblem(
+                    row_number,
+                    "Identifier source requires a copy identifier",
+                ))
+                continue
             game_key = _normalized(game_name)
             owner_key = _normalized(owner_name)
             if game_key in existing_games:
@@ -192,6 +242,8 @@ def preview_import(path, event_id, *, owner_label=None):
                 "owner_label": owner_name,
                 "owner_key": owner_key,
                 "quantity": quantity,
+                "copy_identifier": identifier,
+                "identifier_source": identifier_source,
             })
     return ImportPreview(
         event_id,

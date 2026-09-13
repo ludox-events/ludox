@@ -1158,19 +1158,52 @@ def game_library_ha_aperti(event_id):
 def righe_export_ludoteca_evento(event_id):
     with get_db() as db:
         return db.execute("""
-            SELECT g.name AS game_name, o.name AS owner_label,
-                   COUNT(c.id) AS quantity
-            FROM game_library_game_copies c
-            JOIN game_library_games g
-              ON g.event_id = c.event_id AND g.id = c.game_id
-            JOIN game_library_owner_labels o
-              ON o.event_id = c.event_id AND o.id = c.owner_label_id
-            WHERE c.event_id = ? AND c.active = 1
-            GROUP BY g.id, g.name, o.id, o.name
-            HAVING COUNT(c.id) > 0
-            ORDER BY g.name COLLATE NOCASE, g.id,
-                     o.name COLLATE NOCASE, o.id
-        """, (event_id,)).fetchall()
+            WITH export_rows AS (
+                SELECT g.name AS game_name, o.name AS owner_label,
+                       1 AS quantity, i.value AS copy_identifier,
+                       i.source AS identifier_source,
+                       g.id AS game_sort, o.id AS owner_sort,
+                       0 AS kind_sort, c.id AS copy_sort
+                FROM game_library_game_copies c
+                JOIN game_library_games g
+                  ON g.event_id = c.event_id AND g.id = c.game_id
+                JOIN game_library_owner_labels o
+                  ON o.event_id = c.event_id AND o.id = c.owner_label_id
+                JOIN game_library_copy_identifiers i
+                  ON i.event_id = c.event_id AND i.copy_id = c.id
+                WHERE c.event_id = ? AND c.active = 1
+                UNION ALL
+                SELECT g.name, o.name, COUNT(c.id), '', '',
+                       g.id, o.id, 1, MIN(c.id)
+                FROM game_library_game_copies c
+                JOIN game_library_games g
+                  ON g.event_id = c.event_id AND g.id = c.game_id
+                JOIN game_library_owner_labels o
+                  ON o.event_id = c.event_id AND o.id = c.owner_label_id
+                LEFT JOIN game_library_copy_identifiers i
+                  ON i.event_id = c.event_id AND i.copy_id = c.id
+                WHERE c.event_id = ? AND c.active = 1 AND i.id IS NULL
+                GROUP BY g.id, g.name, o.id, o.name
+                HAVING COUNT(c.id) > 0
+            )
+            SELECT game_name, owner_label, quantity,
+                   copy_identifier, identifier_source
+            FROM export_rows
+            ORDER BY game_name COLLATE NOCASE, game_sort,
+                     owner_label COLLATE NOCASE, owner_sort,
+                     kind_sort, copy_sort
+        """, (event_id, event_id)).fetchall()
+
+
+def valori_identificatori_copie_evento(event_id):
+    with get_db() as db:
+        return {
+            row["value"]
+            for row in db.execute("""
+                SELECT value FROM game_library_copy_identifiers
+                WHERE event_id = ?
+            """, (event_id,))
+        }
 
 
 def applica_import_ludoteca(event_id, rows):
@@ -1204,11 +1237,29 @@ def applica_import_ludoteca(event_id, rows):
             else:
                 owner_id = owner["id"]
 
-            db.executemany("""
-                INSERT INTO game_library_game_copies(
-                    event_id, game_id, owner_label_id
-                ) VALUES (?, ?, ?)
-            """, [(event_id, game_id, owner_id)] * row["quantity"])
+            copy_identifier = row.get("copy_identifier") or ""
+            if copy_identifier:
+                copy_id = db.execute("""
+                    INSERT INTO game_library_game_copies(
+                        event_id, game_id, owner_label_id
+                    ) VALUES (?, ?, ?)
+                """, (event_id, game_id, owner_id)).lastrowid
+                db.execute("""
+                    INSERT INTO game_library_copy_identifiers(
+                        event_id, copy_id, source, value
+                    ) VALUES (?, ?, ?, ?)
+                """, (
+                    event_id,
+                    copy_id,
+                    row["identifier_source"],
+                    copy_identifier,
+                ))
+            else:
+                db.executemany("""
+                    INSERT INTO game_library_game_copies(
+                        event_id, game_id, owner_label_id
+                    ) VALUES (?, ?, ?)
+                """, [(event_id, game_id, owner_id)] * row["quantity"])
             created_copies += row["quantity"]
     return created_games, created_owners, created_copies
 

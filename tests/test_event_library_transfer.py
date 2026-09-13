@@ -8,7 +8,15 @@ import sqlite3
 
 import pytest
 
-from ludox import catalog, database, events, lending, library_transfer, organizations
+from ludox import (
+    catalog,
+    copy_identifiers,
+    database,
+    events,
+    lending,
+    library_transfer,
+    organizations,
+)
 
 
 def new_event(slug):
@@ -147,13 +155,21 @@ def test_event_export_is_isolated_quoted_and_round_trips(db, tmp_path):
             "game_name": 'Azul, "Blu"',
             "owner_label": 'Gruppo "A", Centro',
             "quantity": "2",
+            "copy_identifier": "",
+            "identifier_source": "",
         }]
     target = new_event("round-trip")
     library_transfer.apply_import(
         library_transfer.preview_import(source, target.id)
     )
     assert library_transfer.event_library_rows(target.id) == [
-        {"game_name": 'Azul, "Blu"', "owner_label": 'Gruppo "A", Centro', "quantity": 2}
+        {
+            "game_name": 'Azul, "Blu"',
+            "owner_label": 'Gruppo "A", Centro',
+            "quantity": 2,
+            "copy_identifier": "",
+            "identifier_source": "",
+        }
     ]
 
 
@@ -171,8 +187,149 @@ def test_xlsx_uses_the_same_logical_columns_for_export_and_import(db, tmp_path):
 
     assert result.copies_created == 2
     assert library_transfer.event_library_rows(target_event.id) == [
-        {"game_name": "Cascadia", "owner_label": "LAM", "quantity": 2}
+        {
+            "game_name": "Cascadia",
+            "owner_label": "LAM",
+            "quantity": 2,
+            "copy_identifier": "",
+            "identifier_source": "",
+        }
     ]
+
+
+def test_extended_import_creates_identified_copies_and_defaults_source(db, tmp_path):
+    event = new_event("identified-import")
+    source = tmp_path / "identified.csv"
+    write_csv(source, [
+        {
+            "game_name": "Azul",
+            "owner_label": "Biblioteca",
+            "quantity": 1,
+            "copy_identifier": " EXT-001 ",
+            "identifier_source": "",
+        },
+        {
+            "game_name": "Azul",
+            "owner_label": "Biblioteca",
+            "quantity": 1,
+            "copy_identifier": "LX-C-999999",
+            "identifier_source": "ludox",
+        },
+        {
+            "game_name": "Azul",
+            "owner_label": "Biblioteca",
+            "quantity": 2,
+            "copy_identifier": "",
+            "identifier_source": "",
+        },
+    ])
+
+    preview = library_transfer.preview_import(source, event.id)
+    assert preview.can_apply
+    assert [row["identifier_source"] for row in preview.rows] == [
+        "external", "ludox", ""
+    ]
+    result = library_transfer.apply_import(preview)
+
+    assert result.copies_created == 4
+    assert library_transfer.event_library_rows(event.id) == [
+        {
+            "game_name": "Azul", "owner_label": "Biblioteca", "quantity": 1,
+            "copy_identifier": "EXT-001", "identifier_source": "external",
+        },
+        {
+            "game_name": "Azul", "owner_label": "Biblioteca", "quantity": 1,
+            "copy_identifier": "LX-C-999999", "identifier_source": "ludox",
+        },
+        {
+            "game_name": "Azul", "owner_label": "Biblioteca", "quantity": 2,
+            "copy_identifier": "", "identifier_source": "",
+        },
+    ]
+
+
+def test_identifier_import_validation_blocks_all_writes(db, tmp_path):
+    event = new_event("identifier-validation")
+    owner = catalog.aggiungi_proprietario("Biblioteca", event_id=event.id)
+    game = catalog.aggiungi_gioco("Existing", event_id=event.id)
+    catalog.imposta_quantita(game, owner, "1", event_id=event.id)
+    copy_id = copy_identifiers.list_copies(event.id)[0]["copy_id"]
+    copy_identifiers.assign_external(event.id, copy_id, "EXISTS")
+    source = tmp_path / "invalid-identifiers.csv"
+    write_csv(source, [
+        {"game_name": "One", "owner_label": "LAM", "quantity": 2,
+         "copy_identifier": "QTY", "identifier_source": "external"},
+        {"game_name": "Two", "owner_label": "LAM", "quantity": 1,
+         "copy_identifier": "DUP", "identifier_source": "external"},
+        {"game_name": "Three", "owner_label": "LAM", "quantity": 1,
+         "copy_identifier": "DUP", "identifier_source": "external"},
+        {"game_name": "Four", "owner_label": "LAM", "quantity": 1,
+         "copy_identifier": "EXISTS", "identifier_source": "external"},
+        {"game_name": "Five", "owner_label": "LAM", "quantity": 1,
+         "copy_identifier": "BAD-SOURCE", "identifier_source": "vendor"},
+        {"game_name": "Six", "owner_label": "LAM", "quantity": 1,
+         "copy_identifier": "", "identifier_source": "ludox"},
+        {"game_name": "Seven", "owner_label": "LAM", "quantity": 1,
+         "copy_identifier": "LINE\nBREAK", "identifier_source": "external"},
+    ])
+    before = tuple(db.iterdump())
+
+    preview = library_transfer.preview_import(source, event.id)
+
+    assert preview.invalid_count == 6
+    assert not preview.can_apply
+    with pytest.raises(library_transfer.ImportNotValid):
+        library_transfer.apply_import(preview)
+    assert tuple(db.iterdump()) == before
+
+
+def test_identifier_import_uniqueness_is_event_scoped_and_round_trips(db, tmp_path):
+    first = new_event("identifier-first")
+    second = new_event("identifier-second")
+    source = tmp_path / "same-code.csv"
+    write_csv(source, [{
+        "game_name": "Azul", "owner_label": "LAM", "quantity": 1,
+        "copy_identifier": "SAME", "identifier_source": "external",
+    }])
+
+    library_transfer.apply_import(library_transfer.preview_import(source, first.id))
+    second_preview = library_transfer.preview_import(source, second.id)
+
+    assert second_preview.can_apply
+    library_transfer.apply_import(second_preview)
+    exported = tmp_path / "round-trip-identifiers.xlsx"
+    library_transfer.export_event_library(exported, first.id)
+    target = new_event("identifier-target")
+    library_transfer.apply_import(
+        library_transfer.preview_import(exported, target.id)
+    )
+    assert library_transfer.event_library_rows(target.id) == [
+        {
+            "game_name": "Azul", "owner_label": "LAM", "quantity": 1,
+            "copy_identifier": "SAME", "identifier_source": "external",
+        }
+    ]
+
+
+def test_identifier_insert_failure_rolls_back_whole_import(db, tmp_path):
+    event = new_event("identifier-rollback")
+    source = tmp_path / "identifier-rollback.csv"
+    write_csv(source, [{
+        "game_name": "Azul", "owner_label": "LAM", "quantity": 1,
+        "copy_identifier": "ROLLBACK", "identifier_source": "external",
+    }])
+    preview = library_transfer.preview_import(source, event.id)
+    db.execute("""
+        CREATE TRIGGER reject_import_identifier
+        BEFORE INSERT ON game_library_copy_identifiers
+        BEGIN SELECT RAISE(ABORT, 'identifier rejected'); END
+    """)
+    db.commit()
+
+    with pytest.raises(sqlite3.IntegrityError, match="identifier rejected"):
+        library_transfer.apply_import(preview)
+    assert catalog.elenco_giochi_backoffice(event_id=event.id) == []
+    assert catalog.elenco_proprietari(event_id=event.id) == []
 
 
 def test_reset_is_allowed_only_before_any_loan(db, tmp_path, monkeypatch):
