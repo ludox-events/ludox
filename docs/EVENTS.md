@@ -2,7 +2,7 @@
 
 > **STATUS: APPROVED SPECIFICATION — READ ONLY**
 >
-> **IMPLEMENTATION: NOT IMPLEMENTED**
+> **IMPLEMENTATION: IMPLEMENTED**
 >
 > Questo documento è una specifica approvata di LudoX. Durante
 > l'implementazione non deve essere modificato, salvo richiesta esplicita
@@ -188,7 +188,7 @@ La coppia Event/modulo è unica.
 
 La disabilitazione non deve cancellare automaticamente configurazione o dati del modulo. La riabilitazione rende nuovamente disponibile lo stesso contesto.
 
-La issue #5 introduce soltanto il concetto comune di abilitazione dei moduli. La struttura dati operativa del modulo `game_library` viene resa event-specific dalla #6; il modulo `activities` viene implementato dalla #7.
+Il framework Event/Module è implementato. Il modulo `game_library` è event-specific; il modulo `activities` resta da implementare nella issue #7.
 
 Vedi [MODULES.md](MODULES.md).
 
@@ -219,11 +219,11 @@ L'importazione opera sempre sull'Event correntemente selezionato.
 
 La prima implementazione di Event comprende il modello, il contesto client, la gestione da Backoffice/Home e l'abilitazione dei moduli.
 
-Non comprende:
+Le funzionalità successive restano separate:
 
-- conversione dell'attuale modulo Prestiti in struttura event-specific;
-- import/export della ludoteca;
-- funzionalità Activities;
-- QR/barcode operativi;
-- automatismi di stato basati sulle date;
-- clonazione completa di Event.
+- import/export ludoteca → implementato dalla issue #2;
+- `game_library` event-specific → implementato dalla issue #6;
+- funzionalità Activities → issue #7;
+- QR/barcode operativi → issue #4;
+- automatismi di stato basati sulle date → non previsti nella prima implementazione;
+- clonazione completa di Event → non prevista.

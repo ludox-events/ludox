@@ -9,11 +9,32 @@
 > dell'utente. I marker `TBD` e `QUESTION` restano decisioni aperte e non
 > autorizzano Codex a scegliere autonomamente una soluzione.
 
-Questo documento descrive il modello concettuale del modulo con identificatore tecnico `game_library`.
+Questo documento descrive il modello funzionale del modulo con identificatore
+tecnico `game_library`.
 
-Nell'interfaccia italiana il modulo è denominato **Prestiti Ludoteca**. Nell'interfaccia inglese il termine di riferimento è **Game Library**.
+Nell'interfaccia italiana il modulo è denominato **Prestiti Ludoteca**.
+Nell'interfaccia inglese il termine di riferimento è **Game Library**.
 
-La procedura pratica della modalità token attualmente disponibile è descritta in [OPERATION.md](OPERATION.md).
+La procedura pratica della modalità token attualmente disponibile è descritta
+in [OPERATION.md](OPERATION.md).
+
+## Stato di implementazione
+
+Sono implementati:
+
+- ludoteca event-specific;
+- owner label event-specific;
+- copie fisiche individuali;
+- configurazione `max_slots` per Event;
+- modalità operativa `token`;
+- sessioni anonime e prestiti event-specific;
+- cambio gioco e restituzione finale;
+- statistiche, storico e report event-specific;
+- import/export CSV e XLSX;
+- struttura dati predisposta per identificatori delle copie.
+
+Non è ancora implementata la modalità operativa basata su QR code/barcode delle
+singole copie. Per questo il documento resta **PARTIALLY IMPLEMENTED**.
 
 ## Ambito
 
@@ -22,7 +43,7 @@ Il modulo `game_library` appartiene a un singolo Event e gestisce:
 - ludoteca dell'evento;
 - giochi;
 - copie fisiche;
-- etichette proprietario;
+- owner label;
 - sessioni anonime;
 - slot fisici dei documenti;
 - prestiti e cambi gioco;
@@ -31,36 +52,43 @@ Il modulo `game_library` appartiene a un singolo Event e gestisce:
 
 Non esiste un catalogo giochi globale obbligatorio dell'Organization.
 
-## Ludoteca dell'evento
+## Ludoteca dell'Event
 
 Quando il modulo Prestiti viene abilitato, la sua ludoteca nasce vuota.
 
 La ludoteca può essere popolata:
 
 - manualmente;
-- tramite importazione di file esterni;
-- tramite importazione di dati precedentemente esportati da un altro evento.
+- tramite importazione di file CSV/XLSX;
+- tramite importazione di dati precedentemente esportati da un altro Event.
 
-Non viene clonato automaticamente un Event e non esiste una sincronizzazione permanente tra ludoteche di eventi differenti.
+Non viene clonato automaticamente un Event e non esiste una sincronizzazione
+permanente tra ludoteche di Event differenti.
 
 ## Giochi
 
 Un gioco rappresenta un titolo presente nella ludoteca di quell'Event.
 
-Dati funzionali minimi:
+Dati funzionali principali:
 
 - nome;
 - stato attivo/disattivo;
 - copie disponibili;
-- proprietari/etichette associati alle copie.
+- owner label associate alle copie;
+- identificativo esterno opzionale;
+- difficoltà e relativa sorgente opzionali;
+- note opzionali.
 
-Può essere previsto un identificativo esterno opzionale utile per collegare il titolo a una sorgente esterna.
+Le copie non vengono memorizzate soltanto come quantità aggregata: ogni scatola
+fisica è rappresentata da un record distinto.
 
-Può inoltre essere associato al gioco un **livello di difficoltà opzionale**. La presenza della difficoltà non deve dipendere obbligatoriamente da BGG o da una singola sorgente: il valore potrà essere inserito o calcolato a partire da fonti diverse. Una futura integrazione potrà utilizzare dati BGG quando disponibili.
+All'interno dello stesso Event, titoli identici dopo una normalizzazione minima
+vengono considerati lo stesso gioco.
 
-Le copie non vengono però memorizzate soltanto come un numero aggregato: nello schema v1 ogni scatola fisica deve poter essere rappresentata da un record distinto.
+La normalizzazione minima comprende:
 
-All'interno dello stesso Event, titoli identici dopo una normalizzazione minima vengono considerati lo stesso gioco. La normalizzazione minima comprende almeno rimozione degli spazi iniziali/finali e confronto case-insensitive.
+- rimozione degli spazi iniziali/finali;
+- confronto case-insensitive.
 
 Esempi equivalenti:
 
@@ -70,7 +98,8 @@ KINGDOMINO
  kingdomino 
 ```
 
-Nomi soltanto simili, come `Kingdomino` e `King Domino`, non vengono mai uniti automaticamente.
+Nomi soltanto simili, come `Kingdomino` e `King Domino`, sono considerati
+distinti.
 
 ## Copie fisiche
 
@@ -87,7 +116,7 @@ Kingdomino
 └── copia 5 — Matteo
 ```
 
-L'interfaccia può continuare a mostrare quantità aggregate:
+L'interfaccia può mostrare le copie in forma aggregata:
 
 ```text
 Kingdomino — 5 copie
@@ -96,44 +125,15 @@ Biblioteca   2
 Matteo       1
 ```
 
-Una singola copia può essere disattivata, per esempio perché non disponibile, danneggiata o rimossa dalla ludoteca.
+Una copia può essere attiva o disattivata.
 
-Se tutte le copie utilizzabili di un gioco sono disattivate/non disponibili, il titolo non deve comparire nella normale ricerca dei giochi prestabili.
+La quantità disponibile di un titolo viene ricavata dalle copie fisiche
+utilizzabili e dai prestiti aperti.
 
-Un gioco che possiede storico di prestiti non viene eliminato: può essere disattivato preservando lo storico.
+## Owner label
 
-## Identificativi
-
-Ogni gioco e ogni copia possiedono sempre un identificativo interno LudoX, indipendente dai codici visibili all'utente.
-
-Un gioco può avere un identificativo esterno opzionale associato a una fonte esterna.
-
-Una singola copia fisica può avere **più identificativi opzionali contemporaneamente**. Gli identificativi della copia devono quindi essere modellati separatamente dalla copia stessa.
-
-I tipi inizialmente previsti sono almeno:
-
-- `LUDOX_QR` — QR code generato da LudoX;
-- `EXTERNAL_BARCODE` — barcode già presente sulla scatola o proveniente da un sistema esterno.
-
-Esempio:
-
-```text
-copia #102
-├── LUDOX_QR        LX-C-000102
-└── EXTERNAL_BARCODE 8001234567890
-```
-
-Gli identificativi devono poter essere assegnati o modificati successivamente dal Backoffice. È quindi possibile iniziare con copie prive di codici e identificarle individualmente in seguito.
-
-LudoX dovrà poter generare QR code per le copie e produrre etichette stampabili da applicare fisicamente alle scatole.
-
-- TBD: Definire formato e vincoli dei valori `LUDOX_QR` e `EXTERNAL_BARCODE`, incluse le relative regole di unicità.
-
-- TBD: Definire i formati fisici supportati per la stampa delle etichette QR, ad esempio fogli di etichette A4, stampanti termiche o dimensioni personalizzabili.
-
-## Proprietari / etichette operative
-
-Il proprietario di una copia è una semplice **etichetta operativa event-specific**.
+Il proprietario operativo di una copia è una semplice **owner label
+event-specific**.
 
 Non costituisce un'anagrafica e non deve essere collegato obbligatoriamente a:
 
@@ -141,13 +141,48 @@ Non costituisce un'anagrafica e non deve essere collegato obbligatoriamente a:
 - Organization;
 - soggetti giuridici.
 
-Il suo scopo è permettere di sapere a chi o a quale gruppo devono tornare le copie al termine dell'evento.
+Il suo scopo è sapere a chi o a quale gruppo devono tornare le copie al termine
+dell'evento.
 
-Esempio: l'etichetta `Biblioteca` può rappresentare più biblioteche reali se tutte le relative scatole vengono gestite insieme.
+Esempio: l'etichetta `Biblioteca` può rappresentare più biblioteche reali se
+tutte le relative scatole vengono gestite insieme.
+
+## Identificatori delle copie
+
+Ogni gioco e ogni copia possiedono sempre un identificativo interno LudoX,
+indipendente dai codici visibili all'utente.
+
+Una singola copia fisica può avere più identificativi opzionali
+contemporaneamente.
+
+I tipi previsti nello schema corrente sono:
+
+- `LUDOX_QR` — QR code generato da LudoX;
+- `EXTERNAL_BARCODE` — barcode già presente sulla scatola o proveniente da un
+  sistema esterno.
+
+Esempio concettuale:
+
+```text
+copia #102
+├── LUDOX_QR          LX-C-000102
+└── EXTERNAL_BARCODE  8001234567890
+```
+
+La struttura dati è già predisposta, ma l'assegnazione operativa, la scansione,
+la generazione dei QR e la stampa delle etichette appartengono alla futura
+feature #4.
+
+- TBD: Definire formato e vincoli dei valori `LUDOX_QR` e
+  `EXTERNAL_BARCODE`, incluse le relative regole di unicità.
+
+- TBD: Definire i formati fisici supportati per la stampa delle etichette QR,
+  ad esempio fogli A4, stampanti termiche o dimensioni personalizzabili.
 
 ## Formato di interoperabilità della ludoteca
 
-La composizione della ludoteca deve poter essere esportata e reimportata senza dipendere dagli identificativi interni del database.
+La composizione della ludoteca può essere esportata e reimportata senza
+dipendere dagli identificativi interni del database.
 
 Il formato canonico minimo è un CSV UTF-8 con le colonne tecniche stabili:
 
@@ -158,98 +193,124 @@ Azul,LAM,2
 Azul,Matteo,1
 ```
 
-Una riga rappresenta una combinazione gioco + owner label con quantità maggiore di zero.
+Una riga rappresenta una combinazione gioco + owner label con quantità maggiore
+di zero.
 
 Il formato canonico non contiene:
 
 - ID interni SQLite;
 - prestiti;
 - token;
-- documenti/sessioni;
+- sessioni/documenti;
 - timestamp operativi;
 - storico dei prestiti.
 
-I valori CSV devono usare il normale quoting quando contengono virgole, virgolette o altri caratteri che lo richiedono.
+I valori CSV usano il normale quoting quando contengono virgole, virgolette o
+altri caratteri che lo richiedono.
 
-CSV è il formato di interoperabilità di riferimento. XLSX è un formato di comodità e deve rappresentare le stesse colonne logiche.
+CSV è il formato di interoperabilità di riferimento. XLSX rappresenta le stesse
+colonne logiche come formato di comodità.
 
-Campi ulteriori potranno essere aggiunti in futuro come colonne opzionali, senza rendere incompatibile il formato minimo a tre colonne.
+Campi ulteriori potranno essere aggiunti in futuro come colonne opzionali,
+senza rendere incompatibile il formato minimo a tre colonne.
 
-## Export legacy prima del modello event-specific
+## Export legacy
 
-Prima della conversione del modulo Prestiti al modello event-specific deve essere disponibile un export read-only della ludoteca legacy corrente.
+LudoX mantiene un export read-only della ludoteca legacy per consentire di
+preservare la composizione dei vecchi database.
 
-L'export legge le tabelle legacy `giochi`, `proprietari` e `copie_gioco` e produce il formato CSV canonico descritto sopra.
+L'export legge le tabelle legacy `giochi`, `proprietari` e `copie_gioco` e
+produce il formato CSV canonico.
 
 Questa operazione:
 
 - non modifica il database;
 - non esegue migration;
 - non esporta lo storico dei prestiti;
-- serve a preservare in modo semplice la composizione della ludoteca da reimportare successivamente in un nuovo Event.
-
-La prima fase della issue #2 implementa questo export prima delle issue #5 e #6.
+- permette di trasferire la composizione della ludoteca nel nuovo modello
+  event-specific.
 
 ## Importazione della ludoteca
 
-Dopo l'introduzione del modello event-specific, l'importazione legge dati esterni e li aggiunge alla ludoteca dell'Event corrente.
+L'importazione lavora sul solo Event corrente.
 
-Il formato canonico deve poter rappresentare almeno:
+`quantity = N` genera N copie fisiche distinte.
+
+È possibile anche importare un elenco senza owner label nel file e assegnare
+un'unica owner label all'intero import.
+
+L'import è additivo: importazioni successive aggiungono copie e nuovi titoli
+senza azzerare automaticamente la ludoteca esistente.
+
+### Corrispondenza dei titoli
+
+Il comportamento approvato è intenzionalmente semplice e deterministico:
+
+- un titolo identico dopo trim + confronto case-insensitive viene associato al
+  gioco già presente;
+- un titolo soltanto simile viene trattato come un gioco distinto;
+- non viene eseguito fuzzy matching;
+- non vengono proposte fusioni automatiche basate sulla somiglianza del nome.
+
+Esempio:
 
 ```text
-Gioco | Proprietario | Quantità
-Azul  | Biblioteca   | 3
-Azul  | LAM          | 2
-Azul  | Matteo       | 1
+KINGDOMINO       → stesso gioco di Kingdomino
+ kingdomino      → stesso gioco di Kingdomino
+King Domino      → gioco distinto
 ```
 
-Internamente, `Quantità = 3` genera tre record di copia distinti.
+Se in futuro verrà introdotta una funzione di suggerimento per nomi simili,
+dovrà essere una feature esplicita e non dovrà mai fondere automaticamente i
+dati.
 
-Deve essere possibile anche importare un elenco omogeneo e assegnare durante l'importazione un'unica etichetta proprietario all'intero gruppo di copie.
+### Preview e applicazione
 
-La ludoteca può essere completamente svuotata soltanto se nell'Event non è mai stato registrato alcun prestito. Dopo la creazione dello storico dei prestiti non deve essere disponibile un reset distruttivo della ludoteca.
+L'import viene preparato tramite una preview/validazione prima della scrittura.
 
-Durante l'importazione:
-
-- un titolo identico dopo normalizzazione minima viene associato al gioco già presente e le copie vengono aggregate;
-- un titolo soltanto simile a uno esistente può essere segnalato come possibile corrispondenza;
-- la corrispondenza suggerita deve essere confermata dall'utente;
-- non viene mai eseguita una fusione fuzzy automatica.
-
-Esempio: se il file contiene `King Domino` e nella ludoteca esiste `Kingdomino`, LudoX può segnalare la somiglianza e chiedere se usare il titolo esistente oppure crearne uno nuovo.
-
-La segnalazione dei nomi simili è una funzionalità del flusso di importazione e non è richiesta durante il normale inserimento manuale dei giochi.
-
-- TBD: Definire la UX della preview di importazione, la gestione dei conflitti e il criterio utilizzato per proporre nomi potenzialmente simili.
+Righe non valide devono impedire una scrittura parziale dell'import. In caso di
+errore database l'operazione deve mantenere la coerenza dei dati tramite
+transazione/rollback.
 
 ## Esportazione della ludoteca event-specific
 
-L'esportazione del nuovo modello produce lo stesso formato logico usato dall'importazione.
+L'esportazione del nuovo modello produce lo stesso formato logico usato
+dall'importazione.
 
-Le copie fisiche vengono aggregate per gioco + owner label e il risultato contiene almeno:
+Le copie fisiche vengono aggregate per gioco + owner label e il risultato
+contiene almeno:
 
 - `game_name`;
 - `owner_label`;
 - `quantity`.
 
-Non contiene lo storico dei prestiti. Lo storico rimane legato all'Event originale.
+Lo storico dei prestiti non viene esportato.
 
-L'obiettivo è consentire un vero round-trip:
+L'obiettivo è consentire il round-trip:
 
 ```text
 Event A
 → export ludoteca
-→ file CSV/XLSX
+→ CSV/XLSX
 → import in Event B
 ```
 
 Gli Event restano dataset indipendenti dopo l'importazione.
 
+## Reset della ludoteca
+
+La ludoteca dell'Event può essere completamente svuotata soltanto se non è mai
+stato registrato alcun prestito.
+
+Dopo la presenza di storico operativo non deve essere disponibile un reset
+distruttivo della ludoteca.
+
 ## Transizione dai dati Prestiti legacy
 
-La transizione al modello event-specific non richiede una conversione semantica automatica dei dati Prestiti esistenti verso un Event.
+La transizione al modello event-specific non esegue una conversione semantica
+automatica dei vecchi prestiti verso un Event.
 
-Quando viene introdotto il nuovo schema `game_library`:
+Durante la migration:
 
 - le tabelle e i dati legacy vengono preservati;
 - non viene creato automaticamente un Event generico o `Legacy Event`;
@@ -257,7 +318,7 @@ Quando viene introdotto il nuovo schema `game_library`:
 - ogni nuovo `game_library` event-specific parte vuoto;
 - i nuovi servizi operativi usano soltanto il nuovo modello event-specific.
 
-La composizione della ludoteca da conservare viene trasferita tramite:
+La composizione della ludoteca da conservare può essere trasferita tramite:
 
 ```text
 ludoteca legacy
@@ -266,13 +327,12 @@ ludoteca legacy
 → import CSV
 ```
 
-Lo storico dei prestiti legacy non viene convertito automaticamente. Rimane recuperabile nel database/backup precedente se serve come archivio.
-
-Questa scelta evita di introdurre un sistema di conversione complesso destinato principalmente alla transizione iniziale del progetto.
+Lo storico dei prestiti legacy non viene convertito automaticamente.
 
 ## Sessione anonima e documento
 
-Una sessione rappresenta la permanenza anonima di una persona nel flusso di prestito.
+Una sessione rappresenta la permanenza anonima di una persona nel flusso di
+prestito.
 
 Durante la sessione:
 
@@ -282,27 +342,26 @@ Durante la sessione:
 - possono avvenire più prestiti sequenziali tramite cambio gioco;
 - può esistere un solo prestito aperto alla volta.
 
-La sessione termina soltanto dopo la restituzione finale e la riconsegna fisica del documento.
+La sessione termina soltanto dopo la restituzione finale e la riconsegna fisica
+del documento.
 
 ## Slot
 
 Lo **slot** è la posizione fisica numerata in cui viene custodito il documento.
 
-Gli slot vanno da `1` al numero massimo configurato per il modulo Prestiti dell'Event.
+Gli slot vanno da `1` a `max_slots` dello specifico modulo `game_library`.
 
-Lo slot rimane invariato per tutta la sessione.
+Lo slot rimane invariato per tutta la sessione e riparte da `1` in ogni Event.
 
-Il numero massimo di slot è una configurazione del modulo Prestiti del singolo Event, non una configurazione globale di LudoX.
+L'assegnazione automatica usa il primo slot libero partendo dal numero più
+basso.
 
-Gli slot ripartono da 1 in ogni Event.
-
-L'assegnazione automatica utilizza il **primo slot libero partendo dal numero più basso**. Non esiste un requisito database che richieda un'assegnazione casuale.
-
-Il valore predefinito iniziale di `max_slots` per un nuovo modulo `game_library` è `50`; può essere modificato successivamente nella configurazione del modulo.
+Il valore predefinito iniziale di `max_slots` è `50` e può essere modificato dal
+Backoffice del modulo, rispettando i vincoli imposti dalle sessioni aperte.
 
 ## Modalità token
 
-La modalità inizialmente operativa utilizza token fisici numerati.
+La modalità attualmente operativa usa token fisici numerati.
 
 In questa modalità:
 
@@ -310,15 +369,21 @@ In questa modalità:
 slot 23 ↔ token fisico 23
 ```
 
-Il token identifica la sessione per l'operatore e per la persona. Non identifica la copia fisica del gioco.
+Il token identifica la sessione per chi opera al banco e per la persona. Non
+identifica la copia fisica del gioco.
 
-Il sistema conosce il titolo prestato ma, se la copia non viene identificata individualmente, non attribuisce il singolo prestito a uno specifico proprietario.
+Il sistema conosce il titolo prestato ma, se la copia non viene identificata
+individualmente, non attribuisce il singolo prestito a uno specifico
+proprietario/owner label.
 
 ## Modalità QR code / barcode
 
-Il modello v1 deve essere predisposto per una futura modalità basata sull'identificazione della singola copia.
+La futura modalità `copy_identifier` utilizzerà l'identificazione della singola
+copia.
 
-In questa modalità lo slot continua a identificare la posizione fisica del documento, mentre il QR code/barcode della copia diventa la chiave operativa usata durante prestito e restituzione.
+Lo slot continuerà a identificare la posizione fisica del documento, mentre il
+QR/barcode della copia diventerà la chiave operativa usata durante prestito e
+restituzione.
 
 Esempio:
 
@@ -340,18 +405,17 @@ Quando il gioco viene cambiato:
 KDM-002 rientra
 → sessione e slot 23 restano aperti
 → viene consegnata AZUL-014
-→ AZUL-014 è ora associata al prestito aperto della stessa sessione
+→ AZUL-014 viene associata al nuovo prestito della stessa sessione
 ```
 
-Il QR/barcode non sostituisce quindi lo slot fisico: sostituisce il token fisico come mezzo operativo per risalire alla sessione.
-
-Lo schema v1 deve prevedere fin dall'inizio la configurazione della modalità operativa del modulo e la possibilità di associare identificativi alle copie. La prima modalità effettivamente operativa resta quella basata su token; la modalità QR/barcode può essere implementata successivamente senza richiedere una riprogettazione del modello dati.
+Il QR/barcode non sostituisce lo slot fisico del documento. Sostituisce il
+token come mezzo operativo per identificare la copia e risalire alla sessione.
 
 ## Prestiti
 
 Ogni prestito appartiene a una sessione e a un gioco.
 
-Il modello deve poter rappresentare opzionalmente anche la specifica copia fisica:
+Il modello può rappresentare opzionalmente anche la copia fisica specifica:
 
 ```text
 prestito
@@ -362,28 +426,36 @@ prestito
 
 In modalità token la copia specifica può essere sconosciuta.
 
-In modalità QR/barcode la copia specifica è identificata.
+In modalità QR/barcode la copia specifica sarà identificata.
 
 Una sessione può avere un solo prestito aperto alla volta.
 
 ## Cambio Event durante prestiti aperti
 
-Un client può cambiare Event anche se nell'Event precedente esistono sessioni/prestiti aperti.
+Un client può cambiare Event anche se nell'Event precedente esistono sessioni o
+prestiti aperti.
 
-Le sessioni appartengono all'Event e possono essere gestite da altri client o recuperate tornando successivamente su quell'Event.
+Le sessioni appartengono all'Event e possono essere recuperate tornando
+successivamente su quell'Event o, in una futura architettura multi-client,
+gestite da un altro client.
 
 ## Disabilitazione del modulo
 
-Il modulo Prestiti Ludoteca non può essere disabilitato finché esistono sessioni o prestiti aperti.
+Il modulo Prestiti Ludoteca non può essere disabilitato finché esistono
+sessioni o prestiti aperti.
 
 La disabilitazione, quando consentita, non cancella lo storico.
 
-- TBD: Definire in futuro un'eventuale procedura amministrativa esplicita per la chiusura forzata di situazioni rimaste aperte.
+- TBD: Definire in futuro un'eventuale procedura amministrativa esplicita per
+  la chiusura forzata di situazioni rimaste aperte.
 
 ## Statistiche e report
 
-Statistiche e report del modulo Prestiti Ludoteca sono sempre riferiti all'Event corrente.
+Statistiche e report del modulo Prestiti Ludoteca sono sempre riferiti
+all'Event corrente.
 
-Non vengono aggregate automaticamente informazioni provenienti da eventi differenti.
+Non vengono aggregate automaticamente informazioni provenienti da Event
+differenti.
 
-La logica attuale secondo cui i prestiti sono attribuiti al titolo e non automaticamente a uno specifico proprietario deve essere mantenuta quando la copia fisica non è identificata.
+Quando la copia fisica non è identificata, i prestiti restano attribuiti al
+titolo e non automaticamente a una specifica owner label.

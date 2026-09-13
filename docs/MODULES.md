@@ -2,14 +2,12 @@
 
 > **STATUS: APPROVED SPECIFICATION — READ ONLY**
 >
-> **IMPLEMENTATION: NOT IMPLEMENTED**
+> **IMPLEMENTATION: PARTIALLY IMPLEMENTED**
 >
 > Questo documento è una specifica approvata di LudoX. Durante
 > l'implementazione non deve essere modificato, salvo richiesta esplicita
 > dell'utente. I marker `TBD` e `QUESTION` restano decisioni aperte e non
 > autorizzano Codex a scegliere autonomamente una soluzione.
-
-
 
 ## Definizione
 
@@ -27,6 +25,17 @@ I moduli attualmente confermati nel modello sono:
 Gli identificatori tecnici sono stabili e indipendenti dalla lingua mostrata all'utente. I nomi visualizzati vengono tradotti tramite il sistema i18n.
 
 Il possibile modulo Accoglienza/Iscrizioni rimane un'area futura ancora da formalizzare e non fa parte delle decisioni consolidate di questo documento.
+
+## Stato di implementazione
+
+Il framework comune dei moduli Event-specific è implementato.
+
+Attualmente:
+
+- `game_library` è implementato come modulo event-specific;
+- `activities` è riconosciuto dal modello Event/Module ma la sua funzionalità operativa deve ancora essere implementata nella issue #7.
+
+Per questo il documento resta complessivamente marcato come **PARTIALLY IMPLEMENTED**.
 
 ## Abilitazione
 
