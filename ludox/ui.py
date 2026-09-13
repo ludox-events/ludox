@@ -1235,6 +1235,10 @@ class PrestitiApp(ttk.Window):
     # ========================================================
 
     def show_restituzione(self):
+        settings = catalog.impostazioni_modulo(self._game_library_event_id())
+        if settings["identification_mode"] == "copy_identifier":
+            self.show_restituzione_copia()
+            return
         frame = self.clear()
 
         self.pulsante_indietro(
@@ -1334,6 +1338,112 @@ class PrestitiApp(ttk.Window):
             "<Return>",
             lambda event: continua()
         )
+
+    def show_restituzione_copia(self):
+        frame = self.clear()
+        self.pulsante_indietro(frame, self.show_home)
+        self.titolo_pagina(
+            frame, "copy_return.title", "copy_return.scan_copy"
+        )
+        identifier_var = tk.StringVar()
+        entry = ttk.Entry(
+            frame, textvariable=identifier_var, font=("Arial", 28, "bold"),
+            justify=CENTER, bootstyle="warning"
+        )
+        entry.pack(fill=X, padx=170, pady=(45, 15), ipady=10)
+        entry.focus_set()
+
+        def continua():
+            try:
+                situation = lending.consulta_copia_in_prestito(
+                    identifier_var.get(), event_id=self._game_library_event_id()
+                )
+            except (
+                copy_identifiers.CopyIdentifierError,
+                lending.PrestitoCopiaAssente,
+                lending.ModalitaIdentificazioneNonValida,
+            ) as exc:
+                messagebox.showwarning(tr("copy_return.title"), tr(str(exc)))
+                identifier_var.set("")
+                entry.focus_set()
+                return
+            self.show_documento_da_restituire_copia(situation)
+
+        ttk.Button(
+            frame, text=tr("CONTINUA"), command=continua, bootstyle="warning"
+        ).pack(pady=25, ipadx=40, ipady=12)
+        entry.bind("<Return>", lambda event: continua())
+
+    def show_documento_da_restituire_copia(self, situation):
+        frame = self.clear()
+        self.titolo_pagina(frame, "copy_return.document_title")
+        card = ttk.Labelframe(frame, padding=35, bootstyle="danger")
+        card.pack(fill=X, padx=80, pady=25)
+        ttk.Label(
+            card, text=tr("PRELEVA IL DOCUMENTO"),
+            font=("Arial", 18, "bold"), bootstyle="danger"
+        ).pack()
+        ttk.Label(
+            card, text=tr(str(situation.slot)),
+            font=("Arial", 84, "bold"), bootstyle="danger"
+        ).pack(pady=5)
+        ttk.Label(
+            card, text=tr("copy_return.slot_tpl", slot=situation.slot),
+            font=("Arial", 24, "bold")
+        ).pack(pady=5)
+        ttk.Label(
+            card,
+            text=tr(
+                "copy_return.game_tpl",
+                game=situation.game_name,
+                identifier=situation.copy_identifier,
+            ),
+            font=("Arial", 15), bootstyle="secondary"
+        ).pack(pady=(15, 5))
+        ttk.Label(
+            card, text=tr("copy_return.pending"), justify=CENTER,
+            font=("Arial", 13)
+        ).pack(pady=15)
+
+        def documento_restituito():
+            if not messagebox.askyesno(
+                tr("copy_return.confirm_title"),
+                tr("copy_return.confirm_tpl", slot=situation.slot),
+            ):
+                return
+            try:
+                lending.conferma_restituzione_copia(situation)
+            except (
+                lending.ErrorePersistenza,
+                lending.ModalitaIdentificazioneNonValida,
+            ) as exc:
+                messagebox.showerror(tr("Errore database"), tr(str(exc)))
+                return
+            self.show_restituzione_copia_completata(situation)
+
+        ttk.Button(
+            frame, text=tr("copy_return.document_returned"),
+            command=documento_restituito, bootstyle="success"
+        ).pack(pady=(20, 10), ipadx=50, ipady=18)
+        ttk.Button(
+            frame, text=tr("ANNULLA"), command=self.show_home,
+            bootstyle="secondary-outline"
+        ).pack(pady=5)
+
+    def show_restituzione_copia_completata(self, situation):
+        frame = self.clear()
+        self.titolo_pagina(frame, "RESTITUZIONE COMPLETATA")
+        card = ttk.Labelframe(frame, padding=40, bootstyle="success")
+        card.pack(fill=X, padx=140, pady=40)
+        ttk.Label(
+            card,
+            text=tr("copy_return.completed_tpl", slot=situation.slot),
+            font=("Arial", 28, "bold"), bootstyle="success"
+        ).pack(pady=15)
+        ttk.Button(
+            frame, text=tr("TORNA ALLA HOME"), command=self.show_home,
+            bootstyle="success"
+        ).pack(ipadx=35, ipady=12)
 
     def show_documento_da_restituire(
         self,

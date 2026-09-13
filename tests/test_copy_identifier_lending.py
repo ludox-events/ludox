@@ -224,3 +224,65 @@ def test_copy_change_revalidates_and_rolls_back_on_insert_failure(db):
     with pytest.raises(lending.ErrorePersistenza, match="copy change rejected"):
         lending.conferma_cambio_copia(prepared)
     assert event_snapshot(event.id) == before
+
+
+def test_copy_return_keeps_slot_occupied_until_atomic_confirmation(db, monkeypatch):
+    event = create_event("copy-return")
+    _, copy_id = create_identified_copy(event, "RETURN-ME")
+    created = lending.nuovo_prestito_da_identificatore(
+        "RETURN-ME", event_id=event.id
+    )
+    before = event_snapshot(event.id)
+
+    situation = lending.consulta_copia_in_prestito(
+        " RETURN-ME ", event_id=event.id
+    )
+
+    assert situation.copy_id == copy_id
+    assert situation.slot == created.slot
+    assert event_snapshot(event.id) == before
+    monkeypatch.setattr(database, "now_iso", lambda: "2026-09-13T12:00:00")
+    lending.conferma_restituzione_copia(situation)
+    sessions, loans = event_snapshot(event.id)
+    assert sessions[0][4] == "2026-09-13T12:00:00"
+    assert loans[0][6] == "2026-09-13T12:00:00"
+    assert lending.situazione_chiusura(event_id=event.id).token == ()
+    assert copy_identifiers.list_copies(event.id)[0]["availability"] == "available"
+
+
+def test_cancelled_copy_return_consultation_makes_no_changes(db):
+    event = create_event("copy-return-cancel")
+    create_identified_copy(event, "CANCEL")
+    lending.nuovo_prestito_da_identificatore("CANCEL", event_id=event.id)
+    before = event_snapshot(event.id)
+
+    lending.consulta_copia_in_prestito("CANCEL", event_id=event.id)
+
+    assert event_snapshot(event.id) == before
+
+
+def test_copy_return_revalidates_state_and_rolls_back_both_updates(db):
+    event = create_event("copy-return-rollback")
+    create_identified_copy(event, "ROLLBACK")
+    lending.nuovo_prestito_da_identificatore("ROLLBACK", event_id=event.id)
+    situation = lending.consulta_copia_in_prestito("ROLLBACK", event_id=event.id)
+    with database.get_db() as connection:
+        connection.execute("""
+            CREATE TRIGGER reject_copy_session_return
+            BEFORE UPDATE OF closed_at ON game_library_sessions
+            WHEN NEW.closed_at IS NOT NULL
+            BEGIN SELECT RAISE(ABORT, 'session return rejected'); END
+        """)
+    before = event_snapshot(event.id)
+
+    with pytest.raises(lending.ErrorePersistenza, match="session return rejected"):
+        lending.conferma_restituzione_copia(situation)
+    assert event_snapshot(event.id) == before
+
+    with database.get_db() as connection:
+        connection.execute("DROP TRIGGER reject_copy_session_return")
+    lending.conferma_restituzione_copia(situation)
+    closed = event_snapshot(event.id)
+    with pytest.raises(lending.ErrorePersistenza):
+        lending.conferma_restituzione_copia(situation)
+    assert event_snapshot(event.id) == closed

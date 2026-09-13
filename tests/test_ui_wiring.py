@@ -118,6 +118,7 @@ def test_pulsanti_indietro_tornano_alla_schermata_prevista():
         "show_cambio_copia_nuova": "self.show_cambio_copia_restituita",
         "show_cambio_gioco": "self.show_cambio_token",
         "show_restituzione": "self.show_home",
+        "show_restituzione_copia": "self.show_home",
         "show_statistiche": "self.show_home",
         "show_login_backoffice": "self.show_home",
         "show_backoffice": "self.show_home",
@@ -282,6 +283,36 @@ def test_cambio_copia_usa_due_input_hid_preview_e_conferma():
     assert len(chiamate(
         "show_cambio_copia_nuova", "lending.conferma_cambio_copia"
     )) == 1
+
+
+def test_restituzione_copia_scansiona_e_scrive_solo_alla_conferma_finale():
+    restituzione = metodo("show_restituzione")
+    assert len([
+        node for node in ast.walk(restituzione)
+        if isinstance(node, ast.Call)
+        and ast.unparse(node.func) == "self.show_restituzione_copia"
+    ]) == 1
+    assert_command("show_restituzione_copia", {"continua"})
+    assert any(
+        ast.unparse(node.args[0]) == "'<Return>'"
+        and ast.unparse(node.args[1]) == "lambda event: continua()"
+        for node in chiamate("show_restituzione_copia", "entry.bind")
+    )
+    assert len(chiamate(
+        "show_restituzione_copia", "lending.consulta_copia_in_prestito"
+    )) == 1
+    assert len(chiamate(
+        "show_restituzione_copia", "lending.conferma_restituzione_copia"
+    )) == 0
+    assert_command(
+        "show_documento_da_restituire_copia",
+        {"documento_restituito", "self.show_home"},
+    )
+    assert len(chiamate(
+        "show_documento_da_restituire_copia",
+        "lending.conferma_restituzione_copia",
+    )) == 1
+    assert_command("show_restituzione_copia_completata", {"self.show_home"})
 
 
 def test_gestione_eventi_usa_picker_e_timezone_selezionabile_per_create_update():

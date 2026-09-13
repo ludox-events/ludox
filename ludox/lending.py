@@ -382,6 +382,45 @@ def conferma_cambio_copia(prepared: CambioCopiaPreparato) -> str:
     return prepared.new_game_name
 
 
+def conferma_restituzione_copia(situation: SituazionePrestitoCopia) -> None:
+    """Close the identified-copy loan and its document session atomically."""
+    timestamp = data.now_iso()
+    with data.transazione_prestiti(immediata=True) as db:
+        settings = data.impostazioni_game_library_in_transazione(
+            db, situation.event_id
+        )
+        if settings is None or settings["identification_mode"] != "copy_identifier":
+            raise ModalitaIdentificazioneNonValida(
+                "La modalita operativa dell'Event e cambiata."
+            )
+        session = data.sessione_per_cambio(
+            db, situation.event_id, situation.session_id, situation.slot
+        )
+        loan = data.prestito_evento_per_cambio(
+            db, situation.event_id, situation.loan_id, situation.session_id
+        )
+        if not session or not loan or loan["copy_id"] != situation.copy_id:
+            raise ErrorePersistenza(
+                "Il prestito della copia non risulta piu aperto."
+            )
+        if data.chiudi_prestito_evento_per_cambio(
+            db,
+            situation.event_id,
+            situation.loan_id,
+            situation.session_id,
+            timestamp,
+        ) != 1:
+            raise ErrorePersistenza(
+                "Il prestito della copia non risulta piu aperto."
+            )
+        if data.chiudi_sessione_evento(
+            db, situation.event_id, situation.session_id, timestamp
+        ) != 1:
+            raise ErrorePersistenza(
+                "Il documento non risulta piu depositato."
+            )
+
+
 def cambia_gioco(
     *, token: int, documento_id: int, prestito_id: int,
     gioco_id_atteso: int, nuovo_gioco_id: int, event_id=None,
