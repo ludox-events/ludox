@@ -2,7 +2,7 @@
 
 > **STATUS: APPROVED SPECIFICATION — READ ONLY**
 >
-> **IMPLEMENTATION: PARTIALLY IMPLEMENTED**
+> **IMPLEMENTATION: IMPLEMENTED — GAME LIBRARY V1**
 >
 > Questo documento è una specifica approvata di LudoX. Durante
 > l'implementazione non deve essere modificato, salvo richiesta esplicita
@@ -15,28 +15,31 @@ tecnico `game_library`.
 Nell'interfaccia italiana il modulo è denominato **Prestiti Ludoteca**.
 Nell'interfaccia inglese il termine di riferimento è **Game Library**.
 
-La procedura pratica della modalità token attualmente disponibile è descritta
-in [OPERATION.md](OPERATION.md). Al completamento della issue #4,
-`OPERATION.md` deve essere aggiornato per descrivere anche la modalità
-`copy_identifier`.
+La procedura pratica delle modalità `token` e `copy_identifier` è descritta in
+[OPERATION.md](OPERATION.md). Gli scenari di verifica manuale sono raccolti in
+[MANUAL_TESTS.md](MANUAL_TESTS.md).
 
 ## Stato di implementazione
 
-Sono implementati:
+La Game Library V1 è implementata e comprende:
 
 - ludoteca event-specific;
 - owner label event-specific;
 - copie fisiche individuali;
 - configurazione `max_slots` per Event;
-- modalità operativa `token`;
+- modalità operative alternative `token` e `copy_identifier`;
+- identificatori delle copie event-specific con origine `external` / `ludox`;
+- gestione Backoffice delle singole copie;
+- scanner HID / input manuale + Invio;
+- generazione di identificatori LudoX e QR PNG;
 - sessioni anonime e prestiti event-specific;
-- cambio gioco e restituzione finale;
+- nuovo prestito, cambio gioco e restituzione finale in entrambe le modalità;
 - statistiche, storico e report event-specific;
-- import/export CSV e XLSX;
-- struttura dati predisposta per identificatori delle copie.
+- import/export CSV e XLSX, incluso il round-trip degli identificatori;
+- cambio sicuro della modalità operativa senza sessioni/prestiti aperti.
 
-Non è ancora implementata la modalità operativa `copy_identifier`. Per questo
-il documento resta **PARTIALLY IMPLEMENTED**.
+La scansione tramite webcam/camera non fa parte della Game Library V1 ed è
+tracciata separatamente nella issue #26.
 
 ## Ambito
 
@@ -230,12 +233,12 @@ Il valore usa l'ID interno della copia già creata. Poiché l'ID della copia è
 univoco nel database, il codice generato è deterministico e non richiede UUID,
 hash o registri aggiuntivi.
 
-LudoX deve poter rappresentare il valore generato come QR code e permettere
+LudoX può rappresentare il valore generato come QR code e permette
 l'esportazione di una semplice immagine PNG contenente QR e valore leggibile,
 così da poter stampare e applicare il codice alla scatola.
 
 Layout avanzati per fogli di etichette, stampanti termiche o altri formati di
-stampa non fanno parte della V1 della issue #4.
+stampa non fanno parte della Game Library V1.
 
 ## Formato di interoperabilità della ludoteca
 
@@ -494,9 +497,7 @@ anche mentre l'Event usa la modalità `token`.
 
 ## Modalità token
 
-La modalità attualmente operativa usa token fisici numerati.
-
-In questa modalità:
+In modalità `token`:
 
 ```text
 slot 23 ↔ token fisico 23
@@ -523,8 +524,8 @@ come dato preparatorio, ma **non è prestabile** finché non riceve un
 
 ### Input dello scanner
 
-La prima implementazione usa scanner USB/Bluetooth HID che si comportano come
-una tastiera:
+La Game Library V1 usa scanner USB/Bluetooth HID che si comportano come una
+tastiera:
 
 ```text
 scanner
@@ -533,16 +534,16 @@ scanner
 → LudoX
 ```
 
-Lo stesso flusso deve funzionare digitando manualmente il valore e premendo
-Enter. Questo costituisce anche il metodo minimo di test senza hardware.
+Lo stesso flusso funziona digitando manualmente il valore e premendo Enter.
+Questo costituisce anche il metodo minimo di test senza hardware.
 
 L'uso di webcam/camera per decodificare QR o barcode è fuori scope e viene
 tracciato separatamente nella issue #26. La futura camera dovrà produrre lo
-stesso valore testuale e riutilizzare i medesimi service della #4.
+stesso valore testuale e riutilizzare i medesimi service.
 
 ### Nuovo prestito
 
-Flusso approvato:
+Flusso implementato:
 
 ```text
 scan copy_identifier
@@ -574,15 +575,15 @@ scan copia restituita
 → chiude vecchio prestito e apre il nuovo sulla stessa sessione
 ```
 
-La modifica deve essere applicata in transazione soltanto dopo che entrambe le
-copie sono state identificate e validate. Se il flusso viene annullato prima
-della conferma, il database resta invariato.
+La modifica viene applicata in transazione soltanto dopo che entrambe le copie
+sono state identificate e validate. Se il flusso viene annullato prima della
+conferma, il database resta invariato.
 
 Lo slot del documento non cambia.
 
 ### Restituzione finale
 
-Flusso approvato:
+Flusso implementato:
 
 ```text
 scan copia restituita
@@ -612,8 +613,7 @@ prestito
 
 In modalità `token` la copia può essere sconosciuta.
 
-In modalità `copy_identifier` ogni nuovo prestito deve avere `copy_id`
-valorizzato.
+In modalità `copy_identifier` ogni nuovo prestito ha `copy_id` valorizzato.
 
 Quando la copia è nota, storico e viste amministrative possono mostrare anche:
 
@@ -656,6 +656,6 @@ differenti.
 Quando la copia fisica non è identificata, i prestiti restano attribuiti al
 titolo e non automaticamente a una specifica owner label.
 
-Quando `copy_id` è noto, storico e viste amministrative possono mostrare anche
-il `copy_identifier` corrente e l'owner label della copia. La sostituzione
+Quando `copy_id` è noto, storico e viste amministrative mostrano anche il
+`copy_identifier` corrente e l'owner label della copia. La sostituzione
 successiva del codice non cambia il riferimento storico al `copy_id`.
