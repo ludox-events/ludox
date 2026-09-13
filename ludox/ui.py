@@ -21,6 +21,7 @@ from .config import (
 from . import (
     bootstrap,
     catalog,
+    copy_identifiers,
     events,
     lending,
     library_transfer,
@@ -2157,6 +2158,22 @@ class PrestitiApp(ttk.Window):
 
         ttk.Button(
             area,
+            text=tr("copies.manage"),
+            command=self.show_gestione_copie,
+            bootstyle="info-outline",
+            state="normal" if game_library_attiva else "disabled",
+        ).grid(
+            row=7,
+            column=0,
+            columnspan=2,
+            padx=15,
+            pady=15,
+            ipady=22,
+            sticky=EW,
+        )
+
+        ttk.Button(
+            area,
             text=tr("library_transfer.import_event"),
             command=self.importa_ludoteca_evento,
             bootstyle="success-outline",
@@ -2178,7 +2195,7 @@ class PrestitiApp(ttk.Window):
             bootstyle="primary-outline",
             state="normal" if game_library_attiva else "disabled",
         ).grid(
-            row=7,
+            row=8,
             column=0,
             columnspan=2,
             padx=15,
@@ -2194,7 +2211,7 @@ class PrestitiApp(ttk.Window):
             bootstyle="info-outline",
             state="normal" if game_library_attiva else "disabled",
         ).grid(
-            row=8,
+            row=9,
             column=0,
             columnspan=2,
             padx=15,
@@ -2261,6 +2278,175 @@ class PrestitiApp(ttk.Window):
             card, text=tr("library_transfer.reset"), command=resetta,
             bootstyle="danger-outline",
         ).pack(pady=(20, 0), ipadx=25, ipady=8)
+
+    def show_gestione_copie(self):
+        event_id = self._game_library_event_id()
+        frame = self.clear(scrollable=True)
+        self.pulsante_indietro(frame, self.show_backoffice)
+        self.titolo_pagina(frame, "copies.manage", "copies.subtitle")
+
+        tree = ttk.Treeview(
+            frame,
+            columns=("id", "game", "owner", "active", "identifier", "source", "status"),
+            show="headings",
+            height=14,
+            bootstyle="info",
+        )
+        for column, label in (
+            ("id", "copies.id"),
+            ("game", "copies.game"),
+            ("owner", "copies.owner"),
+            ("active", "copies.active"),
+            ("identifier", "copies.identifier"),
+            ("source", "copies.source"),
+            ("status", "copies.status"),
+        ):
+            tree.heading(column, text=tr(label))
+        tree.column("id", width=65, anchor=CENTER)
+        tree.column("game", width=210)
+        tree.column("owner", width=170)
+        tree.column("active", width=75, anchor=CENTER)
+        tree.column("identifier", width=210)
+        tree.column("source", width=90, anchor=CENTER)
+        tree.column("status", width=130, anchor=CENTER)
+        tree.pack(fill=BOTH, expand=YES, pady=(0, 15))
+
+        copies_by_id = {}
+
+        def aggiorna():
+            copies_by_id.clear()
+            for item in tree.get_children():
+                tree.delete(item)
+            status_labels = {
+                "available": tr("copies.available"),
+                "on_loan": tr("copies.on_loan"),
+                "inactive": tr("common.inactive"),
+                "unidentified": tr("copies.unidentified"),
+            }
+            for copy in copy_identifiers.list_copies(event_id):
+                copies_by_id[copy["copy_id"]] = copy
+                tree.insert(
+                    "", END, iid=str(copy["copy_id"]), values=(
+                        copy["copy_id"], copy["game_name"], copy["owner_label"],
+                        tr("common.yes") if copy["copy_active"] else tr("common.no"),
+                        copy["copy_identifier"] or "—",
+                        copy["identifier_source"] or "—",
+                        status_labels[copy["availability"]],
+                    )
+                )
+
+        def selezionata():
+            selection = tree.selection()
+            if not selection:
+                messagebox.showwarning(tr("copies.manage"), tr("copies.select"))
+                return None
+            return copies_by_id[int(selection[0])]
+
+        editor = ttk.Labelframe(
+            frame, text=tr("copies.identifier"), padding=16, bootstyle="secondary"
+        )
+        editor.pack(fill=X, pady=(0, 12))
+        identifier_var = tk.StringVar()
+        entry = ttk.Entry(editor, textvariable=identifier_var, font=("Arial", 15))
+        entry.grid(row=0, column=0, columnspan=4, sticky=EW, padx=5, ipady=5)
+        editor.columnconfigure(0, weight=1)
+
+        def assegna_esterno():
+            copy = selezionata()
+            if copy is None:
+                return
+            try:
+                if copy["copy_identifier"]:
+                    if not messagebox.askyesno(
+                        tr("copies.replace"), tr("copies.replace_confirm")
+                    ):
+                        return
+                    copy_identifiers.replace(
+                        event_id, copy["copy_id"], identifier_var.get()
+                    )
+                else:
+                    copy_identifiers.assign_external(
+                        event_id, copy["copy_id"], identifier_var.get()
+                    )
+            except copy_identifiers.CopyIdentifierError as exc:
+                messagebox.showwarning(tr("copies.manage"), tr(str(exc)))
+                return
+            identifier_var.set("")
+            aggiorna()
+
+        def genera_ludox():
+            copy = selezionata()
+            if copy is None:
+                return
+            try:
+                copy_identifiers.generate_ludox(event_id, copy["copy_id"])
+            except copy_identifiers.CopyIdentifierError as exc:
+                messagebox.showwarning(tr("copies.manage"), tr(str(exc)))
+                return
+            aggiorna()
+
+        def rimuovi():
+            copy = selezionata()
+            if copy is None or not copy["copy_identifier"]:
+                return
+            if not messagebox.askyesno(tr("copies.remove"), tr("copies.remove_confirm")):
+                return
+            try:
+                copy_identifiers.remove(event_id, copy["copy_id"])
+            except copy_identifiers.CopyIdentifierError as exc:
+                messagebox.showwarning(tr("copies.manage"), tr(str(exc)))
+                return
+            aggiorna()
+
+        def cambia_stato():
+            copy = selezionata()
+            if copy is None:
+                return
+            try:
+                copy_identifiers.set_active(
+                    event_id, copy["copy_id"], not bool(copy["copy_active"])
+                )
+            except copy_identifiers.CopyIdentifierError as exc:
+                messagebox.showwarning(tr("copies.manage"), tr(str(exc)))
+                return
+            aggiorna()
+
+        def esporta_qr():
+            copy = selezionata()
+            if copy is None:
+                return
+            path = filedialog.asksaveasfilename(
+                parent=self,
+                title=tr("copies.export_qr"),
+                defaultextension=".png",
+                filetypes=[(tr("copies.png"), "*.png")],
+            )
+            if not path:
+                return
+            try:
+                copy_identifiers.export_ludox_qr_png(
+                    event_id, copy["copy_id"], path
+                )
+            except (copy_identifiers.CopyIdentifierError, OSError) as exc:
+                messagebox.showerror(tr("copies.export_qr"), tr(str(exc)))
+                return
+            messagebox.showinfo(tr("copies.export_qr"), tr("copies.export_done"))
+
+        for column, (label, command, style) in enumerate((
+            ("copies.assign_external", assegna_esterno, "success"),
+            ("copies.generate_ludox", genera_ludox, "primary"),
+            ("copies.remove", rimuovi, "danger-outline"),
+            ("copies.toggle_active", cambia_stato, "secondary-outline"),
+        )):
+            ttk.Button(
+                editor, text=tr(label), command=command, bootstyle=style
+            ).grid(row=1, column=column, padx=5, pady=(12, 0), sticky=EW)
+        ttk.Button(
+            frame, text=tr("copies.export_qr"), command=esporta_qr,
+            bootstyle="primary-outline"
+        ).pack(ipadx=20, ipady=7)
+        entry.bind("<Return>", lambda event: assegna_esterno())
+        aggiorna()
 
     def esporta_ludoteca_legacy(self):
         percorso = filedialog.asksaveasfilename(

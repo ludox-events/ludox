@@ -74,6 +74,7 @@ def test_pulsanti_backoffice_aprono_le_sezioni_previste():
             "self.show_gestione_organizzazioni",
             "self.show_gestione_eventi",
             "self.show_impostazioni_ludoteca",
+            "self.show_gestione_copie",
             "self.esporta_ludoteca_legacy",
             "self.importa_ludoteca_evento",
             "self.esporta_ludoteca_evento",
@@ -133,6 +134,7 @@ def test_pulsanti_indietro_tornano_alla_schermata_prevista():
         "show_gestione_organizzazioni": "self.show_backoffice",
         "show_gestione_eventi": "self.show_backoffice",
         "show_impostazioni_ludoteca": "self.show_backoffice",
+        "show_gestione_copie": "self.show_backoffice",
     }
 
     for nome_metodo, destinazione in destinazioni.items():
@@ -204,6 +206,32 @@ def test_azioni_locali_importanti_hanno_il_command_previsto():
         for element in azioni_eventi.iter.elts
     } == {"nuovo", "salva", "elimina"}
     assert_command("show_selezione_evento", {"conferma"})
+
+
+def test_gestione_copie_collega_scanner_azioni_e_qr_png():
+    assert_command("show_gestione_copie", {"command", "esporta_qr"})
+    gestione = metodo("show_gestione_copie")
+    actions = next(
+        node
+        for node in ast.walk(gestione)
+        if isinstance(node, ast.For)
+        and ast.unparse(node.target) == "(column, (label, command, style))"
+    )
+    assert {
+        ast.unparse(element.elts[1]) for element in actions.iter.args[0].elts
+    } == {"assegna_esterno", "genera_ludox", "rimuovi", "cambia_stato"}
+    invio = chiamate("show_gestione_copie", "entry.bind")
+    assert any(
+        ast.unparse(node.args[0]) == "'<Return>'"
+        and ast.unparse(node.args[1]) == "lambda event: assegna_esterno()"
+        for node in invio
+    )
+    assert len(chiamate("show_gestione_copie", "copy_identifiers.export_ludox_qr_png")) == 1
+    clear_calls = chiamate("show_gestione_copie", "self.clear")
+    assert {
+        keyword.arg: ast.unparse(keyword.value)
+        for keyword in clear_calls[0].keywords
+    } == {"scrollable": "True"}
 
 
 def test_gestione_eventi_usa_picker_e_timezone_selezionabile_per_create_update():

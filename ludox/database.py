@@ -939,6 +939,41 @@ def copia_ha_prestito_aperto(event_id, copy_id):
         """, (event_id, copy_id)).fetchone()[0])
 
 
+def elenco_copie_evento(event_id):
+    with get_db() as db:
+        return db.execute("""
+            SELECT c.id AS copy_id, c.event_id, c.game_id,
+                   c.owner_label_id, c.active AS copy_active,
+                   g.name AS game_name, g.active AS game_active,
+                   o.name AS owner_label,
+                   i.value AS copy_identifier,
+                   i.source AS identifier_source,
+                   EXISTS(
+                       SELECT 1 FROM game_library_loans l
+                       WHERE l.event_id = c.event_id AND l.copy_id = c.id
+                         AND l.returned_at IS NULL
+                   ) AS on_loan
+            FROM game_library_game_copies c
+            JOIN game_library_games g
+              ON g.event_id = c.event_id AND g.id = c.game_id
+            JOIN game_library_owner_labels o
+              ON o.event_id = c.event_id AND o.id = c.owner_label_id
+            LEFT JOIN game_library_copy_identifiers i
+              ON i.event_id = c.event_id AND i.copy_id = c.id
+            WHERE c.event_id = ?
+            ORDER BY g.name COLLATE NOCASE, g.id,
+                     o.name COLLATE NOCASE, o.id, c.id
+        """, (event_id,)).fetchall()
+
+
+def aggiorna_stato_copia(event_id, copy_id, active):
+    with get_db() as db:
+        return db.execute("""
+            UPDATE game_library_game_copies SET active = ?
+            WHERE event_id = ? AND id = ?
+        """, (active, event_id, copy_id)).rowcount
+
+
 def giochi_per_owner_evento(event_id, owner_id):
     with get_db() as db:
         return db.execute("""

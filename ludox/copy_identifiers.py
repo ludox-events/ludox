@@ -3,6 +3,11 @@
 
 """Event-scoped operational identifiers for physical game copies."""
 
+from pathlib import Path
+
+import qrcode
+from PIL import Image, ImageDraw, ImageFont
+
 from . import database as data
 
 
@@ -34,6 +39,10 @@ class IdentifierChangeBlocked(CopyIdentifierError):
     pass
 
 
+class CopyStateChangeBlocked(CopyIdentifierError):
+    pass
+
+
 def normalize_identifier(value):
     normalized = str(value).strip() if value is not None else ""
     if not normalized or "\n" in normalized or "\r" in normalized:
@@ -47,6 +56,22 @@ def normalize_identifier(value):
 def identifier_for_copy(event_id, copy_id):
     row = data.identificatore_copia(event_id, copy_id)
     return dict(row) if row is not None else None
+
+
+def list_copies(event_id):
+    copies = []
+    for row in data.elenco_copie_evento(event_id):
+        copy = dict(row)
+        if copy["on_loan"]:
+            copy["availability"] = "on_loan"
+        elif not copy["copy_active"] or not copy["game_active"]:
+            copy["availability"] = "inactive"
+        elif not copy["copy_identifier"]:
+            copy["availability"] = "unidentified"
+        else:
+            copy["availability"] = "available"
+        copies.append(copy)
+    return copies
 
 
 def is_duplicate(event_id, value, *, excluding_copy_id=None):
@@ -130,6 +155,16 @@ def remove(event_id, copy_id):
     return data.elimina_identificatore_copia(event_id, copy_id)
 
 
+def set_active(event_id, copy_id, active):
+    _require_copy(event_id, copy_id)
+    if not active and data.copia_ha_prestito_aperto(event_id, copy_id):
+        raise CopyStateChangeBlocked(
+            "Una copia in prestito non può essere disattivata."
+        )
+    data.aggiorna_stato_copia(event_id, copy_id, 1 if active else 0)
+    return _require_copy(event_id, copy_id)
+
+
 def resolve(event_id, value):
     normalized = normalize_identifier(value)
     row = data.copia_da_identificatore(event_id, normalized)
@@ -148,3 +183,47 @@ def is_lendable(event_id, copy_id):
         and identifier_for_copy(event_id, copy_id) is not None
         and not data.copia_ha_prestito_aperto(event_id, copy_id)
     )
+
+
+def export_ludox_qr_png(event_id, copy_id, path):
+    """Export a simple printable PNG containing QR and readable value."""
+    identifier = identifier_for_copy(event_id, copy_id)
+    if identifier is None or identifier["source"] != "ludox":
+        raise InvalidCopyIdentifier(
+            "Il PNG QR è disponibile soltanto per identificatori LudoX."
+        )
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(identifier["value"])
+    qr.make(fit=True)
+    qr_image = qr.make_image(fill_color="black", back_color="white").convert(
+        "RGB"
+    )
+    try:
+        font = ImageFont.truetype("DejaVuSans.ttf", 20)
+    except OSError:
+        font = ImageFont.load_default()
+    draw = ImageDraw.Draw(qr_image)
+    box = draw.textbbox((0, 0), identifier["value"], font=font)
+    text_width = box[2] - box[0]
+    text_height = box[3] - box[1]
+    padding = 14
+    width = max(qr_image.width, text_width + padding * 2)
+    output = Image.new(
+        "RGB", (width, qr_image.height + text_height + padding * 2), "white"
+    )
+    output.paste(qr_image, ((width - qr_image.width) // 2, 0))
+    output_draw = ImageDraw.Draw(output)
+    output_draw.text(
+        ((width - text_width) // 2, qr_image.height + padding),
+        identifier["value"],
+        fill="black",
+        font=font,
+    )
+    destination = Path(path)
+    output.save(destination, format="PNG")
+    return destination
