@@ -21,4 +21,5 @@ if not exist "dist\LudoX-Guida-rapida.pdf" (
   exit /b 1
 )
 
+rem Il PDF finale resta nella root di dist/.
 echo OK: dist\LudoX-Guida-rapida.pdf

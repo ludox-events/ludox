@@ -16,7 +16,7 @@ ludox/
 │     └─ images/
 ├─ scripts/
 │  ├─ build_user_guide.py
-│  ├─ build_pdf.ps1
+│  ├─ build_pdf.cmd
 │  └─ build_windows.ps1
 └─ ...
 ```
@@ -64,10 +64,10 @@ Con l'ambiente attivo:
 python scripts\build_user_guide.py
 ```
 
-oppure:
+oppure, con `.venv` disponibile:
 
 ```powershell
-.\scripts\build_pdf.ps1
+.\scripts\build_pdf.cmd
 ```
 
 Output:
@@ -186,13 +186,16 @@ python -m PyInstaller `
   --onedir `
   --name LudoX `
   --collect-data ludox `
+  --workpath "build\windows\pyinstaller" `
+  --distpath "build\windows" `
+  --specpath "build\windows" `
   app.py
 ```
 
 Dopo la build troverai:
 
 ```text
-dist\
+build\windows\
 └─ LudoX\
    ├─ LudoX.exe
    └─ ...
@@ -201,7 +204,7 @@ dist\
 Avvia:
 
 ```powershell
-.\dist\LudoX\LudoX.exe
+.\build\windows\LudoX\LudoX.exe
 ```
 
 Il kit include anche:
@@ -253,13 +256,13 @@ Quando il PDF è definitivo:
 ```powershell
 Copy-Item `
   ".\dist\LudoX-Guida-rapida.pdf" `
-  ".\dist\LudoX\LudoX-Guida-rapida.pdf"
+  ".\build\windows\LudoX\LudoX-Guida-rapida.pdf"
 ```
 
 A quel punto la cartella:
 
 ```text
-dist\LudoX\
+build\windows\LudoX\
 ```
 
 può diventare lo ZIP Windows della release.

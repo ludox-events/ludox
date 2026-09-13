@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / "docs"
 SOURCE = DOCS / "USER_GUIDE.md"
 
+# HTML temporaneo in build/; solo il PDF pubblicabile in dist/.
 BUILD_DIR = ROOT / "build" / "user-guide"
 DIST_DIR = ROOT / "dist"
 OUTPUT = DIST_DIR / "LudoX-Guida-rapida.pdf"

@@ -2,6 +2,7 @@
 setlocal
 cd /d "%~dp0\.."
 
+set "VERSION="
 set /p VERSION=<VERSION
 set VERSION=%VERSION: =%
 
@@ -25,18 +26,18 @@ if exist "requirements-build.txt" (
 )
 if errorlevel 1 exit /b 1
 
-if exist "build\pyinstaller-windows" rmdir /s /q "build\pyinstaller-windows"
-if exist "dist\LudoX" rmdir /s /q "dist\LudoX"
-if exist "dist\LudoX-%VERSION%-windows-x64.zip" del /q "dist\LudoX-%VERSION%-windows-x64.zip"
+if not exist "dist\windows" mkdir "dist\windows"
+if errorlevel 1 exit /b 1
 
-".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --windowed --onedir --name LudoX --collect-data ludox --workpath "build\pyinstaller-windows" --distpath "dist" app.py
+".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --windowed --onedir --name LudoX --collect-data ludox --workpath "build\windows\pyinstaller" --distpath "build\windows" --specpath "build\windows" app.py
 if errorlevel 1 exit /b 1
 
 if exist "dist\LudoX-Guida-rapida.pdf" (
-  copy /y "dist\LudoX-Guida-rapida.pdf" "dist\LudoX\LudoX-Guida-rapida.pdf" >nul
+  copy /y "dist\LudoX-Guida-rapida.pdf" "build\windows\LudoX\LudoX-Guida-rapida.pdf" >nul
+  if errorlevel 1 exit /b 1
 )
 
-powershell -NoProfile -Command "Compress-Archive -Path 'dist\LudoX\*' -DestinationPath 'dist\LudoX-%VERSION%-windows-x64.zip' -Force"
+powershell -NoProfile -Command "Compress-Archive -Path 'build\windows\LudoX\*' -DestinationPath 'dist\windows\LudoX-%VERSION%-windows-x64.zip' -Force"
 if errorlevel 1 exit /b 1
 
-echo OK: dist\LudoX-%VERSION%-windows-x64.zip
+echo OK: dist\windows\LudoX-%VERSION%-windows-x64.zip

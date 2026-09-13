@@ -37,8 +37,8 @@ Output attesi:
 
 ```text
 dist/LudoX-Guida-rapida.pdf
-dist/LudoX-<VERSION>-windows-x64.zip
-dist-linux/LudoX-<VERSION>-linux-x64.tar.gz
+dist/windows/LudoX-<VERSION>-windows-x64.zip
+dist/linux/LudoX-<VERSION>-linux-x64.tar.gz
 ```
 
 Prerequisiti:
@@ -48,3 +48,8 @@ Prerequisiti:
 - `scripts/build_user_guide.py`
 
 Prima di pubblicare una release, prova manualmente gli eseguibili Windows e Linux.
+
+Gli intermedi sono in `build/user-guide/`, `build/windows/` e `build/linux/`.
+Le cartelle applicative sono `build/windows/LudoX/` e `build/linux/LudoX/`;
+work file e spec di PyInstaller restano sotto la rispettiva piattaforma.
+`dist/` contiene solo artifact finali. Il PDF, se presente, viene incluso in entrambi gli archivi.

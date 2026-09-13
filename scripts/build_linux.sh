@@ -25,10 +25,7 @@ else
   "$PYTHON" -m pip install pyinstaller
 fi
 
-rm -rf build/pyinstaller-linux
-rm -rf dist-linux/LudoX
-rm -f "dist-linux/LudoX-${VERSION}-linux-x64.tar.gz"
-mkdir -p dist-linux
+mkdir -p dist/linux
 
 "$PYTHON" -m PyInstaller \
   --noconfirm \
@@ -37,14 +34,15 @@ mkdir -p dist-linux
   --onedir \
   --name LudoX \
   --collect-data ludox \
-  --workpath build/pyinstaller-linux \
-  --distpath dist-linux \
+  --workpath build/linux/pyinstaller \
+  --distpath build/linux \
+  --specpath build/linux \
   app.py
 
 if [[ -f dist/LudoX-Guida-rapida.pdf ]]; then
-  cp dist/LudoX-Guida-rapida.pdf dist-linux/LudoX/LudoX-Guida-rapida.pdf
+  cp dist/LudoX-Guida-rapida.pdf build/linux/LudoX/LudoX-Guida-rapida.pdf
 fi
 
-tar -C dist-linux -czf "dist-linux/LudoX-${VERSION}-linux-x64.tar.gz" LudoX
+tar -C build/linux -czf "dist/linux/LudoX-${VERSION}-linux-x64.tar.gz" LudoX
 
-echo "OK: dist-linux/LudoX-${VERSION}-linux-x64.tar.gz"
+echo "OK: dist/linux/LudoX-${VERSION}-linux-x64.tar.gz"

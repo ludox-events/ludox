@@ -2,6 +2,11 @@
 setlocal EnableDelayedExpansion
 cd /d "%~dp0\.."
 
+set "VERSION="
+set /p VERSION=<VERSION
+set VERSION=%VERSION: =%
+if "%VERSION%"=="" exit /b 1
+
 echo [1/3] PDF
 call scripts\build_pdf.cmd
 if errorlevel 1 exit /b 1
@@ -11,6 +16,7 @@ call scripts\build_windows.cmd
 if errorlevel 1 exit /b 1
 
 echo [3/3] Linux tar.gz via WSL
+set "WSL_REPO="
 for /f "delims=" %%i in ('wsl wslpath "%CD%"') do set WSL_REPO=%%i
 
 if "!WSL_REPO!"=="" (
@@ -24,5 +30,5 @@ if errorlevel 1 exit /b 1
 echo.
 echo BUILD COMPLETA:
 echo   dist\LudoX-Guida-rapida.pdf
-echo   dist\LudoX-*-windows-x64.zip
-echo   dist-linux\LudoX-*-linux-x64.tar.gz
+echo   dist\windows\LudoX-%VERSION%-windows-x64.zip
+echo   dist\linux\LudoX-%VERSION%-linux-x64.tar.gz

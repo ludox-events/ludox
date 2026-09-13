@@ -10,26 +10,19 @@ if (-not (Test-Path ".venv-build")) {
 & ".\.venv-build\Scripts\python.exe" -m pip install -r requirements.txt
 & ".\.venv-build\Scripts\python.exe" -m pip install -r requirements-build.txt
 
-# Pulisce solo gli output di PyInstaller.
-if (Test-Path "build\pyinstaller") {
-    Remove-Item "build\pyinstaller" -Recurse -Force
-}
-if (Test-Path "dist\LudoX") {
-    Remove-Item "dist\LudoX" -Recurse -Force
-}
-
 & ".\.venv-build\Scripts\python.exe" -m PyInstaller `
     --noconfirm `
     --clean `
     --windowed `
     --onedir `
     --name LudoX `
-    --workpath "build\pyinstaller" `
-    --distpath "dist" `
+    --workpath "build\windows\pyinstaller" `
+    --distpath "build\windows" `
+    --specpath "build\windows" `
     --collect-data ludox `
     app.py
 
 Write-Host ""
 Write-Host "Build completata."
 Write-Host "Avvia:"
-Write-Host "  dist\LudoX\LudoX.exe"
+Write-Host "  build\windows\LudoX\LudoX.exe"
