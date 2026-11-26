@@ -321,3 +321,28 @@ Existing screens that are modified as part of a task should be brought into
 compliance with these rules when the change is reasonably within the task
 scope.
 
+12. Computer Use and GUI restrictions
+
+These restrictions apply permanently to all future activities, including
+diagnosis, debugging, testing, documentation, and release preparation.
+
+- Computer Use is strictly prohibited unless explicitly authorized by the user
+  for the current task.
+- Never control the mouse, keyboard or graphical desktop.
+- Never interact with the application's graphical interface.
+- Never capture or analyze screenshots automatically.
+- Never use browser automation or alternative GUI automation tools.
+- Never launch the graphical application for automated visual inspection.
+- Use only CLI tools, source code inspection, Git, Python, SQLite and automated
+  tests.
+- Existing headless GUI wiring tests are permitted.
+- PDF generation and application packaging through existing CLI scripts are
+  permitted.
+- All manual GUI testing and visual validation are the user's responsibility.
+- If a task requires graphical interaction, stop that part of the task and
+  provide the user with instructions to perform it manually.
+- Avoid unnecessary repeated operations and resource-intensive tool usage.
+
+A generic authorization to work autonomously is not authorization to use
+Computer Use.
+
