@@ -15,16 +15,17 @@ Le GitHub Issues conservano la roadmap, le discussioni e la storia delle decisio
 
 | Documento | Stato | Contenuto |
 | --- | --- | --- |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Draft consolidato | Architettura generale, contesti client, offline-first e futura evoluzione client/server |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Specifica approvata | Architettura generale, contesti client, offline-first e futura evoluzione client/server |
 | [ORGANIZATIONS.md](ORGANIZATIONS.md) | Specifica approvata | Modello Organization e selezione dell'organizzazione attiva |
-| [EVENTS.md](EVENTS.md) | Draft consolidato | Modello Event, stati, selezione e ciclo di vita |
-| [MODULES.md](MODULES.md) | Draft | Regole comuni dei moduli event-specific |
+| [EVENTS.md](EVENTS.md) | Specifica approvata | Modello Event, stati, selezione e ciclo di vita |
+| [MODULES.md](MODULES.md) | Specifica approvata | Regole comuni dei moduli event-specific |
 | [CONFIGURATION.md](CONFIGURATION.md) | Specifica approvata | Scope delle impostazioni: client, Organization, Event e moduli |
-| [LENDING.md](LENDING.md) | Draft consolidato | Modello funzionale Prestiti Ludoteca / Game Library |
+| [LENDING.md](LENDING.md) | Specifica approvata | Modello funzionale Prestiti Ludoteca / Game Library |
 | [DATABASE.md](DATABASE.md) | Specifica approvata | Principi del database, versionamento dello schema e regole generali delle migration |
 | [MIGRATIONS.md](MIGRATIONS.md) | Specifica approvata | Flusso di migration, autorizzazione, backup, rollback e comportamento all'avvio |
-| [OPERATION.md](OPERATION.md) | Corrente | Procedura operativa della modalità token attualmente disponibile |
+| [OPERATION.md](OPERATION.md) | Specifica approvata | Procedure operative delle modalità token e copy identifier |
 | [MANUAL_TESTS.md](MANUAL_TESTS.md) | Corrente | Checklist dei test manuali da eseguire sulle funzionalità operative |
+| [USER_GUIDE.md](USER_GUIDE.md) | Guida utente | Avvio, preparazione e uso operativo della release alpha |
 
 Gli stati indicano la maturità della documentazione, non necessariamente lo stato di implementazione nel software.
 

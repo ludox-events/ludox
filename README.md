@@ -9,26 +9,34 @@ giochi localmente senza richiedere un server.
 
 > **Stato del progetto:** alpha. Il software è ancora in sviluppo.
 
+Versione candidata corrente: **0.2.0-alpha**.
+
 ## Funzioni principali
 
 - gestione di più **Organization** nello stesso database;
 - gestione di più **Event** per Organization;
 - moduli abilitabili per singolo Event;
 - ludoteca e prestiti separati per Event;
-- prestiti anonimi tramite slot/token numerati;
-- cambio gioco mantenendo lo stesso slot/token;
+- prestiti anonimi in modalità alternativa `token` o `copy_identifier`;
+- cambio gioco mantenendo lo stesso slot del documento;
 - restituzione finale con conferma fisica del documento;
 - copie fisiche multiple e owner label event-specific;
+- gestione di barcode/QR esterni e codici LudoX per le singole copie;
+- input da scanner HID o tastiera ed export PNG dei QR LudoX;
 - statistiche, storico e report riferiti all'Event corrente;
-- import/export della ludoteca in CSV e XLSX;
+- import/export CSV e XLSX con round-trip degli identificatori;
 - database locale SQLite con schema versionato;
 - migration esplicite con backup automatico dei database esistenti;
 - configurazione locale della postazione tramite `config.ini`;
 - interfaccia in italiano e inglese.
 
-La modalità operativa attualmente disponibile per i prestiti è quella basata
-su **token numerati**. Il modello dati è già predisposto per una futura modalità
-con identificazione delle singole copie tramite QR code o barcode.
+Ogni Event usa una sola modalità operativa alla volta:
+
+- **token**: il token numerato corrisponde allo slot fisico del documento;
+- **copy_identifier**: la scansione della singola scatola identifica la copia,
+  mentre LudoX assegna lo slot del documento senza consegnare un token.
+
+Il cambio di modalità è consentito soltanto senza sessioni o prestiti aperti.
 
 ## Modello applicativo
 
@@ -68,6 +76,7 @@ ludox/
 ├── organizations.py      dominio Organization e contesto corrente
 ├── events.py             dominio Event e moduli
 ├── catalog.py            ludoteca event-specific
+├── copy_identifiers.py   identificatori e QR delle copie
 ├── lending.py            sessioni e prestiti
 ├── library_transfer.py   import/export CSV/XLSX
 ├── reporting.py          statistiche, storico e report
@@ -127,7 +136,7 @@ come storico/amministrazione.
 
 ## Prestiti Ludoteca
 
-La modalità token utilizza una corrispondenza diretta:
+La modalità `token` utilizza una corrispondenza diretta:
 
 ```text
 token N = slot fisico N del documento
@@ -156,6 +165,12 @@ RESTITUZIONE FINALE
 LudoX non registra nominativo, numero del documento o altri dati identificativi
 della persona che utilizza il servizio di prestito.
 
+In modalità `copy_identifier`, nuovo prestito, cambio gioco e restituzione
+finale partono invece dalla scansione del codice della scatola. Gli scanner
+USB/Bluetooth HID si comportano come una tastiera; digitare il codice e premere
+Invio usa lo stesso flusso. QR e barcode rappresentano entrambi il valore del
+`copy_identifier`.
+
 La procedura completa è descritta in [`docs/OPERATION.md`](docs/OPERATION.md).
 
 ## Import/export ludoteca
@@ -163,7 +178,7 @@ La procedura completa è descritta in [`docs/OPERATION.md`](docs/OPERATION.md).
 La ludoteca dell'Event corrente può essere importata ed esportata usando CSV o
 XLSX.
 
-Il formato canonico minimo è:
+Il formato minimo retrocompatibile è:
 
 ```text
 game_name,owner_label,quantity
@@ -176,6 +191,10 @@ L'import è additivo. I titoli vengono confrontati con normalizzazione minima
 (trim + confronto case-insensitive). Titoli soltanto simili, come
 `Kingdomino` e `King Domino`, restano distinti: LudoX non esegue fuzzy matching
 o fusioni automatiche.
+
+Per le copie identificate sono disponibili anche le colonne opzionali
+`copy_identifier` e `identifier_source`. Le copie con codice vengono esportate
+singolarmente e mantengono la sorgente `external` o `ludox` nel round-trip.
 
 ## Migration e backup
 
@@ -238,8 +257,27 @@ python -m pip install -r requirements.txt
 python app.py
 ```
 
-La distribuzione portable Windows/Linux tramite PyInstaller è tracciata nella
-issue #24.
+## Pacchetti portable alpha
+
+La release fornisce pacchetti PyInstaller `onedir`, utilizzabili senza
+installare Python:
+
+### Windows x64
+
+1. scarica `LudoX-0.2.0-alpha-windows-x64.zip`;
+2. estrai completamente l'archivio;
+3. avvia `LudoX.exe`.
+
+### Linux x64
+
+1. scarica `LudoX-0.2.0-alpha-linux-x64.tar.gz`;
+2. estrai l'archivio;
+3. se necessario, rendi eseguibile `LudoX` con `chmod +x LudoX`;
+4. avvia `./LudoX`.
+
+Le build alpha non sono firmate digitalmente. Windows SmartScreen o gli
+strumenti di sicurezza della piattaforma possono quindi mostrare un avviso.
+Scarica gli artefatti soltanto dalla release ufficiale del progetto.
 
 ## Test
 
@@ -275,6 +313,9 @@ sicurezza forte.
 ## Documentazione
 
 La documentazione tecnica e funzionale è raccolta in [`docs/`](docs/README.md).
+La guida operativa destinata agli utenti finali è
+[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md); il PDF viene incluso nei pacchetti
+portable e pubblicato anche come artefatto separato.
 Le specifiche approvate riportano esplicitamente il marker:
 
 ```text

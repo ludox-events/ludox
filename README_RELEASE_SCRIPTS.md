@@ -49,6 +49,18 @@ Prerequisiti:
 
 Prima di pubblicare una release, prova manualmente gli eseguibili Windows e Linux.
 
+Le build sono native: il pacchetto Windows deve essere prodotto su Windows e
+quello Linux in un ambiente Linux x64 (lo script aggregato usa WSL). Gli script
+non effettuano cross-compilation.
+
+Prima della build completa eseguire:
+
+```cmd
+.venv\Scripts\pytest.exe
+```
+
+I pacchetti alpha non sono firmati digitalmente.
+
 Gli intermedi sono in `build/user-guide/`, `build/windows/` e `build/linux/`.
 Le cartelle applicative sono `build/windows/LudoX/` e `build/linux/LudoX/`;
 work file e spec di PyInstaller restano sotto la rispettiva piattaforma.
