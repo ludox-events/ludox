@@ -78,6 +78,16 @@ def test_database_path_selection_does_not_create_file(tmp_path):
         assert data.get_db_path() == tmp_path / "alternate.db"
 
 
+def test_frozen_database_paths_use_the_portable_executable_directory(
+    tmp_path, monkeypatch
+):
+    executable = tmp_path / "LudoX.exe"
+    monkeypatch.setattr(data.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(data.sys, "executable", str(executable))
+
+    assert data._default_project_dir() == tmp_path
+
+
 def test_connection_guard_rejects_outside_temporary_directory(tmp_path):
     with pytest.raises(AssertionError, match="temporary databases"):
         sqlite3.connect(tmp_path.parent / "forbidden.db")

@@ -2,13 +2,21 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 import sqlite3
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 from datetime import datetime
 
 from . import migrations
 
-PROJECT_DIR = Path(__file__).resolve().parent.parent
+def _default_project_dir():
+    """Return the writable application directory in source and frozen builds."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+
+PROJECT_DIR = _default_project_dir()
 DB_PATH = PROJECT_DIR / "ludox.db"
 
 
