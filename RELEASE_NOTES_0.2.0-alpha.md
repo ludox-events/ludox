@@ -8,6 +8,8 @@ gioco.
 ## Novità principali
 
 - gestione di Organization ed Event nello stesso workspace;
+- selezione esplicita dell'Event operativo da Home o Backoffice, con contesto
+  sempre visibile e destinazione dell'importazione confermata;
 - ludoteca, impostazioni, prestiti e report isolati per Event;
 - identificatori di copia `external` o generati da LudoX;
 - nuovo prestito, cambio e restituzione tramite scanner HID o tastiera;
@@ -43,7 +45,7 @@ schema v4.
 
 ## Verifica del candidato
 
-- suite automatica Windows: 272 test superati;
+- suite automatica Windows: 276 test superati;
 - migrazione verificata da schema v0 e v3 a v4 con controllo d'integrità;
 - smoke test manuali finali: vedere la checklist consegnata con il candidato.
 

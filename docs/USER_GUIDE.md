@@ -57,14 +57,20 @@ database mantengono quindi ludoteche separate.
 2. Inserisci la password iniziale `ludox` e premi **ACCEDI**.
 3. Apri **GESTIONE ORGANIZZAZIONI**, crea l'Organization e rendila corrente.
 4. Apri **GESTIONE EVENTI** e crea l'Event con nome, date, orari, fuso orario e
-   stato.
+   stato. Dopo il salvataggio LudoX chiede se vuoi renderlo operativo: la
+   creazione da sola non cambia l'Event corrente.
 5. Nella configurazione dell'Event abilita **Prestiti Ludoteca** (Game
    Library).
-6. Torna alla Home e verifica che Organization ed Event corretti siano
-   indicati in alto.
+6. Se hai mantenuto il contesto precedente, seleziona la riga del nuovo Event e
+   usa **USA EVENT SELEZIONATO**. La colonna **CORRENTE** identifica l'Event
+   operativo; selezionare una riga per modificarla non lo attiva.
+7. Verifica in Backoffice e nella Home che Organization ed Event correnti siano
+   quelli previsti.
 
-Se esistono più Event selezionabili, usa **CAMBIA EVENT**. Cambiare Event cambia
-anche la ludoteca e i dati operativi visualizzati.
+Se esistono più Event selezionabili, usa **CAMBIA EVENT** dalla Home oppure
+**USA EVENT SELEZIONATO** in Gestione Eventi. Cambiare Event cambia anche la
+ludoteca e i dati operativi visualizzati; sono selezionabili soltanto Event
+`draft` o `active` dell'Organization corrente.
 
 > **Screenshot release da acquisire:** Home 0.2.0-alpha con Organization ed
 > Event visibili, più schermata di selezione Event.
@@ -141,9 +147,10 @@ controlla che restituisca esattamente il valore mostrato da LudoX.
 ## 5. Importare ed esportare il catalogo
 
 Usa **IMPORTA LUDOTECA** ed **ESPORTA LUDOTECA EVENT** per trasferire il
-catalogo dell'Event in formato CSV o XLSX. L'importazione mostra un'anteprima:
-controllala prima di confermare, perché eventuali errori bloccano l'intero
-file.
+catalogo dell'Event in formato CSV o XLSX. L'anteprima indica esplicitamente
+Organization ed Event di destinazione: controllali prima di confermare, perché
+eventuali errori bloccano l'intero file. L'importazione viene applicata allo
+stesso Event indicato nell'anteprima.
 
 Le colonne supportate sono:
 

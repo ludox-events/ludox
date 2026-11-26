@@ -35,6 +35,11 @@ fase alpha.
   singolo Event.
 - Le schermate Backoffice interessate sono scorrevoli e gli Event usano picker
   separati per data e ora.
+- Il Backoffice mostra sempre il contesto Organization/Event, distingue la riga
+  in modifica dall'Event operativo e richiede conferma prima di attivare un
+  Event appena creato.
+- L'anteprima di importazione mostra Organization ed Event di destinazione e
+  mantiene tale destinazione fino all'applicazione.
 
 ### Compatibilità
 
