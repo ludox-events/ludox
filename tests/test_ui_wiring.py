@@ -208,8 +208,64 @@ def test_azioni_locali_importanti_hanno_il_command_previsto():
     assert {
         ast.unparse(element.elts[1])
         for element in azioni_eventi.iter.elts
-    } == {"nuovo", "salva", "elimina"}
+    } == {"nuovo", "salva", "usa_selezionato", "elimina"}
     assert_command("show_selezione_evento", {"conferma"})
+
+
+def test_gestione_eventi_separa_modifica_e_attivazione_del_contesto():
+    gestione = metodo("show_gestione_eventi")
+    source = ast.unparse(gestione)
+    assert "'current'" in source
+    assert "tree.tag_configure('current'" in source
+    assert "event.id == current_event_id" in source
+
+    carica = next(
+        node for node in ast.walk(gestione)
+        if isinstance(node, ast.FunctionDef) and node.name == "carica"
+    )
+    assert not any(
+        isinstance(node, ast.Call)
+        and ast.unparse(node.func) == "events.select_event"
+        for node in ast.walk(carica)
+    )
+
+    usa = next(
+        node for node in ast.walk(gestione)
+        if isinstance(node, ast.FunctionDef) and node.name == "usa_selezionato"
+    )
+    assert len([
+        node for node in ast.walk(usa)
+        if isinstance(node, ast.Call)
+        and ast.unparse(node.func) == "events.select_event"
+    ]) == 1
+
+
+def test_creazione_evento_propone_attivazione_senza_cambio_silenzioso():
+    gestione = metodo("show_gestione_eventi")
+    salva = next(
+        node for node in ast.walk(gestione)
+        if isinstance(node, ast.FunctionDef) and node.name == "salva"
+    )
+    source = ast.unparse(salva)
+    assert "creating = selected_id is None" in source
+    assert "messagebox.askyesno" in source
+    assert "events.activate_created_confirm_tpl" in source
+    assert source.count("events.select_event") == 1
+    assert "if creating:" in source
+    assert "else:\n        self._rivalida_contesto_evento()" in source
+
+
+def test_contesto_operativo_e_destinazione_import_sono_espliciti():
+    context_source = ast.unparse(metodo("mostra_contesto_operativo"))
+    assert "organizations.current_tpl" in context_source
+    assert "events.current_tpl" in context_source
+
+    import_source = ast.unparse(metodo("importa_ludoteca_evento"))
+    assert "event_id = self._game_library_event_id()" in import_source
+    assert "events.get_event(event_id)" in import_source
+    assert "library_transfer.preview_import(percorso, event_id" in import_source
+    assert "library_transfer.destination_tpl" in import_source
+    assert "library_transfer.apply_import(preview)" in import_source
 
 
 def test_gestione_copie_collega_scanner_azioni_e_qr_png():

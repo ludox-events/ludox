@@ -204,7 +204,9 @@ class PrestitiApp(ttk.Window):
         )
         return self.current_frame
 
-    def titolo_pagina(self, parent, titolo, sottotitolo=None):
+    def titolo_pagina(
+        self, parent, titolo, sottotitolo=None, *, mostra_contesto=True
+    ):
         ttk.Label(
             parent,
             text=tr(titolo),
@@ -219,6 +221,34 @@ class PrestitiApp(ttk.Window):
                 font=("Arial", 13),
                 bootstyle="secondary"
             ).pack(pady=(0, 20))
+
+        if mostra_contesto:
+            self.mostra_contesto_operativo(parent)
+
+    def mostra_contesto_operativo(self, parent):
+        if self.organizzazione_attiva is not None:
+            organization_text = tr(
+                "organizations.current_tpl",
+                name=self.organizzazione_attiva.nome,
+            )
+        elif self.selezione_organizzazione_richiesta:
+            organization_text = tr("organizations.selection_required")
+        else:
+            organization_text = tr("organizations.none_active")
+
+        if self.evento_attivo is not None:
+            event_text = tr("events.current_tpl", name=self.evento_attivo.name)
+        elif self.selezione_evento_richiesta:
+            event_text = tr("events.selection_required")
+        else:
+            event_text = tr("events.none_selectable")
+
+        ttk.Label(
+            parent,
+            text=f"{organization_text}  ·  {event_text}",
+            font=("Arial", 10, "bold"),
+            bootstyle="secondary",
+        ).pack(pady=(0, 12))
 
     def pulsante_indietro(self, parent, command):
         ttk.Button(
@@ -326,7 +356,8 @@ class PrestitiApp(ttk.Window):
         self.titolo_pagina(
             frame,
             "PRESTITI LUDOTECA",
-            "Gestione prestiti e documenti"
+            "Gestione prestiti e documenti",
+            mostra_contesto=False,
         )
 
         if self.organizzazione_attiva is not None:
@@ -2808,6 +2839,9 @@ class PrestitiApp(ttk.Window):
         )
 
     def importa_ludoteca_evento(self):
+        event_id = self._game_library_event_id()
+        destination_event = events.get_event(event_id)
+        destination_organization = self.organizzazione_attiva
         percorso = filedialog.askopenfilename(
             parent=self,
             title=tr("library_transfer.import_event"),
@@ -2831,7 +2865,7 @@ class PrestitiApp(ttk.Window):
                     return
             preview = library_transfer.preview_import(
                 percorso,
-                self._game_library_event_id(),
+                event_id,
                 owner_label=owner_label,
             )
         except (OSError, ValueError, csv.Error) as exc:
@@ -2846,6 +2880,11 @@ class PrestitiApp(ttk.Window):
             existing=len(preview.existing_titles),
             owners=len(preview.new_owner_labels),
         )
+        dettagli = tr(
+            "library_transfer.destination_tpl",
+            organization=destination_organization.nome,
+            event=destination_event.name,
+        ) + "\n\n" + dettagli
         if preview.problems:
             dettagli += "\n\n" + "\n".join(
                 f"{problem.row_number}: {problem.message}"
@@ -2885,11 +2924,14 @@ class PrestitiApp(ttk.Window):
         organization_id = self.organizzazione_attiva.id
         tree = ttk.Treeview(
             frame,
-            columns=("name", "slug", "start", "end", "timezone", "status"),
+            columns=(
+                "current", "name", "slug", "start", "end", "timezone", "status"
+            ),
             show="headings",
             height=8,
         )
         for column, label in (
+            ("current", "events.current"),
             ("name", "events.name"),
             ("slug", "events.slug"),
             ("start", "events.start"),
@@ -2898,14 +2940,21 @@ class PrestitiApp(ttk.Window):
             ("status", "events.status"),
         ):
             tree.heading(column, text=tr(label))
+        tree.column("current", width=95, minwidth=80, anchor=CENTER, stretch=False)
         tree.pack(fill=BOTH, expand=YES, pady=(0, 12))
+        current_event_id = (
+            self.evento_attivo.id if self.evento_attivo is not None else None
+        )
+        tree.tag_configure("current", background="#dff0ec")
         for event in events.list_events(organization_id):
             tree.insert(
                 "", END, iid=str(event.id),
                 values=(
+                    tr("events.current") if event.id == current_event_id else "",
                     event.name, event.slug, event.start_datetime,
                     event.end_datetime, event.timezone, event.status,
                 ),
+                tags=("current",) if event.id == current_event_id else (),
             )
 
         form = ttk.Frame(frame)
@@ -2994,6 +3043,7 @@ class PrestitiApp(ttk.Window):
             entries["slug"].configure(state="disabled")
 
         def salva():
+            creating = selected_id is None
             try:
                 start_datetime = self.leggi_datetime_picker(start_picker)
                 end_datetime = self.leggi_datetime_picker(end_picker)
@@ -3028,10 +3078,39 @@ class PrestitiApp(ttk.Window):
                     events.set_module_enabled(
                         saved.id, "activities", activities_var.get()
                     )
-                self._rivalida_contesto_evento()
             except (ValueError, events.EventError, sqlite3.Error) as exc:
                 messagebox.showwarning(tr("events.invalid"), str(exc))
                 return
+            if creating:
+                if messagebox.askyesno(
+                    tr("events.activate_created_title"),
+                    tr("events.activate_created_confirm_tpl", name=saved.name),
+                ):
+                    context = events.select_event(
+                        saved.id, organization_id, self.config
+                    )
+                    self._applica_contesto_evento(context)
+            else:
+                self._rivalida_contesto_evento()
+            self.show_gestione_eventi()
+
+        def usa_selezionato():
+            selection = tree.selection()
+            if not selection:
+                messagebox.showwarning(
+                    tr("events.select_title"), tr("events.select_first")
+                )
+                return
+            try:
+                context = events.select_event(
+                    int(selection[0]), organization_id, self.config
+                )
+            except events.EventNotSelectable:
+                messagebox.showwarning(
+                    tr("events.select_title"), tr("events.not_selectable")
+                )
+                return
+            self._applica_contesto_evento(context)
             self.show_gestione_eventi()
 
         def elimina():
@@ -3055,6 +3134,7 @@ class PrestitiApp(ttk.Window):
         for text, command, style in (
             ("events.new", nuovo, "secondary-outline"),
             ("events.save", salva, "success"),
+            ("events.use_selected", usa_selezionato, "primary"),
             ("events.delete", elimina, "danger-outline"),
         ):
             ttk.Button(

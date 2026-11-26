@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from ludox import config, events, organizations
+from ludox import catalog, config, events, lending, organizations
 
 
 def make_organization(name="Ludoteca Centro"):
@@ -153,6 +153,30 @@ def test_context_rejects_event_from_another_organization(db, tmp_path):
             config.AppConfig(),
             tmp_path / "config.ini",
         )
+
+
+def test_select_event_is_allowed_with_open_loans_in_another_event(db, tmp_path):
+    organization = make_organization()
+    first = make_event(organization.id)
+    second = make_event(organization.id, slug="secondo", name="Secondo")
+    owner_id = catalog.aggiungi_proprietario("Associazione", event_id=first.id)
+    game_id = catalog.aggiungi_gioco("Azul", event_id=first.id)
+    catalog.imposta_quantita(game_id, owner_id, "1", event_id=first.id)
+    loan = lending.nuovo_prestito(game_id, event_id=first.id)
+
+    selected = events.select_event(
+        second.id,
+        organization.id,
+        config.AppConfig(),
+        tmp_path / "config.ini",
+    )
+
+    assert selected.event == second
+    assert config.load_config(tmp_path / "config.ini") == selected.configuration
+    assert lending.situazione_chiusura(event_id=first.id).documenti_attivi == 1
+    assert lending.consulta_token(loan.token, event_id=first.id).prestito["id"] == (
+        loan.prestito_id
+    )
 
 
 def test_delete_event_removes_preparatory_modules(db):
