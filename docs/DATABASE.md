@@ -2,16 +2,16 @@
 
 > **STATUS: APPROVED SPECIFICATION — READ ONLY**
 >
-> **IMPLEMENTATION: PARTIALLY IMPLEMENTED**
+> **IMPLEMENTATION: IMPLEMENTED THROUGH SCHEMA v4**
 >
 > Questo documento è una specifica approvata di LudoX. Durante
 > l'implementazione non deve essere modificato, salvo richiesta esplicita
 > dell'utente. I marker `TBD` e `QUESTION` restano decisioni aperte e non
 > autorizzano Codex a scegliere autonomamente una soluzione.
 
-Questo documento raccoglie i principi dello schema dati di LudoX, descrive lo
-schema implementato fino alla versione `v3` e definisce il target strutturale
-della issue #4 per la modalità `copy_identifier`.
+Questo documento raccoglie i principi dello schema dati di LudoX e descrive lo
+schema implementato fino alla versione `v4`, che completa il modello
+`copy_identifier` della Game Library V1.
 
 Le parti relative a funzionalità future, come il modulo `activities`, restano
 specifiche di progetto non ancora completamente implementate.
@@ -76,7 +76,7 @@ user_version = 0   schema legacy / sperimentale
 user_version = 1   Organizations
 user_version = 2   Events + Event Modules
 user_version = 3   game_library event-specific
-user_version = 4   target issue #4: copy_identifier V1
+user_version = 4   copy_identifier V1
 user_version = 5+  successive modifiche strutturali
 ```
 
@@ -90,9 +90,8 @@ La migration `1 → 2` introduce `events` e `event_modules`.
 La migration `2 → 3` introduce il modello event-specific del modulo
 `game_library`.
 
-La issue #4 deve introdurre una migration esplicita `3 → 4` per consolidare
-il modello operativo degli identificatori delle copie. La versione `4` non è
-considerata implementata finché la #4 non è completata.
+La migration `3 → 4`, introdotta con la issue #4, consolida il modello
+operativo degli identificatori delle copie.
 
 Ogni numero di versione identifica uno stato preciso e completo dello schema.
 Una versione non deve essere costruita progressivamente da più modifiche
@@ -102,7 +101,7 @@ Ogni futura modifica strutturale deve prevedere una migration esplicita. Le
 versioni dello schema usano numeri interi progressivi, indipendenti dalla
 versione applicativa di LudoX.
 
-## Schema implementato in v3
+## Schema implementato in v4
 
 Lo schema applicativo corrente comprende:
 
@@ -182,13 +181,12 @@ Comprende:
 - `max_slots`, con valore iniziale `50`;
 - `identification_mode`.
 
-Le modalità previste nello schema sono:
+Le modalità implementate sono:
 
 - `token`;
 - `copy_identifier`.
 
-Le due modalità sono alternative per lo specifico Event. La modalità
-attualmente operativa è `token`; `copy_identifier` viene completata dalla #4.
+Le due modalità sono alternative per lo specifico Event.
 
 ### `game_library_owner_labels`
 
@@ -257,16 +255,42 @@ record di copia.
 
 ### `game_library_copy_identifiers`
 
-In v3 la tabella è già predisposta per identificatori multipli e distingue
-`LUDOX_QR` / `EXTERNAL_BARCODE`.
+Nello schema v4 ogni copia può avere zero o un solo `copy_identifier`
+operativo.
 
-La #4 sostituisce questa semantica operativa con un modello V1 nel quale ogni
-copia può avere zero o un solo `copy_identifier` attivo. QR e barcode sono
-soltanto rappresentazioni fisiche del valore: il dato persistito distingue
-l'origine `external` / `ludox`, non la simbologia.
+QR e barcode sono soltanto rappresentazioni fisiche del valore: il dato
+persistito distingue l'origine `external` / `ludox`, non la simbologia.
 
-La struttura v3 deve essere migrata senza perdita silenziosa dei dati; i
-vincoli target sono definiti nella sezione successiva.
+Campi principali:
+
+```text
+id
+event_id
+copy_id
+source
+value
+```
+
+con:
+
+```text
+source ∈ {external, ludox}
+```
+
+Vincoli implementati:
+
+```text
+UNIQUE(event_id, copy_id)
+UNIQUE(event_id, value)
+FOREIGN KEY(event_id, copy_id)
+    → game_library_game_copies(event_id, id)
+```
+
+Il valore deve essere non vuoto e non può contenere ritorni a capo. Il
+confronto è esatto dopo il trim applicativo e non viene applicato case folding.
+
+Lo stesso valore può essere riutilizzato in Event differenti.
+
 ### `game_library_sessions`
 
 Rappresenta una sessione anonima di prestito.
@@ -306,76 +330,27 @@ Campi principali:
 
 In modalità token il gioco è noto, ma la copia fisica può non esserlo.
 
-In modalità `copy_identifier` ogni nuovo prestito deve registrare la copia
-specifica tramite `copy_id`.
+In modalità `copy_identifier` ogni nuovo prestito registra la copia specifica
+tramite `copy_id`.
 
 Una sessione può avere una sequenza di prestiti, ma al massimo un prestito
 aperto alla volta.
 
-## Target schema v4 per gli identificatori delle copie
+## Migration v3 → v4
 
-Nella V1 operativa una copia può avere **zero o un solo identificatore
-operativo**.
+La migration v3 → v4 consolida la precedente tabella identificatori.
 
-QR code e barcode sono soltanto rappresentazioni fisiche dello stesso concetto
-`copy_identifier`. Lo schema registra l'origine del valore, non la simbologia.
-
-La struttura target di `game_library_copy_identifiers` deve rappresentare
-almeno:
-
-```text
-id
- event_id
- copy_id
- source
- value
-```
-
-con:
-
-```text
-source ∈ {external, ludox}
-```
-
-### Vincoli richiesti
-
-Lo schema v4 deve garantire:
-
-- `value` non vuoto;
-- una sola riga identificatore per copia nello stesso Event;
-- `value` univoco nello stesso Event;
-- lo stesso `value` consentito in Event differenti;
-- coerenza `event_id + copy_id` tramite foreign key verso la copia;
-- eliminazione dell'identificatore in cascata quando una copia eliminabile
-  viene eliminata;
-- nessun vincolo globale tra copie appartenenti a Event diversi.
-
-Forma logica indicativa dei vincoli:
-
-```text
-UNIQUE(event_id, copy_id)
-UNIQUE(event_id, value)
-FOREIGN KEY(event_id, copy_id)
-    → game_library_game_copies(event_id, id)
-```
-
-Il confronto del valore è esatto dopo il trim applicativo. Non viene applicato
-case folding.
-
-### Migration v3 → v4
-
-La migration deve preservare eventuali identificatori già presenti:
+Gli eventuali valori v3 vengono mappati come segue:
 
 ```text
 LUDOX_QR         → source = ludox
 EXTERNAL_BARCODE → source = external
 ```
 
-La versione v3 dell'app non espone normalmente una UI per creare più
-identificatori sulla stessa copia. Se tuttavia il database contiene dati che
-violano i nuovi vincoli, la migration non deve scegliere o cancellare valori
-silenziosamente: deve fallire in modo comprensibile e lasciare intatto il
-database originale, secondo il normale flusso backup + rollback.
+Se il database v3 contiene più identificatori sulla stessa copia, duplicati
+nello stesso Event o altri dati incompatibili con i nuovi vincoli, la migration
+non sceglie e non cancella valori silenziosamente: fallisce e lascia intatto il
+database originale secondo il normale flusso backup + rollback.
 
 ## Generazione di un identificatore LudoX
 
@@ -392,8 +367,7 @@ copy_id = 123
 → LX-C-000123
 ```
 
-La generazione deve comunque verificare il vincolo di unicità nell'Event prima
-del salvataggio.
+La generazione verifica il vincolo di unicità nell'Event prima del salvataggio.
 
 Il valore generato viene memorizzato con:
 
@@ -412,9 +386,9 @@ interoperabilità.
 
 ## Isolamento per Event
 
-La scelta implementata in v3 è di materializzare `event_id` nelle principali
-tabelle operative del modulo `game_library`, comprese le relazioni figlie dove
-questo permette di controllare esplicitamente la coerenza tra record.
+`event_id` è materializzato nelle principali tabelle operative del modulo
+`game_library`, comprese le relazioni figlie dove questo permette di controllare
+esplicitamente la coerenza tra record.
 
 In particolare `event_id` è presente in:
 
@@ -447,7 +421,7 @@ Event A: seconda copia BIB-123 → vietato
 
 ## Integrità referenziale e cancellazione
 
-Le regole strutturali implementate in v3 combinano foreign key SQLite e
+Le regole strutturali dello schema corrente combinano foreign key SQLite e
 controlli applicativi.
 
 In sintesi:
@@ -508,7 +482,7 @@ Il formato minimo a tre colonne resta supportato:
 game_name,owner_label,quantity
 ```
 
-La issue #4 estende il formato con colonne opzionali:
+Il formato event-specific può includere le colonne opzionali:
 
 ```text
 copy_identifier
@@ -522,9 +496,8 @@ Regole strutturali:
 - `identifier_source ∈ {external, ludox}` quando valorizzato;
 - identificatore duplicato nello stesso Event → errore;
 - identificatore duplicato solo in un altro Event → consentito;
-- import ed export devono preservare il valore dell'identificatore e la sua
-  sorgente;
-- l'import deve essere validato completamente prima di applicare modifiche.
+- import ed export preservano il valore dell'identificatore e la sua sorgente;
+- l'import viene validato completamente prima di applicare modifiche.
 
 Le regole funzionali complete sono definite in [LENDING.md](LENDING.md).
 
@@ -573,7 +546,7 @@ Timestamp.
 Esempio:
 
 ```text
-ludox.backup-v0-to-v3-20260912-175900.db
+ludox.backup-v0-to-v4-20260912-175900.db
 ```
 
 Il nome non deve sovrascrivere backup già esistenti.
@@ -608,6 +581,7 @@ La logica funzionale è distribuita in moduli dedicati, tra cui:
 - `organizations`;
 - `events`;
 - `catalog`;
+- `copy_identifiers`;
 - `lending`;
 - `library_transfer`;
 - `reporting`.
@@ -618,9 +592,9 @@ del dominio.
 Questa separazione permette di mantenere la logica funzionale stabile anche se
 in futuro SQLite locale viene affiancato o sostituito da un servizio LAN/web.
 
-La #4 deve rispettare la stessa separazione: risoluzione degli identificatori,
-validazioni, prestiti e import/export passano attraverso service testabili
-senza Tkinter; la UI non introduce query SQL dirette.
+La gestione degli identificatori, le validazioni, i prestiti e
+l'import/export passano attraverso service testabili senza Tkinter; la UI non
+introduce query SQL dirette.
 
 ## Timestamp e timezone
 
@@ -644,7 +618,7 @@ Event possiede inoltre uno slug obbligatorio. Lo slug utilizza `a-z`, `0-9`,
 Giochi e copie possono avere identificativi esterni opzionali secondo le regole
 del relativo dominio.
 
-Per le copie, la V1 della #4 definisce un solo `copy_identifier` operativo
+Per le copie, la Game Library V1 definisce un solo `copy_identifier` operativo
 attivo per copia. Il valore:
 
 - identifica una sola scatola nello stesso Event;
@@ -661,13 +635,12 @@ testo dell'identificatore.
 
 ## Evoluzione futura
 
-Lo schema v3 implementa Organization, Event, Event Modules e il modulo
-`game_library` event-specific.
+Lo schema v4 implementa Organization, Event, Event Modules e la Game Library V1
+event-specific, comprese entrambe le modalità `token` e `copy_identifier`.
 
 Le future evoluzioni strutturali devono usare versioni successive dello schema,
 per esempio per:
 
-- completamento della modalità `copy_identifier` con la #4;
 - eventuali ulteriori vincoli sugli identificativi delle copie;
 - modulo `activities`;
 - altri moduli event-specific.
@@ -677,7 +650,7 @@ viene introdotta quando esiste una modifica strutturale concreta e testabile.
 
 La issue #26 potrà aggiungere una sorgente camera/webcam per decodificare QR e
 barcode, ma dovrà produrre lo stesso valore testuale usato dagli scanner HID
-e riutilizzare i service della #4.
+e riutilizzare i service già implementati.
 
 ## Scope della configurazione
 

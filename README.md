@@ -9,34 +9,34 @@ giochi localmente senza richiedere un server.
 
 > **Stato del progetto:** alpha. Il software è ancora in sviluppo.
 
-Versione candidata corrente: **0.2.0-alpha**.
-
 ## Funzioni principali
 
 - gestione di più **Organization** nello stesso database;
 - gestione di più **Event** per Organization;
 - moduli abilitabili per singolo Event;
 - ludoteca e prestiti separati per Event;
-- prestiti anonimi in modalità alternativa `token` o `copy_identifier`;
-- cambio gioco mantenendo lo stesso slot del documento;
+- due modalità alternative di prestito per Event:
+  - `token`, con token fisico numerato corrispondente allo slot del documento;
+  - `copy_identifier`, con identificazione della singola scatola tramite codice;
+- identificatori delle copie event-specific, con origine `external` o `ludox`;
+- supporto a barcode/QR tramite scanner HID o inserimento manuale + Invio;
+- generazione di codici LudoX e relativa esportazione come QR PNG;
+- cambio gioco mantenendo lo stesso slot;
 - restituzione finale con conferma fisica del documento;
 - copie fisiche multiple e owner label event-specific;
-- gestione di barcode/QR esterni e codici LudoX per le singole copie;
-- input da scanner HID o tastiera ed export PNG dei QR LudoX;
 - statistiche, storico e report riferiti all'Event corrente;
-- import/export CSV e XLSX con round-trip degli identificatori;
+- import/export della ludoteca in CSV e XLSX, inclusi gli identificatori delle copie;
 - database locale SQLite con schema versionato;
 - migration esplicite con backup automatico dei database esistenti;
 - configurazione locale della postazione tramite `config.ini`;
 - interfaccia in italiano e inglese.
 
-Ogni Event usa una sola modalità operativa alla volta:
+La modalità `copy_identifier` non distingue operativamente tra QR code e
+barcode: per LudoX entrambi producono una stringa che identifica una singola
+copia fisica nello specifico Event.
 
-- **token**: il token numerato corrisponde allo slot fisico del documento;
-- **copy_identifier**: la scansione della singola scatola identifica la copia,
-  mentre LudoX assegna lo slot del documento senza consegnare un token.
-
-Il cambio di modalità è consentito soltanto senza sessioni o prestiti aperti.
+La scansione tramite webcam/camera non fa parte della Game Library V1 ed è
+tracciata separatamente nella issue #26.
 
 ## Modello applicativo
 
@@ -57,8 +57,12 @@ Database / workspace LudoX
 
 Ogni Event appartiene a una sola Organization. I dati del modulo
 `game_library` appartengono allo specifico Event: giochi, copie, owner label,
-sessioni, prestiti, configurazione, statistiche e report non vengono mescolati
-tra Event differenti.
+identificatori delle copie, sessioni, prestiti, configurazione, statistiche e
+report non vengono mescolati tra Event differenti.
+
+Non esiste un'identità globale obbligatoria della stessa scatola tra Event.
+Una ludoteca esportata e reimportata crea nuove copie nell'Event di
+destinazione, preservando però gli eventuali `copy_identifier`.
 
 ## Struttura del progetto
 
@@ -76,7 +80,7 @@ ludox/
 ├── organizations.py      dominio Organization e contesto corrente
 ├── events.py             dominio Event e moduli
 ├── catalog.py            ludoteca event-specific
-├── copy_identifiers.py   identificatori e QR delle copie
+├── copy_identifiers.py   identificatori operativi delle singole copie
 ├── lending.py            sessioni e prestiti
 ├── library_transfer.py   import/export CSV/XLSX
 ├── reporting.py          statistiche, storico e report
@@ -136,7 +140,24 @@ come storico/amministrazione.
 
 ## Prestiti Ludoteca
 
-La modalità `token` utilizza una corrispondenza diretta:
+Ogni Event usa una sola modalità operativa alla volta:
+
+```text
+identification_mode = token
+```
+
+oppure:
+
+```text
+identification_mode = copy_identifier
+```
+
+Il cambio di modalità è consentito soltanto quando non esistono sessioni o
+prestiti aperti nell'Event.
+
+### Modalità token
+
+La modalità token utilizza una corrispondenza diretta:
 
 ```text
 token N = slot fisico N del documento
@@ -162,23 +183,59 @@ RESTITUZIONE FINALE
 → slot nuovamente disponibile
 ```
 
+### Modalità `copy_identifier`
+
+Ogni scatola prestabile possiede un codice operativo univoco nello specifico
+Event. Può essere:
+
+- `external`, ad esempio un barcode inventariale già presente sulla scatola;
+- `ludox`, generato dall'app nel formato `LX-C-000123`.
+
+Uno scanner USB/Bluetooth HID viene trattato come una tastiera:
+
+```text
+codice → ENTER
+```
+
+La digitazione manuale del codice seguita da Invio produce lo stesso
+comportamento.
+
+Il flusso principale è:
+
+```text
+NUOVO PRESTITO
+→ scansione/digitazione della scatola
+→ LudoX identifica la copia
+→ assegna il primo slot libero
+→ documento nello slot
+→ nessun token fisico
+
+CAMBIO GIOCO
+→ scansione della copia restituita
+→ scansione della nuova copia
+→ stesso slot documento
+→ chiusura/apertura dei prestiti in transazione
+
+RESTITUZIONE FINALE
+→ scansione della copia restituita
+→ LudoX mostra lo slot del documento
+→ recupero fisico del documento
+→ conferma DOCUMENTO RESTITUITO
+→ slot nuovamente disponibile
+```
+
 LudoX non registra nominativo, numero del documento o altri dati identificativi
 della persona che utilizza il servizio di prestito.
 
-In modalità `copy_identifier`, nuovo prestito, cambio gioco e restituzione
-finale partono invece dalla scansione del codice della scatola. Gli scanner
-USB/Bluetooth HID si comportano come una tastiera; digitare il codice e premere
-Invio usa lo stesso flusso. QR e barcode rappresentano entrambi il valore del
-`copy_identifier`.
-
-La procedura completa è descritta in [`docs/OPERATION.md`](docs/OPERATION.md).
+La procedura completa per entrambe le modalità è descritta in
+[`docs/OPERATION.md`](docs/OPERATION.md).
 
 ## Import/export ludoteca
 
 La ludoteca dell'Event corrente può essere importata ed esportata usando CSV o
 XLSX.
 
-Il formato minimo retrocompatibile è:
+Il formato minimo legacy/aggregato resta valido:
 
 ```text
 game_name,owner_label,quantity
@@ -187,18 +244,32 @@ Azul,LAM,2
 Kingdomino,Matteo,1
 ```
 
+Per preservare gli identificatori delle singole copie è disponibile il formato
+esteso:
+
+```text
+game_name,owner_label,quantity,copy_identifier,identifier_source
+Azul,Biblioteca,1,BIB-000123,external
+Azul,LAM,1,LX-C-000451,ludox
+Cascadia,LAM,3,,
+```
+
+Una copia identificata viene esportata su una riga con `quantity = 1`; le copie
+senza identificatore possono rimanere aggregate.
+
 L'import è additivo. I titoli vengono confrontati con normalizzazione minima
 (trim + confronto case-insensitive). Titoli soltanto simili, come
 `Kingdomino` e `King Domino`, restano distinti: LudoX non esegue fuzzy matching
 o fusioni automatiche.
 
-Per le copie identificate sono disponibili anche le colonne opzionali
-`copy_identifier` e `identifier_source`. Le copie con codice vengono esportate
-singolarmente e mantengono la sorgente `external` o `ludox` nel round-trip.
+Gli identificatori devono essere univoci nello stesso Event, ma lo stesso
+valore può essere usato in Event differenti.
 
 ## Migration e backup
 
 LudoX usa `PRAGMA user_version` per versionare lo schema SQLite.
+
+Lo schema corrente della Game Library V1 è **v4**.
 
 Un database nuovo o realmente vuoto viene inizializzato direttamente allo
 schema corrente. Se un database esistente usa uno schema precedente, LudoX:
@@ -257,27 +328,8 @@ python -m pip install -r requirements.txt
 python app.py
 ```
 
-## Pacchetti portable alpha
-
-La release fornisce pacchetti PyInstaller `onedir`, utilizzabili senza
-installare Python:
-
-### Windows x64
-
-1. scarica `LudoX-0.2.0-alpha-windows-x64.zip`;
-2. estrai completamente l'archivio;
-3. avvia `LudoX.exe`.
-
-### Linux x64
-
-1. scarica `LudoX-0.2.0-alpha-linux-x64.tar.gz`;
-2. estrai l'archivio;
-3. se necessario, rendi eseguibile `LudoX` con `chmod +x LudoX`;
-4. avvia `./LudoX`.
-
-Le build alpha non sono firmate digitalmente. Windows SmartScreen o gli
-strumenti di sicurezza della piattaforma possono quindi mostrare un avviso.
-Scarica gli artefatti soltanto dalla release ufficiale del progetto.
+La distribuzione portable Windows/Linux tramite PyInstaller è tracciata nella
+issue #24.
 
 ## Test
 
@@ -293,8 +345,13 @@ Le verifiche manuali visibili all'utente sono raccolte in
 ## Privacy by design
 
 Il modulo Prestiti Ludoteca non registra dati identificativi delle persone che
-prendono giochi in prestito. Lo slot/token identifica soltanto la posizione
-fisica del documento durante una sessione anonima.
+prendono giochi in prestito.
+
+Lo slot identifica soltanto la posizione fisica del documento durante una
+sessione anonima. In modalità token il numero dello slot coincide anche con il
+token fisico; in modalità `copy_identifier` la scatola identifica il prestito,
+mentre lo slot continua a rappresentare esclusivamente la posizione del
+documento.
 
 Le owner label delle copie sono etichette operative della ludoteca e non
 costituiscono un'anagrafica delle persone che prendono giochi in prestito.
@@ -313,9 +370,6 @@ sicurezza forte.
 ## Documentazione
 
 La documentazione tecnica e funzionale è raccolta in [`docs/`](docs/README.md).
-La guida operativa destinata agli utenti finali è
-[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md); il PDF viene incluso nei pacchetti
-portable e pubblicato anche come artefatto separato.
 Le specifiche approvate riportano esplicitamente il marker:
 
 ```text
