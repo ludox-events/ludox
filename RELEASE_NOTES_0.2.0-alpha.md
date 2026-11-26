@@ -43,7 +43,7 @@ schema v4.
 
 ## Verifica del candidato
 
-- suite automatica Windows: 271 test superati;
+- suite automatica Windows: 272 test superati;
 - migrazione verificata da schema v0 e v3 a v4 con controllo d'integrità;
 - smoke test manuali finali: vedere la checklist consegnata con il candidato.
 

@@ -66,8 +66,9 @@ database mantengono quindi ludoteche separate.
 Se esistono più Event selezionabili, usa **CAMBIA EVENT**. Cambiare Event cambia
 anche la ludoteca e i dati operativi visualizzati.
 
-> **Screenshot release da acquisire:** Home 0.2.0-alpha con Organization ed
-> Event visibili, più schermata di selezione Event.
+![Home 0.2.0-alpha con Organization ed Event correnti](user-guide/images/02-home.png)
+
+*Home della release candidata con il contesto operativo selezionato.*
 
 ## 3. Preparare la ludoteca dell'Event
 
@@ -95,6 +96,10 @@ valida una sessione ancora attiva.
 
 I proprietari dei giochi sono semplici etichette della ludoteca e non sono le
 Organization.
+
+![Backoffice della release candidata](user-guide/images/03-backoffice.png)
+
+*Il Backoffice raccoglie configurazione, catalogo, import/export e report.*
 
 ## 4. Singole copie e codici
 
@@ -135,8 +140,9 @@ Non rimuovere o sostituire un identificatore mentre la relativa copia è in
 prestito. Prima di stampare molte etichette, prova la lettura di un QR e
 controlla che restituisca esattamente il valore mostrato da LudoX.
 
-> **Screenshot release da acquisire:** Gestione singole copie con un codice
-> `external`, un codice `ludox` e il comando **ESPORTA QR PNG**.
+![Gestione singole copie con codici external e ludox](user-guide/images/10-copy-identifiers.png)
+
+*Due copie dello stesso gioco con identificatori di origine diversa.*
 
 ## 5. Importare ed esportare il catalogo
 
@@ -270,9 +276,9 @@ annulli prima della conferma, il cambio non viene registrato.
 
 La sessione si chiude e la copia e la posizione tornano disponibili.
 
-> **Screenshot release da acquisire:** schermata di scansione con campo codice
-> e indicazione che è possibile digitare e premere **Invio**; riepilogo di un
-> cambio prima della conferma.
+![Inserimento del codice della copia](user-guide/images/12-copy-scan.png)
+
+*Lo scanner HID e la tastiera usano lo stesso campo: codice seguito da Invio.*
 
 ## 9. Statistiche, storico e Backoffice
 
@@ -369,21 +375,6 @@ Completa le sessioni ancora aperte nel workspace corrente.
 
 Verifica di aver scelto il file corretto, chiudi le altre applicazioni che
 potrebbero usarlo e autorizza soltanto se puoi conservare il backup creato.
-
-## Screenshot da completare prima della release
-
-Gli screenshot esistenti non corrispondono alla UI 0.2.0-alpha e non sono
-usati in questo documento. Prima della release occorre
-acquisire dalla versione candidata, con dati dimostrativi e senza dati reali:
-
-1. primo avvio con lingua e database;
-2. Home con Organization ed Event e selezione Event;
-3. Backoffice e configurazione Game Library dell'Event;
-4. impostazioni ludoteca con scelta `token` / `copy_identifier`;
-5. Gestione singole copie con codici `external` e `ludox` ed export QR;
-6. inserimento codice tramite scanner/tastiera e riepilogo cambio;
-7. storico e report con i dati della copia;
-8. Impostazioni con cambio workspace e richiesta di migration.
 
 ## Segnalare un problema
 

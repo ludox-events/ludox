@@ -73,7 +73,7 @@ ul, ol {
 img {
     display: block;
     max-width: 100%;
-    max-height: 185mm;
+    max-height: 62mm;
     width: auto;
     height: auto;
     margin: 5mm auto 2mm;
